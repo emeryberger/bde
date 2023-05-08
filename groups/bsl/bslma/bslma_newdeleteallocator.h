@@ -352,7 +352,8 @@ void NewDeleteAllocator::deallocate(void *address)
     // programs.
 
     if (address) {
-        ::operator delete(address);
+      xxfree(address);
+      // ::operator delete(address);
     }
 }
 

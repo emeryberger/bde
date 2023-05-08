@@ -206,7 +206,7 @@ void MallocFreeAllocator::deallocate(void *address)
     // programs.
 
     if (address) {
-        std::free(address);
+        xxfree(address);
     }
 }
 

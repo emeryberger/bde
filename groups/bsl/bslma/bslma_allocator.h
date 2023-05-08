@@ -387,6 +387,19 @@ BSLS_IDENT("$Id: $")
 #include <bsls_cpp11.h>
 #endif
 
+#define REPLACE_MALLOC 1
+
+#if !REPLACE_MALLOC
+#include <cstdlib>
+#define xxmalloc(x) std::malloc(x)
+#define xxfree(x) std::free(x)
+#else
+extern "C" void * replace_malloc(size_t);
+extern "C" void replace_free(void *);
+#define xxmalloc(x) replace_malloc(x)
+#define xxfree(x) replace_free(x)
+#endif
+
 namespace BloombergLP {
 
 namespace bslma {

@@ -11,6 +11,16 @@ BSLS_IDENT("$Id$ $CSID$")
 
 #include <new>
 
+extern "C" void * replace_malloc(size_t sz) {
+  fprintf(stderr, "malloc %d\n", sz);
+  return std::malloc(sz);
+}
+
+extern "C" void replace_free(void * ptr) {
+  fprintf(stderr, "free %p\n", ptr);
+  std::free(ptr);
+}
+
 // This allocator is simply an "adapter" connecting 'std::malloc' and
 // 'std::free' to the 'bslma::Allocator' interface.  We use the reserve pool
 // pattern to ensure that the returned allocator object remains valid forever
@@ -109,7 +119,7 @@ void *MallocFreeAllocator::allocate(size_type size)
         return 0;                                                     // RETURN
     }
 
-    void *result = std::malloc(size);
+    void *result = xxmalloc(size);
     if (!result) {
         bsls::BslExceptionUtil::throwBadAlloc();
     }
