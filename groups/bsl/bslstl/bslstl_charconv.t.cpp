@@ -396,7 +396,7 @@ void transformAndTestValue(Uint64 seedValue)
                     failed = true;
                 }
 
-#if defined(BSLS_LIBRARYFEATURES_HAS_CPP17_CHARCONV)
+#if defined(BSLS_LIBRARYFEATURES_HAS_CPP17_INT_CHARCONV)
                 namespace imp = BloombergLP::bslstl;
 
                 char iBuffer[1000];
@@ -415,7 +415,7 @@ void transformAndTestValue(Uint64 seedValue)
                 else {
                     ASSERT(bsl::errc::value_too_large == iSts.ec);
                 }
-#endif
+#endif  // BSLS_LIBRARYFEATURES_HAS_CPP17_INT_CHARCONV
             }
 
             ASSERT(succeeded);
@@ -619,27 +619,35 @@ int main(int argc, char *argv[])
         if (verbose) printf("FROM_CHARS FOR C++17 TEST\n"
                             "=========================\n");
 
-#ifdef BSLS_LIBRARYFEATURES_HAS_CPP17_CHARCONV
-        const char              *numStr = "123";
-        const char              *numStrEnd = numStr + strlen(numStr);
-        int                      val;
-        bsl::from_chars_result   res;
-        const bsl::chars_format  fmt = bsl::chars_format::general;
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP17_INT_CHARCONV
+        const char             *numStr = "123.654";
+        const char             *intStrEnd = std::strchr(numStr, '.');
+        int                     val = -42;
+        bsl::from_chars_result  res;
 
-        res = bsl::from_chars(numStr, numStrEnd, val, 10);
+        res = bsl::from_chars(numStr, intStrEnd, val, 10);
+        ASSERT(bsl::errc{} == res.ec);
         ASSERT(123 == val);
-        ASSERT(res.ptr == numStrEnd);
+        ASSERT(res.ptr == intStrEnd);
 
-        res = bsl::from_chars(numStr, numStrEnd, val, 16);
+        res = bsl::from_chars(numStr, intStrEnd, val, 16);
+        ASSERT(bsl::errc{} == res.ec);
         ASSERT(0x123 == val);
-        ASSERT(res.ptr == numStrEnd);
+        ASSERT(res.ptr == intStrEnd);
+
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP17_CHARCONV
+        const char *numStrEnd = numStr + strlen(numStr);
 
         double dVal;
-        res = bsl::from_chars(numStr, numStrEnd, dVal, fmt);
-        ASSERT(123.0 == dVal);
+        res = bsl::from_chars(numStr,
+                              numStrEnd,
+                              dVal,
+                              bsl::chars_format::general);
+        ASSERT(bsl::errc{} == res.ec);
+        ASSERT(123.654 == dVal);
         ASSERT(res.ptr == numStrEnd);
 #endif  // BSLS_LIBRARYFEATURES_HAS_CPP17_CHARCONV
-
+#endif  // BSLS_LIBRARYFEATURES_HAS_CPP17_INT_CHARCONV
       } break;
       case 7: {
         // --------------------------------------------------------------------
@@ -873,12 +881,12 @@ int main(int argc, char *argv[])
         //:     we got the same value preceded by '-'.
         //:
         //: 3 Iterate through the table of numbers.  For each number:
-        //:   o write the number with both 'sprintf' and 'to_chars' as unsigned
-        //:     decimal, hex, and octal strings, and using 'sprintf' as an
-        //:     "oracle" for comparing the resulting strings for perfect
+        //:   o write the number with both 'snprintf' and 'to_chars' as
+        //:     unsigned decimal, hex, and octal strings, and using 'sprintf'
+        //:     as an "oracle" for comparing the resulting strings for perfect
         //:     accuracy.
         //:
-        //:   o Assign it to a signed type, with it with both 'sprintf' and
+        //:   o Assign it to a signed type, with it with both 'snprintf' and
         //:     'to_chars', and observe they match to test for perfect
         //:     accuracy.  Then negate the signed type and repeat the
         //:     experiment.
@@ -1233,7 +1241,7 @@ int main(int argc, char *argv[])
                     ASSERT(digit < base);
                 }
 
-#if defined(BSLS_LIBRARYFEATURES_HAS_CPP17_CHARCONV)
+#if defined(BSLS_LIBRARYFEATURES_HAS_CPP17_INT_CHARCONV)
                 namespace imp = BloombergLP::bslstl;
 
                 char iBuffer[1000];
@@ -1249,7 +1257,7 @@ int main(int argc, char *argv[])
                 ASSERT(0 == std::memcmp(toCharsBuffer,
                                         iBuffer,
                                         iSts.ptr - iBuffer));
-#endif
+#endif  // BSLS_LIBRARYFEATURES_HAS_CPP17_INT_CHARCONV
 
                 if (value != 0) {
                     const Int64 len = result.ptr - toCharsBuffer;
@@ -1326,7 +1334,7 @@ int main(int argc, char *argv[])
                                     toCharsBufferS + 1,
                                     result.ptr - toCharsBuffer));
 
-#if defined(BSLS_LIBRARYFEATURES_HAS_CPP17_CHARCONV)
+#if defined(BSLS_LIBRARYFEATURES_HAS_CPP17_INT_CHARCONV)
                 iSts = imp::to_chars(iBuffer,
                                      iBuffer + sizeof(iBuffer),
                                      svalue,
@@ -1336,11 +1344,11 @@ int main(int argc, char *argv[])
                 ASSERT(0 == std::memcmp(toCharsBufferS,
                                         iBuffer,
                                         iSts.ptr - iBuffer));
-#endif
+#endif  // BSLS_LIBRARYFEATURES_HAS_CPP17_INT_CHARCONV
             }
         }
 
-        if (verbose) printf("Accuracy 1: sprintf comparisons\n");
+        if (verbose) printf("Accuracy 1: snprintf comparisons\n");
 
         for (int di = 0; di < k_NUM_DATA; ++di) {
             const Data&     data   = DATA[di];
@@ -1351,7 +1359,7 @@ int main(int argc, char *argv[])
             char toCharsBuffer[40];
             bsl::to_chars_result result;
 
-            sprintf(sprintfBuffer, "%llu", VALUE);
+            snprintf(sprintfBuffer, sizeof(sprintfBuffer), "%llu", VALUE);
             result = bsl::to_chars(toCharsBuffer,
                                    toCharsBuffer + sizeof(toCharsBuffer),
                                    VALUE,
@@ -1361,7 +1369,7 @@ int main(int argc, char *argv[])
             ASSERTV(LINE, !std::strcmp(sprintfBuffer, toCharsBuffer));
 
             for (Int64 sValue = VALUE, ii = 0; ii < 2; ++ii, sValue = -sValue){
-                sprintf(sprintfBuffer, "%lld", sValue);
+                snprintf(sprintfBuffer, sizeof(sprintfBuffer), "%lld", sValue);
                 result = bsl::to_chars(toCharsBuffer,
                                        toCharsBuffer + sizeof(toCharsBuffer),
                                        sValue,
@@ -1376,7 +1384,7 @@ int main(int argc, char *argv[])
                 }
             }
 
-            sprintf(sprintfBuffer, "%llo", VALUE);
+            snprintf(sprintfBuffer, sizeof(sprintfBuffer), "%llo", VALUE);
             result = bsl::to_chars(toCharsBuffer,
                                    toCharsBuffer + sizeof(toCharsBuffer),
                                    VALUE,
@@ -1385,7 +1393,7 @@ int main(int argc, char *argv[])
             *result.ptr = 0;
             ASSERTV(LINE, !std::strcmp(sprintfBuffer, toCharsBuffer));
 
-            sprintf(sprintfBuffer, "%llx", VALUE);
+            snprintf(sprintfBuffer, sizeof(sprintfBuffer), "%llx", VALUE);
             result = bsl::to_chars(toCharsBuffer,
                                    toCharsBuffer + sizeof(toCharsBuffer),
                                    VALUE,
@@ -1457,7 +1465,7 @@ int main(int argc, char *argv[])
             if (veryVerbose) P(value);
 
             char sprintfBuf[20];
-            sprintf(sprintfBuf, "%d", value);
+            snprintf(sprintfBuf, sizeof(sprintfBuf), "%d", value);
             const IntPtr len = std::strlen(sprintfBuf);
 
             char toCharsBuf[20];

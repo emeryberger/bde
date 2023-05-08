@@ -17,6 +17,7 @@
 #include <bslmf_isbitwisemoveable.h>
 #include <bslmf_istriviallycopyable.h>
 
+#include <bsls_alignedbuffer.h>
 #include <bsls_alignmentutil.h>
 #include <bsls_bsltestutil.h>
 #include <bsls_objectbuffer.h>
@@ -76,9 +77,11 @@ using namespace BloombergLP;
 // [ 8] void rotate(T *first, T *middle, T *last);
 // [ 2] void uninitializedFillN(T *dstB, size_type ne, const T& v, *a);
 //-----------------------------------------------------------------------------
-// [ 1] BREATHING TEST
-// [12] USAGE EXAMPLE
+// [14] USAGE EXAMPLE
+// [13] CONCERN: Copy partially initialized objects without UB
+// [12] CONCERN: 'defaultConstruct' calls correct constructor for new elems
 // [11] Hyman's first test case
+// [ 1] BREATHING TEST
 
 // ============================================================================
 //                     STANDARD BSL ASSERT TEST FUNCTION
@@ -1578,6 +1581,61 @@ char getValue(const Attrib5& c)
 {
     return c.a();
 }
+
+                             // ===============
+                             // class UniqueInt
+                             // ===============
+
+class UniqueInt {
+    // Unique int value set on construction.
+
+    // CLASS DATA
+    static int s_counter;
+
+    // DATA
+    int d_value;
+
+  public:
+    // CREATORS
+    UniqueInt() : d_value(s_counter++)
+        // Create a 'UniqueInt' object.
+    {
+    }
+
+    // FREE OPERATORS
+    friend bool operator==(const UniqueInt &v1, const UniqueInt &v2)
+        // Equality comparison.
+    {
+        return v1.d_value == v2.d_value;
+    }
+
+    friend bool operator!=(const UniqueInt &v1, const UniqueInt &v2)
+        // Inequality comparison.
+    {
+        return !(v1 == v2);
+    }
+};
+int UniqueInt::s_counter = 0;
+
+                             // =============
+                             // class Partial
+                             // =============
+
+struct Partial {
+    // This type will be used to test behavior of the copying of partially
+    // initialized objects.  Specifically - that the copy operation does not
+    // inspect the object representation (which would trigger UB).
+
+    union {
+        bsls::Types::Int64  d_int64;
+        void               *d_ptr_p;
+        double              d_double;
+    } d_union;
+    int                     d_int32;
+    short                   d_filler;
+    short                   d_type;
+};
+
 
 //=============================================================================
 //                  GLOBAL HELPER FUNCTIONS FOR TESTING
@@ -4595,7 +4653,7 @@ int main(int argc, char *argv[])
     Z = &testAllocator;
 
     switch (test) { case 0:  // Zero is always the leading case.
-      case 12: {
+      case 14: {
         // --------------------------------------------------------------------
         // USAGE EXAMPLE
         //   Extracted from component header file.
@@ -4639,6 +4697,86 @@ int main(int argc, char *argv[])
         for (int i = 0; i < NUM_DATA; ++i) {
             ASSERT(u[i] == DATA[i]);
         }
+      } break;
+      case 13: {
+        // --------------------------------------------------------------------
+        // VECTOR OF PARTIALS TEST
+        //
+        // Concerns:
+        //: 1 Helper function 'uninitializedFillN' must not inspect any part of
+        //:   the object representation.
+        //
+        // Plan:
+        //: 1 Construct partially initialized structure with unitialized union
+        //:   member and copy it with 'uninitializedFillN()'.
+        //: 2 Verify that the initialized parts of the source object were
+        //:   copied into destination object(s).
+        //
+        // Testing
+        //  CONCERN: Copy partially initialized objects without UB
+        // --------------------------------------------------------------------
+
+        if (verbose)
+            printf("VECTOR OF PARTIALS TEST\n"
+                   "=======================\n");
+
+        Partial refVal;
+        // Do not initialize 'd_union' data member.  This way we do not start
+        // the active lifetime of the 'd_union' object.  This will trigger UB
+        // if copy inspect any bytes of the object representation belonging to
+        // the uninitialized part of the object.
+
+        //refVal.d_union.d_int64=12;
+        refVal.d_type = 42;
+
+        Partial v1[1];
+        bslalg::ArrayPrimitives::uninitializedFillN(&v1[0], 1, refVal, Z);
+        ASSERTV(v1[0].d_type, v1[0].d_type == 42);
+
+        Partial v2[2];
+        bslalg::ArrayPrimitives::uninitializedFillN(&v2[0], 2, refVal, Z);
+        ASSERTV(v2[0].d_type, v2[0].d_type == 42);
+        ASSERTV(v2[1].d_type, v2[1].d_type == 42);
+
+        Partial v3[3];
+        bslalg::ArrayPrimitives::uninitializedFillN(&v3[0], 3, refVal, Z);
+        ASSERTV(v3[0].d_type, v3[0].d_type == 42);
+        ASSERTV(v3[1].d_type, v3[1].d_type == 42);
+        ASSERTV(v3[2].d_type, v3[2].d_type == 42);
+
+      } break;
+      case 12: {
+        // --------------------------------------------------------------------
+        // CONCERN: 'defaultConstruct' calls correct constructor for new elems
+        //   Test that 'defaultConstruct' calls the non-trivial default
+        //   constructor for each new element (DRQS 170157583).
+        //
+        // Concerns:
+        //: 1 Non-trivial default constructor must be called for each new
+        //:   default-constructed element.
+        //
+        // Plan:
+        //: 1 Every element gets a unique int value in the default constructor.
+        //:   All default-constructed elements must have different values.  If
+        //:   two elements have the same value, one is a copy of another.
+        //
+        // Testing:
+        //  CONCERN: 'defaultConstruct' calls correct constructor for new elems
+        // --------------------------------------------------------------------
+
+        if (verbose) printf(
+        "\nCONCERN: 'defaultConstruct' calls correct constructor for new elems"
+        "\n==================================================================="
+        "\n");
+
+        bsls::AlignedBuffer<sizeof(UniqueInt) * 4, sizeof(UniqueInt)> memory;
+        UniqueInt *mX = reinterpret_cast<UniqueInt *>(memory.buffer());
+        Obj::defaultConstruct(mX, 4, Z);
+
+        // No duplicates
+        ASSERT(mX[0] != mX[1] && mX[0] != mX[2] && mX[0] != mX[3]);
+        ASSERT(                  mX[1] != mX[2] && mX[1] != mX[3]);
+        ASSERT(                                    mX[2] != mX[3]);
       } break;
       case 11: {
         // --------------------------------------------------------------------

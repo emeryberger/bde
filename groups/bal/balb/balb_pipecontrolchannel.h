@@ -37,6 +37,31 @@ BSLS_IDENT("$Id: $")
 // new thread which listens to the pipe for messages until 'shutdown' is
 // called.
 //
+///Pipe Atomicity
+/// - - - - - - -
+// Users that expect multiple concurrent writers to a single pipe must be aware
+// that the message content might be corrupted (interleaved) unless:
+//
+//: 1 Each message is written to the pipe in a single 'write' system call.
+//: 2 The length of each message is less than 'PIPE_BUF' (the limit for
+//:   guaranteed atomicity).
+//
+// The value 'PIPE_BUF' depends on the platform:
+//..
+//   +------------------------------+------------------+
+//   | Platform                     | PIPE_BUF (bytes) |
+//   +------------------------------+------------------+
+//   | POSIX (minimum requirement)) |    512           |
+//   | IBM                          | 32,768           |
+//   | SUN                          | 32,768           |
+//   | Linux                        | 65,536           |
+//   | Windows                      | 65,536           |
+//   +------------------------------+------------------+
+//..
+//
+// Also note that Linux allows the 'PIPE_BUF' size to be changed via the
+// 'fcntl' system call.
+//
 ///Pipe Names
 ///----------
 // This component requires a fully-qualified native pipe name.
@@ -93,10 +118,14 @@ BSLS_IDENT("$Id: $")
 //
 // First, let's define the implementation of our server.
 //..
-//  class ControlServer
-//  {
+//                          // ===================
+//                          // class ControlServer
+//                          // ===================
+//
+//  class ControlServer {
+//
 //      // DATA
-//      balb::PipeControlChannel  d_channel;
+//      balb::PipeControlChannel d_channel;
 //      bsl::vector<bsl::string> d_messages;
 //
 //      // PRIVATE MANIPULATORS
@@ -110,35 +139,45 @@ BSLS_IDENT("$Id: $")
 //          }
 //      }
 //
-//  public:
+//    private:
+//      // NOT IMPLEMENTED
+//      ControlServer(const ControlServer&);             // = delete
+//      ControlServer& operator=(const ControlServer&);  // = delete
+//
+//    public:
 //      // CREATORS
-//      explicit ControlServer(bslma::Allocator *basicAllocator)
+//      explicit ControlServer(bslma::Allocator *basicAllocator = 0)
 //      : d_channel(bdlf::BindUtil::bind(&ControlServer::onMessage,
-//                                      this,
-//                                      bdlf::PlaceHolders::_1),
+//                                       this,
+//                                       bdlf::PlaceHolders::_1),
 //                  basicAllocator)
 //      , d_messages(basicAllocator)
 //      {}
 //
 //      // MANIPULATORS
-//      int start(const char *pipeName) {
+//      int start(const bslstl::StringRef& pipeName)
+//      {
 //          return d_channel.start(pipeName);
 //      }
 //
-//      void shutdown() {
+//      void shutdown()
+//      {
 //          d_channel.shutdown();
 //      }
 //
-//      void stop() {
+//      void stop()
+//      {
 //          d_channel.stop();
 //      }
 //
 //      // ACCESSORS
-//      int numMessages() const {
+//      bsl::size_t numMessages() const
+//      {
 //          return d_messages.size();
 //      }
 //
-//      const bsl::string& message(int index) const {
+//      const bsl::string& message(int index) const
+//      {
 //          return d_messages[index];
 //      }
 //  };
@@ -146,11 +185,13 @@ BSLS_IDENT("$Id: $")
 // Now, construct and run the server using a canonical name for the pipe:
 //..
 //  bsl::string pipeName;
-//  bdlsu::PipeUtil::makeCanonicalName(&pipeName, "ctrl.pcctest");
+//  int         rc = bdls::PipeUtil::makeCanonicalName(&pipeName,
+//                                                     "ctrl.pcctest");
+//  assert(0 == rc);
 //
 //  ControlServer server;
 //
-//  int rc = server.start(pipeName);
+//  rc = server.start(pipeName);
 //  if (0 != rc) {
 //      cout << "ERROR: Failed to start pipe control channel" << endl;
 //  }
@@ -160,11 +201,11 @@ BSLS_IDENT("$Id: $")
 //  const char MSG0[]  = "this is the first message";
 //  const char MSG1[]  = "this is the second message";
 //
-//  rc = bdlsu::PipeUtil::send(pipeName, bsl::string(MSG0) + "\n");
+//  rc = bdls::PipeUtil::send(pipeName, bsl::string(MSG0) + "\n");
 //  assert(0 == rc);
-//  rc = bdlsu::PipeUtil::send(pipeName, bsl::string(MSG1) + "\n");
+//  rc = bdls::PipeUtil::send(pipeName, bsl::string(MSG1) + "\n");
 //  assert(0 == rc);
-//  rc = bdlsu::PipeUtil::send(pipeName, "EXIT\n");
+//  rc = bdls::PipeUtil::send(pipeName, "EXIT\n");
 //  assert(0 == rc);
 //..
 // The server shuts down once it processes the "EXIT" control message.
@@ -205,8 +246,6 @@ BSLS_IDENT("$Id: $")
 #include <string>           // 'std::string', 'std::pmr::string'
 
 namespace BloombergLP {
-
-
 namespace balb {
                           // ========================
                           // class PipeControlChannel
@@ -265,7 +304,14 @@ class PipeControlChannel {
         // success, and a non-zero value otherwise.
 
     void dispatchMessageUpTo(const bsl::vector<char>::iterator& iter);
-        // Dispatch the message that extends up to the specified 'iter'.
+        // Dispatch the message that extends up to (but not including) the
+        // specified 'iter' (which is an iterator into 'd_buffer'), then erase
+        // the prefix that extends up to (and including) 'iter'.
+
+    bool dispatchLeftoverMessage();
+        // If there is a newline character in 'd_buffer', call
+        // 'dispatchMessageUpTo' with the location of that newline character
+        // and return 'true'; otherwise, return 'false'.
 
     void destroyNamedPipe();
         // Close the named pipe.
@@ -334,6 +380,13 @@ class PipeControlChannel {
     // ACCESSORS
     const bsl::string& pipeName() const;
         // Return the fully qualified system name of the pipe.
+
+                                  // Aspects
+
+    bslma::Allocator *allocator() const;
+        // Return the allocator used by this object to supply memory.  Note
+        // that if no allocator was supplied at construction the default
+        // allocator in effect at construction is used.
 };
 
                     // ====================================
@@ -399,14 +452,13 @@ struct PipeControlChannel_CStringUtil {
 //                            INLINE DEFINITIONS
 // ============================================================================
 
-inline
-const bsl::string& PipeControlChannel::pipeName() const
-{
-    return d_pipeName;
-}
+                          // ------------------------
+                          // class PipeControlChannel
+                          // ------------------------
 
+// MANIPULATORS
 template <class STRING_TYPE>
-int PipeControlChannel::start(const STRING_TYPE&             pipeName)
+int PipeControlChannel::start(const STRING_TYPE& pipeName)
 {
     return start(PipeControlChannel_CStringUtil::flatten(pipeName),
                  bslmt::ThreadAttributes());
@@ -418,6 +470,21 @@ int PipeControlChannel::start(const STRING_TYPE&             pipeName,
 {
     return start(PipeControlChannel_CStringUtil::flatten(pipeName),
                  threadAttributes);
+}
+
+// ACCESSORS
+inline
+const bsl::string& PipeControlChannel::pipeName() const
+{
+    return d_pipeName;
+}
+
+                    // Aspects
+
+inline
+bslma::Allocator *PipeControlChannel::allocator() const
+{
+    return d_pipeName.get_allocator().mechanism();
 }
 
                     // ------------------------------------

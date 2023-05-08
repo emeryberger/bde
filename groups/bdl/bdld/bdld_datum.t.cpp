@@ -370,7 +370,8 @@ using bdldfp::Decimal64;
 // [14] bsl::ostream& operator<<(bsl::ostream&, const DatumMapRef&);
 // ----------------------------------------------------------------------------
 // [ 1] BREATHING TEST
-// [35] USAGE EXAMPLE
+// [36] USAGE EXAMPLE
+// [35] VECTOR OF NULLS TEST
 // [24] Datum_ArrayProctor
 // [33] DATETIME ALLOCATION TESTS
 // [32] MISALIGNED MEMORY ACCESS TEST (only on SUN machines)
@@ -2086,7 +2087,7 @@ int main(int argc, char *argv[])
     srand(static_cast<unsigned int>(time(static_cast<time_t *>(0))));
 
     switch (test) { case 0:
-      case 35: {
+      case 36: {
         // --------------------------------------------------------------------
         // USAGE EXAMPLE
         //   Extracted from component header file.
@@ -2376,6 +2377,57 @@ int main(int argc, char *argv[])
     Datum::destroy(datumBlob, &oa);
 //..
 // Note, that the bytes have been copied.
+      } break;
+      case 35: {
+        // --------------------------------------------------------------------
+        // VECTOR OF NULLS TEST
+        //  This test became necessary as of December 2022, when someone
+        //  discovered that the Clang 13 (and later) started taking advantage
+        //  of the dormant UB in the
+        //  'bslalg::ArrayPrimitive::uninitializedFillN' caused by
+        //  uninitialized anonymous union member of the 'd_as' 'TypedAccess'
+        //  field when in optimized build modes.  The utility function was
+        //  accessing uninitialized portion of the  'Datum' for internal
+        //  optimization, resulting in UB.  Compiler optimizations reliably
+        //  caused 'bsl::vector<bdld::Datum>'s constructor taking a 'count'
+        //  number of copies of a 'value' to produce vectors of datums having
+        //  erroneous values.  See {DRQS 170994605} for details.
+        //
+        //Concerns:
+        //: 1 Creating a vector of null datums using the count-and-value
+        //:   constructor, and supplying a null datum value created with
+        //:   'bdld::Datum::createNull', produces a vector with the appropriate
+        //:   number of null-valued datums (i.e., datums that do not have an
+        //:   erroneous or corrupt value.)
+        //
+        //Plan:
+        //: 1 Create 3 vectors having 1, 2, and 3 null datum objects,
+        //:   respectively, using the count-and-value constructor and an
+        //:   initial datum value created with 'bdld::Datum::createNull'.
+        //:   Verify that the resulting datum elements have the null value, and
+        //:   not an erroneous or corrupt value.
+        //
+        // Testing:
+        //   VECTOR OF NULLS TEST
+        // --------------------------------------------------------------------
+
+        if (verbose)
+            cout << endl
+                 << "VECTOR OF NULLS TEST" << endl
+                 << "====================" << endl;
+
+        bsl::vector<bdld::Datum> v1(1, bdld::Datum::createNull());
+        ASSERT(v1[0].isNull());
+
+        bsl::vector<bdld::Datum> v2(2, bdld::Datum::createNull());
+        ASSERT(v2[0].isNull());
+        ASSERT(v2[1].isNull());
+
+        bsl::vector<bdld::Datum> v3(3, bdld::Datum::createNull());
+        ASSERT(v3[0].isNull());
+        ASSERT(v3[1].isNull());
+        ASSERT(v3[2].isNull());
+
       } break;
       case 34: {
         // --------------------------------------------------------------------

@@ -293,6 +293,9 @@ BSLS_IDENT("$Id: $")
 //  | a.find(k)                                          | Average: O[1]      |
 //  |                                                    | Worst:   O[n]      |
 //  +----------------------------------------------------+--------------------+
+//  | a.contains(k)                                      | Average: O[1]      |
+//  |                                                    | Worst:   O[n]      |
+//  +----------------------------------------------------+--------------------+
 //  | a.count(k)                                         | Average: O[1]      |
 //  |                                                    | Worst:   O[n]      |
 //  +----------------------------------------------------+--------------------+
@@ -654,6 +657,7 @@ BSLS_IDENT("$Id: $")
 
 #include <bslmf_enableif.h>
 #include <bslmf_isbitwisemoveable.h>
+#include <bslmf_isnothrowswappable.h>
 #include <bslmf_nestedtraitdeclaration.h>
 #include <bslmf_typeidentity.h>
 #include <bslmf_util.h>    // 'forward(V)'
@@ -664,11 +668,15 @@ BSLS_IDENT("$Id: $")
 #include <bsls_performancehint.h>
 #include <bsls_util.h>     // 'forward<T>(V)'
 
+#include <cstddef>  // for 'std::size_t'
+
 #if defined(BSLS_COMPILERFEATURES_SUPPORT_GENERALIZED_INITIALIZERS)
 # include <initializer_list>
 #endif
 
-#include <cstddef>  // for 'std::size_t'
+#ifdef BSLS_COMPILERFEATURES_SUPPORT_TRAITS_HEADER
+#include <type_traits>  // 'std::is_nothrow_move_assignable'
+#endif
 
 #if BSLS_COMPILERFEATURES_SIMULATE_CPP11_FEATURES
 // Include version that can be compiled with C++03
@@ -994,7 +1002,10 @@ class unordered_multiset
 
     unordered_multiset&
     operator=(BloombergLP::bslmf::MovableRef<unordered_multiset> rhs)
-                                    BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(false);
+                            BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(
+                                AllocatorTraits::is_always_equal::value
+                             && std::is_nothrow_move_assignable<HASH>::value
+                             && std::is_nothrow_move_assignable<EQUAL>::value);
         // Assign to this object the value, hash function, and equality
         // comparator of the specified 'rhs' object, propagate to this object
         // the allocator of 'rhs' if the 'ALLOCATOR' type has trait
@@ -1278,7 +1289,10 @@ class unordered_multiset
         // has no effect if 'numElements <= size()'.
 
     void swap(unordered_multiset& other)
-                                    BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(false);
+                                 BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(
+                                      AllocatorTraits::is_always_equal::value
+                                  &&  bsl::is_nothrow_swappable<HASH>::value
+                                  &&  bsl::is_nothrow_swappable<EQUAL>::value);
         // Exchange the value, hasher, key-equality functor, and
         // 'max_load_factor' of this object with those of the specified 'other'
         // object; also exchange the allocator of this object with that of
@@ -1310,6 +1324,25 @@ class unordered_multiset
         // Return an iterator providing non-modifiable access to the
         // past-the-end element in the sequence of 'value_type' objects
         // maintained by this unordered multiset.
+
+    bool contains(const key_type &key) const;
+        // Return 'true' if this unordered multiset contains an element whose
+        // key is equivalent to the specified 'key'.
+
+    template <class LOOKUP_KEY>
+    typename enable_if<
+        BloombergLP::bslmf::IsTransparentPredicate<HASH, LOOKUP_KEY>::value &&
+            BloombergLP::bslmf::IsTransparentPredicate<EQUAL,
+                                                       LOOKUP_KEY>::value,
+        bool>::type
+    contains(const LOOKUP_KEY& key) const
+        // Return 'true' if this unordered multiset contains an element whose
+        // key is equivalent to the specified 'key'.
+        //
+        // Note: implemented inline due to Sun CC compilation error
+    {
+        return find(key) != end();
+    }
 
     bool empty() const BSLS_KEYWORD_NOEXCEPT;
         // Return 'true' if this unordered multiset contains no elements, and
@@ -1792,6 +1825,7 @@ bool operator==(const unordered_multiset<KEY, HASH, EQUAL, ALLOCATOR>& lhs,
     // this method requires that the (template parameter) type 'KEY' be
     // 'equality-comparable' (see {Requirements on 'KEY'}).
 
+#ifndef BSLS_COMPILERFEATURES_SUPPORT_THREE_WAY_COMPARISON
 template <class KEY, class HASH, class EQUAL, class ALLOCATOR>
 bool operator!=(const unordered_multiset<KEY, HASH, EQUAL, ALLOCATOR>& lhs,
                 const unordered_multiset<KEY, HASH, EQUAL, ALLOCATOR>& rhs);
@@ -1802,6 +1836,7 @@ bool operator!=(const unordered_multiset<KEY, HASH, EQUAL, ALLOCATOR>& lhs,
     // is not a value-element in 'rhs' having the same value, and vice-versa.
     // Note that this method requires that the (template parameter) type 'KEY'
     // and be 'equality-comparable' (see {Requirements on 'KEY'}).
+#endif
 
 // FREE FUNCTIONS
 template <class KEY, class HASH, class EQUAL, class ALLOCATOR, class PREDICATE>
@@ -1815,7 +1850,8 @@ erase_if(unordered_multiset<KEY, HASH, EQUAL, ALLOCATOR>& ms,
 template <class KEY, class HASH, class EQUAL, class ALLOCATOR>
 void swap(unordered_multiset<KEY, HASH, EQUAL, ALLOCATOR>& a,
           unordered_multiset<KEY, HASH, EQUAL, ALLOCATOR>& b)
-                                    BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(false);
+                                BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(
+                                    BSLS_KEYWORD_NOEXCEPT_OPERATOR(a.swap(b)));
     // Exchange the value, hasher, key-equality functor, and 'max_load_factor'
     // of the specified 'a' object with those of the specified 'b' object; also
     // exchange the allocator of 'a' with that of 'b' if the (template
@@ -2076,7 +2112,10 @@ inline
 unordered_multiset<KEY, HASH, EQUAL, ALLOCATOR>&
 unordered_multiset<KEY, HASH, EQUAL, ALLOCATOR>::operator=(
                         BloombergLP::bslmf::MovableRef<unordered_multiset> rhs)
-                                     BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(false)
+                             BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(
+                                 AllocatorTraits::is_always_equal::value
+                              && std::is_nothrow_move_assignable<HASH>::value
+                              && std::is_nothrow_move_assignable<EQUAL>::value)
 {
     // Note that we have delegated responsibility for correct handling of
     // allocator propagation to the 'HashTable' implementation.
@@ -2346,7 +2385,10 @@ inline
 void
 unordered_multiset<KEY, HASH, EQUAL, ALLOCATOR>::swap(
                                                      unordered_multiset& other)
-                                     BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(false)
+                                   BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(
+                                       AllocatorTraits::is_always_equal::value
+                                   &&  bsl::is_nothrow_swappable<HASH>::value
+                                   &&  bsl::is_nothrow_swappable<EQUAL>::value)
 {
     d_impl.swap(other.d_impl);
 }
@@ -2502,6 +2544,15 @@ unordered_multiset<KEY, HASH, EQUAL, ALLOCATOR>::find(
 
 template <class KEY, class HASH, class EQUAL, class ALLOCATOR>
 inline
+bool unordered_multiset<KEY, HASH, EQUAL, ALLOCATOR>::contains(
+                                                     const key_type& key) const
+{
+    return find(key) != end();
+}
+
+
+template <class KEY, class HASH, class EQUAL, class ALLOCATOR>
+inline
 bool
 unordered_multiset<KEY, HASH, EQUAL, ALLOCATOR>::empty() const
                                                           BSLS_KEYWORD_NOEXCEPT
@@ -2596,6 +2647,7 @@ bool bsl::operator==(
     return lhs.d_impl == rhs.d_impl;
 }
 
+#ifndef BSLS_COMPILERFEATURES_SUPPORT_THREE_WAY_COMPARISON
 template <class KEY, class HASH, class EQUAL, class ALLOCATOR>
 inline
 bool bsl::operator!=(
@@ -2604,6 +2656,7 @@ bool bsl::operator!=(
 {
     return !(lhs == rhs);
 }
+#endif
 
 // FREE FUNCTIONS
 template <class KEY, class HASH, class EQUAL, class ALLOCATOR, class PREDICATE>
@@ -2620,7 +2673,8 @@ inline
 void
 bsl::swap(bsl::unordered_multiset<KEY, HASH, EQUAL, ALLOCATOR>& a,
           bsl::unordered_multiset<KEY, HASH, EQUAL, ALLOCATOR>& b)
-                                     BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(false)
+                                 BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(
+                                     BSLS_KEYWORD_NOEXCEPT_OPERATOR(a.swap(b)))
 {
     a.swap(b);
 }

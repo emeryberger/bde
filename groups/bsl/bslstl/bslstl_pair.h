@@ -270,6 +270,8 @@ BSLS_IDENT("$Id: $")
 
 #include <bslstl_hash.h>
 
+#include <bslalg_synththreewayutil.h>
+
 #include <bslh_hash.h>
 
 #include <bslma_allocator.h>
@@ -306,6 +308,10 @@ BSLS_IDENT("$Id: $")
 
 #if defined(BSLS_LIBRARYFEATURES_HAS_CPP11_TUPLE)
 #  include <tuple>  // 'std::tuple'
+#endif
+
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP20_CONCEPTS
+#include <concepts>
 #endif
 
 #include <utility> // 'std::pair' and (in C++11 mode) 'std::swap'
@@ -353,12 +359,31 @@ void swap(TYPE& a, TYPE& b);
 // for move constructors, so a special exception must be made in this case.
 #endif
 
-#if !defined(BSLS_COMPILERFEATURES_SUPPORT_DEFAULTED_FUNCTIONS)               \
- || !defined(BSLS_COMPILERFEATURES_SUPPORT_DEFAULT_TEMPLATE_ARGS)             \
- || (defined(BSLS_PLATFORM_CMP_MSVC) && BSLS_PLATFORM_CMP_VERSION < 1900)
+#if !defined(BSLS_COMPILERFEATURES_SUPPORT_DEFAULTED_FUNCTIONS) ||            \
+    !defined(BSLS_COMPILERFEATURES_SUPPORT_DEFAULT_TEMPLATE_ARGS) ||          \
+    (defined(BSLS_PLATFORM_CMP_MSVC) && BSLS_PLATFORM_CMP_VERSION < 1900)
 // MSVC 2013 implicitly declared and defines a default constructor, even for
 // members that are not default constructible such as references.
-# define BSLSTL_PAIR_DO_NOT_DEFAULT_THE_DEFAULT_CONSTRUCTOR 1
+#define BSLSTL_PAIR_DO_NOT_DEFAULT_THE_DEFAULT_CONSTRUCTOR 1
+#endif
+
+#if defined(BSLS_PLATFORM_CMP_MSVC)
+#if (BSLS_COMPILERFEATURES_CPLUSPLUS < 201703L ||                             \
+     BSLS_PLATFORM_CMP_VERSION <= 1916)
+// MSVC 2017 and earlier, as well as later versions of MSVC compiling against
+// pre-C++17 standards, are unable to perform the required template argument
+// deductions to enable the use of 'bsl::is_swappable' within the SFINAE test
+// for 'swap()'.  In this case we must fall back on the previous, pre-C++17
+// implementation which simply assumes swappability.
+#define BSLSTL_PAIR_DO_NOT_SFINAE_TEST_IS_SWAPPABLE 1
+#endif
+#endif
+
+#if !defined(BSLS_COMPILERFEATURES_SUPPORT_DECLTYPE)
+// When compiling without 'decltype' support, 'bsl::is_swappable' is not
+// defined.  In this case we must fall back on the previous, pre-C++17
+// implementation which simply assumes swappability.
+#define BSLSTL_PAIR_DO_NOT_SFINAE_TEST_IS_SWAPPABLE 1
 #endif
 
 namespace BloombergLP {
@@ -489,15 +514,22 @@ struct Pair_ImpUtil {
         // no-throw exception-safety guarantee.
 #endif
 
-#if defined(BSLS_PLATFORM_CMP_MSVC) \
- && BSLS_COMPILERFEATURES_CPLUSPLUS < 201703L
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_NOEXCEPT) &&                         \
+    defined(BSLSTL_PAIR_DO_NOT_SFINAE_TEST_IS_SWAPPABLE)
     template <class TYPE1, class TYPE2>
     static constexpr bool hasNothrowSwap()
+        // Utility function to determine whether 'swap()' is 'noexcept (true)'
+        // when called with the specified (template) arguments 'TYPE1' and
+        // 'TYPE2'.  This function is only defined on platforms where
+        // 'noexcept' is supported but the newer, C++17 compatible trait
+        // 'bsl::is_nothrow_swappable' is not available.
     {
         using std::swap;
         typedef BloombergLP::bslmf::Util U;
-        return noexcept(swap(U::declval<TYPE1&>(), U::declval<TYPE1&>()))
-            && noexcept(swap(U::declval<TYPE2&>(), U::declval<TYPE2&>()));
+        return BSLS_KEYWORD_NOEXCEPT_OPERATOR(swap(U::declval<TYPE1&>(),
+                                                   U::declval<TYPE1&>())) &&
+               BSLS_KEYWORD_NOEXCEPT_OPERATOR(swap(U::declval<TYPE2&>(),
+                                                   U::declval<TYPE2&>()));
     }
 #endif
 };
@@ -1553,9 +1585,9 @@ class pair : public Pair_First<T1>, public Pair_Second<T2> {
     }
 #endif
 
-#if defined(BSLS_PLATFORM_CMP_MSVC) \
- && BSLS_COMPILERFEATURES_CPLUSPLUS < 201703L
-    void swap(pair& other) noexcept(Pair_ImpUtil::hasNothrowSwap<T1, T2>());
+#if defined(BSLSTL_PAIR_DO_NOT_SFINAE_TEST_IS_SWAPPABLE)
+    void swap(pair& other) BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(
+                                       Pair_ImpUtil::hasNothrowSwap<T1, T2>());
 #else
     void swap(pair& other)
      BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(bsl::is_nothrow_swappable<T1>::value
@@ -1637,6 +1669,7 @@ bool operator==(const pair<T1, T2>& lhs, const pair<T1, T2>& rhs);
     // 'lhs.first == rhs.first' and 'lhs.second == rhs.second'.  A call to this
     // operator will not compile unless both 'T1' and 'T2' supply 'operator=='.
 
+#ifndef BSLS_COMPILERFEATURES_SUPPORT_THREE_WAY_COMPARISON
 template <class T1, class T2>
 inline
 BSLS_KEYWORD_CONSTEXPR
@@ -1645,6 +1678,21 @@ bool operator!=(const pair<T1, T2>& lhs, const pair<T1, T2>& rhs);
     // the same value and false otherwise.  'lhs' does not have the same value
     // as 'rhs' if 'lhs == rhs' would return false.  A call to this operator
     // will not compile unless a call to 'lhs == rhs' would compile.
+#endif
+
+#ifdef BSLALG_SYNTHTHREEWAYUTIL_AVAILABLE
+
+template <class T1, class T2>
+BSLS_KEYWORD_CONSTEXPR
+std::common_comparison_category_t<
+    BloombergLP::bslalg::SynthThreeWayUtil::Result<T1>,
+    BloombergLP::bslalg::SynthThreeWayUtil::Result<T2>
+> operator<=>(const pair<T1, T2>& lhs, const pair<T1, T2>& rhs);
+    // Perform a lexicographic three-way comparison of the specified 'lhs' and
+    // the specified 'rhs' pairs by using the comparison operators of 'T1' and
+    // 'T2'; return the result of that comparison.
+
+#else
 
 template <class T1, class T2>
 inline
@@ -1685,18 +1733,18 @@ bool operator>=(const pair<T1, T2>& lhs, const pair<T1, T2>& rhs);
     // or equal to 'rhs' if 'lhs' < 'rhs' would return false.  A call to this
     // operator will not compile unless a call to 'lhs < rhs' would compile.
 
+#endif  // BSLALG_SYNTHTHREEWAYUTIL_AVAILABLE
+
 // FREE FUNCTIONS
 template <class T1, class T2>
-#if BSLS_COMPILERFEATURES_CPLUSPLUS < 201103L \
- || (defined(BSLS_PLATFORM_CMP_MSVC) && \
-                                     BSLS_COMPILERFEATURES_CPLUSPLUS < 201703L)
+#if defined(BSLSTL_PAIR_DO_NOT_SFINAE_TEST_IS_SWAPPABLE)
 void
 #else
 typename bsl::enable_if<bsl::is_swappable<T1>::value
                      && bsl::is_swappable<T2>::value>::type
 #endif
 swap(pair<T1, T2>& a, pair<T1, T2>& b)
-                      BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(noexcept(a.swap(b)));
+BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(BSLS_KEYWORD_NOEXCEPT_OPERATOR(a.swap(b)));
     // Swap the values of the specified 'a' and 'b' pairs by applying 'swap' to
     // each of the 'first' and 'second' pair fields.  Note that this method is
     // no-throw only if 'swap' on each field is no-throw.
@@ -1753,11 +1801,6 @@ struct tuple_size<bsl::pair<T1, T2> > : integral_constant<size_t, 2>
 #endif
 
 }  // close namespace std
-
-#if defined(BSLSTL_PAIR_RESTORE_STD)
-#   define std bsl
-#   undef BSLSTL_PAIR_RESTORE_STD
-#endif
 
 namespace BloombergLP {
 namespace bslstl {
@@ -3105,13 +3148,11 @@ pair<T1, T2>::operator std::tuple<decltype(std::ignore)&, PARAM_2&>()
 #endif
 
 
-
 template <class T1, class T2>
 inline
-#if defined(BSLS_PLATFORM_CMP_MSVC) \
- && BSLS_COMPILERFEATURES_CPLUSPLUS < 201703L
+#if defined(BSLSTL_PAIR_DO_NOT_SFINAE_TEST_IS_SWAPPABLE)
 void pair<T1, T2>::swap(pair& other)
-                               noexcept(Pair_ImpUtil::hasNothrowSwap<T1, T2>())
+    BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(Pair_ImpUtil::hasNothrowSwap<T1, T2>())
 #else
 void pair<T1, T2>::swap(pair& other)
       BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(bsl::is_nothrow_swappable<T1>::value
@@ -3136,6 +3177,7 @@ bool operator==(const pair<T1, T2>& lhs, const pair<T1, T2>& rhs)
     return lhs.first == rhs.first && lhs.second == rhs.second;
 }
 
+#ifndef BSLS_COMPILERFEATURES_SUPPORT_THREE_WAY_COMPARISON
 template <class T1, class T2>
 inline
 BSLS_KEYWORD_CONSTEXPR
@@ -3143,6 +3185,24 @@ bool operator!=(const pair<T1, T2>& lhs, const pair<T1, T2>& rhs)
 {
     return ! (lhs == rhs);
 }
+#endif
+
+#ifdef BSLALG_SYNTHTHREEWAYUTIL_AVAILABLE
+
+template <class T1, class T2>
+BSLS_KEYWORD_CONSTEXPR
+std::common_comparison_category_t<
+    BloombergLP::bslalg::SynthThreeWayUtil::Result<T1>,
+    BloombergLP::bslalg::SynthThreeWayUtil::Result<T2>
+> operator<=>(const pair<T1, T2>& lhs, const pair<T1, T2>& rhs)
+{
+    using BloombergLP::bslalg::SynthThreeWayUtil;
+    auto result = SynthThreeWayUtil::compare(lhs.first, rhs.first);
+    return result == 0 ? SynthThreeWayUtil::compare(lhs.second, rhs.second)
+                       : result;
+}
+
+#else
 
 template <class T1, class T2>
 inline
@@ -3178,12 +3238,12 @@ bool operator>=(const pair<T1, T2>& lhs, const pair<T1, T2>& rhs)
     return ! (lhs < rhs);
 }
 
+#endif  // BSLALG_SYNTHTHREEWAYUTIL_AVAILABLE
+
 // FREE FUNCTIONS
 template <class T1, class T2>
 inline
-#if BSLS_COMPILERFEATURES_CPLUSPLUS < 201103L \
- || (defined(BSLS_PLATFORM_CMP_MSVC) && \
-                                     BSLS_COMPILERFEATURES_CPLUSPLUS < 201703L)
+#if defined(BSLSTL_PAIR_DO_NOT_SFINAE_TEST_IS_SWAPPABLE)
 void
 #else
 typename bsl::enable_if<bsl::is_swappable<T1>::value
@@ -3357,9 +3417,9 @@ const TYPE&& bsl::get(const bsl::pair<T1, T2>&& p) BSLS_KEYWORD_NOEXCEPT
         BloombergLP::bslstl::Pair_IndexOfType<TYPE, T1, T2>::value, T1, T2>
             ::getPairElement(std::move(p));
 }
-#endif
+#endif // BSLS_COMPILERFEATURES_SUPPORT_RVALUE_REFERENCES
 
-#endif
+#endif // BSLS_LIBRARYFEATURES_HAS_CPP11_TUPLE
 
 // ============================================================================
 //                                TYPE TRAITS
@@ -3418,6 +3478,10 @@ struct UsesBslmaAllocator<bsl::pair<T1, T2> >
 }  // close namespace bslma
 
 }  // close enterprise namespace
+
+#ifdef BSLSTL_PAIR_DO_NOT_SFINAE_TEST_IS_SWAPPABLE
+#undef BSLSTL_PAIR_DO_NOT_SFINAE_TEST_IS_SWAPPABLE
+#endif
 
 #endif
 

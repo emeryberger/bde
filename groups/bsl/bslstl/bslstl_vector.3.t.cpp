@@ -48,7 +48,7 @@
 
 #if defined(BSLS_LIBRARYFEATURES_HAS_CPP17_BOOL_CONSTANT)
 # define DECLARE_BOOL_CONSTANT(NAME, EXPRESSION)                              \
-    BSLS_KEYWORD_CONSTEXPR_MEMBER bsl::bool_constant<EXPRESSION> NAME{}
+    const BSLS_KEYWORD_CONSTEXPR bsl::bool_constant<EXPRESSION> NAME{}
     // This leading branch is the preferred version for C++17, but the feature
     // test macro is (currently) for documentation purposes only, and never
     // defined.  This is the ideal (simplest) form for such declarations:
@@ -137,9 +137,11 @@ template <class TYPE>
 bool operator==(const FixedArrayIterator<TYPE>& lhs,
                 const FixedArrayIterator<TYPE>& rhs);
 
+#ifndef BSLS_COMPILERFEATURES_SUPPORT_THREE_WAY_COMPARISON
 template <class TYPE>
 bool operator!=(const FixedArrayIterator<TYPE>& lhs,
                 const FixedArrayIterator<TYPE>& rhs);
+#endif
 
 // CREATORS
 template <class TYPE>
@@ -188,12 +190,14 @@ bool operator==(const FixedArrayIterator<TYPE>& lhs,
     return lhs.isEqual(rhs);
 }
 
+#ifndef BSLS_COMPILERFEATURES_SUPPORT_THREE_WAY_COMPARISON
 template <class TYPE>
 bool operator!=(const FixedArrayIterator<TYPE>& lhs,
                 const FixedArrayIterator<TYPE>& rhs)
 {
     return !lhs.isEqual(rhs);
 }
+#endif
 
                               // ================
                               // class FixedArray
@@ -320,15 +324,13 @@ struct EqPred
                      // ==================================
 
 class IncompleteTypeSupportChecker {
-    // This class is intended to test the support of incomplete types by public
-    // methods of 'bsl::vector'.  The interface completely copies the existing
+    // This class tests that 'bsl::vector' can be instantiated using an
+    // incomplete type and that methods within that incomplete type can
+    // reference such a 'vector'.  The interface completely copies the existing
     // 'bsl::vector' interface and the only purpose of the functions is to call
     // the corresponding methods of the vector parameterized by the incomplete
-    // type.  Therefore function-level documentation differs from that
-    // described in the standard.  To preserve type incompleteness we have to
-    // implement all public methods inline.  Each method increases its own
-    // invocation counter so we can make sure that each method is compiled and
-    // called.
+    // type.  Each method increases its own invocation counter so we can make
+    // sure that each method is compiled and called.
 
     // PRIVATE TYPES
     typedef BloombergLP::bslmf::MovableRefUtil                      MoveUtil;
@@ -350,13 +352,9 @@ class IncompleteTypeSupportChecker {
 
   private:
     // CLASS DATA
-    static const int        s_numFunctions;          // number of public
-                                                     // methods
-
-    static bsl::vector<int> s_functionCallCounters;  // counters storing the
-                                                     // number of each function
-                                                     // calls
-
+    static int const s_numFunctions;            // number of public methods
+    static int       s_functionCallCounters[];  // number of times each
+                                                // public method is called
     // DATA
     VectorType d_vector;  // underlying vector parameterized with incomplete
                           // type
@@ -383,7 +381,7 @@ class IncompleteTypeSupportChecker {
         s_functionCallCounters[0]++;
     }
 
-    explicit IncompleteTypeSupportChecker(allocator_type& basicAllocator)
+    explicit IncompleteTypeSupportChecker(const allocator_type& basicAllocator)
         // Call 'bsl::vector' constructor passing the specified
         // 'basicAllocator' as a parameter.
     : d_vector(basicAllocator)
@@ -391,29 +389,36 @@ class IncompleteTypeSupportChecker {
         s_functionCallCounters[1]++;
     }
 
-    explicit IncompleteTypeSupportChecker(size_type initialSize)
+    explicit IncompleteTypeSupportChecker(size_type             initialSize,
+                                          const allocator_type& basicAllocator
+                                                            = allocator_type())
         // Call 'bsl::vector' constructor passing the specified 'initialSize'
-        // as a parameter.
-    : d_vector(initialSize)
+        // and 'basicAllocator' as parameters.
+    : d_vector(initialSize, basicAllocator)
     {
         s_functionCallCounters[2]++;
     }
 
     IncompleteTypeSupportChecker(
-                               size_type                           initialSize,
-                               const IncompleteTypeSupportChecker& value)
-        // Call 'bsl::vector' constructor passing the specified 'initialSize'
-        // and 'value' as parameters.
-    : d_vector(initialSize, value)
+                            size_type                           initialSize,
+                            const IncompleteTypeSupportChecker& value,
+                            const allocator_type&               basicAllocator
+                                                            = allocator_type())
+        // Call 'bsl::vector' constructor passing the specified 'initialSize',
+        // 'value', and 'basicAllocator' as parameters.
+    : d_vector(initialSize, value, basicAllocator)
     {
         s_functionCallCounters[3]++;
     }
 
     template <class INPUT_ITER>
-    IncompleteTypeSupportChecker(INPUT_ITER first, INPUT_ITER last)
-        // Call 'bsl::vector' constructor passing the specified 'first' and
-        // 'last' as parameters.
-    : d_vector(first, last)
+    IncompleteTypeSupportChecker(INPUT_ITER            first,
+                                 INPUT_ITER            last,
+                                 const allocator_type& basicAllocator
+                                                            = allocator_type())
+        // Call 'bsl::vector' constructor passing the specified 'first',
+        // 'last', and 'basicAllocator' as parameters.
+    : d_vector(first, last, basicAllocator)
     {
         s_functionCallCounters[4]++;
     }
@@ -428,7 +433,7 @@ class IncompleteTypeSupportChecker {
 
     IncompleteTypeSupportChecker(
                             const IncompleteTypeSupportChecker& original,
-                            allocator_type&                     basicAllocator)
+                            const allocator_type&               basicAllocator)
         // Call 'bsl::vector' constructor passing the underlying vector of the
         // specified 'original' and the specified 'basicAllocator' as
         // parameters.
@@ -445,8 +450,8 @@ class IncompleteTypeSupportChecker {
         s_functionCallCounters[7]++;
     }
 
-    IncompleteTypeSupportChecker(MovableRef      original,
-                                 allocator_type& basicAllocator)
+    IncompleteTypeSupportChecker(MovableRef            original,
+                                 const allocator_type& basicAllocator)
         // Call 'bsl::vector' constructor passing the specified
         // 'basicAllocator' and passing the underlying vector of the specified
         // movable 'original' as parameters.
@@ -457,11 +462,13 @@ class IncompleteTypeSupportChecker {
     }
 
 #if defined(BSLS_COMPILERFEATURES_SUPPORT_GENERALIZED_INITIALIZERS)
-    explicit IncompleteTypeSupportChecker(
-                    std::initializer_list<IncompleteTypeSupportChecker> values)
-        // Call 'bsl::vector' constructor passing the specified 'values' as a
-        // parameter.
-    : d_vector(values)
+    IncompleteTypeSupportChecker(
+            std::initializer_list<IncompleteTypeSupportChecker> values,
+            const allocator_type&                               basicAllocator
+                                                            = allocator_type())
+        // Call 'bsl::vector' constructor passing the specified 'values' and
+        // 'basicAllocator' as parameters.
+    : d_vector(values, basicAllocator)
     {
         s_functionCallCounters[9]++;
     }
@@ -955,15 +962,14 @@ bool operator==(const IncompleteTypeSupportChecker& lhs,
                   // class IncompleteTypeSupportChecker
                   // ----------------------------------
 // CLASS DATA
-const int        IncompleteTypeSupportChecker::s_numFunctions = 62;
-bsl::vector<int> IncompleteTypeSupportChecker::s_functionCallCounters(
-                                                                s_numFunctions,
-                                                                0);
+const int IncompleteTypeSupportChecker::s_numFunctions = 62;
+int       IncompleteTypeSupportChecker::s_functionCallCounters[s_numFunctions]
+                                                                         = { };
 
 // CLASS METHODS
 void IncompleteTypeSupportChecker::checkInvokedFunctions()
 {
-    for (std::size_t i = 0; i < s_functionCallCounters.size(); ++i) {
+    for (std::size_t i = 0; i < s_numFunctions; ++i) {
         const size_t INDEX = i;
         ASSERTV(INDEX, 0 < s_functionCallCounters[INDEX]);
     }
@@ -977,7 +983,9 @@ void IncompleteTypeSupportChecker::increaseFunctionCallCounter(
 
 void IncompleteTypeSupportChecker::resetFunctionCallCounters()
 {
-    s_functionCallCounters.assign(s_numFunctions, 0);
+    for (std::size_t i = 0; i < s_numFunctions; ++i) {
+        s_functionCallCounters[i] = 0;
+    }
 }
 
 // ACCESSORS
@@ -993,6 +1001,43 @@ bool operator==(const IncompleteTypeSupportChecker& lhs,
 {
     return lhs.content() == rhs.content();
 }
+
+                             // ===============
+                             // class UniqueInt
+                             // ===============
+
+class UniqueInt {
+    // Unique int value set on construction.
+
+    // CLASS DATA
+    static int s_counter;
+
+    // DATA
+    int d_value;
+
+  public:
+    // CREATORS
+    UniqueInt() : d_value(s_counter++)
+        // Create a 'UniqueInt' object.
+    {
+    }
+
+    // FREE OPERATORS
+    friend bool operator==(const UniqueInt &v1, const UniqueInt &v2)
+        // Equality comparison.
+    {
+        return v1.d_value == v2.d_value;
+    }
+
+#ifndef BSLS_COMPILERFEATURES_SUPPORT_THREE_WAY_COMPARISON
+    friend bool operator!=(const UniqueInt &v1, const UniqueInt &v2)
+        // Inequality comparison.
+    {
+        return !(v1 == v2);
+    }
+#endif
+};
+int UniqueInt::s_counter = 0;
 
                      // TEST DRIVER PART 3 TINY HELPERS
 
@@ -1092,6 +1137,25 @@ struct HI
         // Conversion operator to confuse badly written traits code.
 };
 
+#ifdef BSLS_COMPILERFEATURES_SUPPORT_THREE_WAY_COMPARISON
+
+template <class TYPE, size_t BITS>
+inline
+auto operator<=>(const HI<TYPE, BITS>& lhs, const HI<TYPE, BITS>& rhs)
+{
+    auto result = lhs.p <=> rhs.p;
+    return result == 0 ? lhs.d <=> rhs.d : result;
+}
+
+template <class TYPE, size_t BITS>
+inline
+bool operator==(const HI<TYPE, BITS>& lhs, const HI<TYPE, BITS>& rhs)
+{
+    return lhs <=> rhs == 0;
+}
+
+#else
+
 template <class TYPE, size_t BITS>
 inline
 bool operator< (const HI<TYPE, BITS>& lhs, const HI<TYPE, BITS>& rhs)
@@ -1133,6 +1197,8 @@ bool operator!=(const HI<TYPE, BITS>& lhs, const HI<TYPE, BITS>& rhs)
 {
     return !(lhs == rhs);
 }
+
+#endif
 
                     // TEST DRIVER PART 3 TRAITS HELPERS
 
@@ -1241,7 +1307,7 @@ struct TestDriver3 : TestSupport<TYPE, ALLOC> {
               int N08,
               int N09,
               int N10>
-    static void testCase27a_RunTest(Obj *target);
+    static void testCase26a_RunTest(Obj *target);
         // Call 'emplace_back' on the specified 'target' container.  Forward
         // (template parameter) 'N_ARGS' arguments to the 'emplace' method and
         // ensure 1) that values are properly passed to the constructor of
@@ -1250,14 +1316,14 @@ struct TestDriver3 : TestSupport<TYPE, ALLOC> {
         // arguments are forwarded using copy or move semantics based on
         // integer template parameters 'N01' ... 'N10'.
 
-    static void testCase27();
+    static void testCase26();
         // Test 'emplace_back' other than forwarding of arguments (see '27a').
 
-    static void testCase27a();
+    static void testCase26a();
         // Test forwarding of arguments in 'emplace_back' method.
 
-    static void testCase27_EmplaceDefault(Obj*, bsl::false_type);
-    static void testCase27_EmplaceDefault(Obj* objPtr, bsl::true_type);
+    static void testCase26_EmplaceDefault(Obj*, bsl::false_type);
+    static void testCase26_EmplaceDefault(Obj* objPtr, bsl::true_type);
         // Test that 'emplace_back()' appends a single value-initialized
         // element to the specified 'objPtr' vector.  The bool-constant type
         // indicated whether 'TYPE' is default constructible, and so whether
@@ -1266,11 +1332,11 @@ struct TestDriver3 : TestSupport<TYPE, ALLOC> {
         // in its original state, so the caller can verify that it is is
         // unchanged.
 
-    static void testCase26();
+    static void testCase27();
         // Test 'insert' method that takes a movable ref.
 
     template <class CONTAINER>
-    static void testCase26Range(const CONTAINER&);
+    static void testCase27Range(const CONTAINER&);
         // Test 'insert' method that takes move-only and other awkward types.
 
     static void testCase25();
@@ -1283,6 +1349,9 @@ struct TestDriver3 : TestSupport<TYPE, ALLOC> {
 
     static void testCase24_propagate_on_container_move_assignment();
         // Test 'propagate_on_container_move_assignment'.
+
+    static void testCase24_move_assignment_noexcept();
+        // Test noexcept specification of the move assignment operator.
 
     static void testCase24_dispatch();
         // Test move assignment operator.
@@ -3097,7 +3166,7 @@ template <int N_ARGS,
           int N09,
           int N10>
 void
-TestDriver3<TYPE, ALLOC>::testCase27a_RunTest(Obj *target)
+TestDriver3<TYPE, ALLOC>::testCase26a_RunTest(Obj *target)
 {
     DECLARE_BOOL_CONSTANT(MOVE_01, N01 == 1);
     DECLARE_BOOL_CONSTANT(MOVE_02, N02 == 1);
@@ -3308,13 +3377,13 @@ TestDriver3<TYPE, ALLOC>::testCase27a_RunTest(Obj *target)
 
 template <class TYPE, class ALLOC>
 void
-TestDriver3<TYPE, ALLOC>::testCase27_EmplaceDefault(Obj*, bsl::false_type)
+TestDriver3<TYPE, ALLOC>::testCase26_EmplaceDefault(Obj*, bsl::false_type)
 {
     // Do nothing
 }
 
 template <class TYPE, class ALLOC>
-void TestDriver3<TYPE, ALLOC>::testCase27_EmplaceDefault(Obj* objPtr,
+void TestDriver3<TYPE, ALLOC>::testCase26_EmplaceDefault(Obj* objPtr,
                                                          bsl::true_type)
     // This method verifies that 'emplace_back()' will append a single
     // value-initialized element to the specified vector 'obj', and then 'pop'
@@ -3339,7 +3408,7 @@ void TestDriver3<TYPE, ALLOC>::testCase27_EmplaceDefault(Obj* objPtr,
 }
 
 template <class TYPE, class ALLOC>
-void TestDriver3<TYPE, ALLOC>::testCase27()
+void TestDriver3<TYPE, ALLOC>::testCase26()
 {
     // ------------------------------------------------------------------------
     // TESTING 'emplace_back(Args&&...)'
@@ -3364,7 +3433,7 @@ void TestDriver3<TYPE, ALLOC>::testCase27()
     // Plan:
     //: 1 We will use 'value' as the single argument to the 'emplace_back'
     //:   function and will test proper forwarding of constructor arguments
-    //:   in test 'testCase27a'.
+    //:   in test 'testCase26a'.
     //:
     //: 2 For 'emplace_back' we will create objects of varying sizes and
     //:   capacities containing default values, and insert a 'value' at the
@@ -3516,7 +3585,7 @@ void TestDriver3<TYPE, ALLOC>::testCase27()
             // the newly inserted default item, and repeat the previous
             // validation.
 
-            testCase27_EmplaceDefault(&mX, IsDefaultConstructible<TYPE>());
+            testCase26_EmplaceDefault(&mX, IsDefaultConstructible<TYPE>());
             ASSERTV(LINE, 0 == verifyContainer(X, exp, SIZE + 1));
         }
     }
@@ -3567,7 +3636,7 @@ void TestDriver3<TYPE, ALLOC>::testCase27()
 }
 
 template <class TYPE, class ALLOC>
-void TestDriver3<TYPE, ALLOC>::testCase27a()
+void TestDriver3<TYPE, ALLOC>::testCase26a()
 {
     // ------------------------------------------------------------------------
     // TESTING FORWARDING OF ARGUMENTS WITH 'emplace_back'
@@ -3626,70 +3695,70 @@ void TestDriver3<TYPE, ALLOC>::testCase27a()
         bslma::TestAllocator oa("object", veryVeryVeryVerbose);
         Obj                  mX(&oa);
 
-        testCase27a_RunTest< 0,2,2,2,2,2,2,2,2,2,2>(&mX);
-        testCase27a_RunTest< 1,1,2,2,2,2,2,2,2,2,2>(&mX);
-        testCase27a_RunTest< 2,1,1,2,2,2,2,2,2,2,2>(&mX);
-        testCase27a_RunTest< 3,1,1,1,2,2,2,2,2,2,2>(&mX);
-        testCase27a_RunTest< 4,1,1,1,1,2,2,2,2,2,2>(&mX);
-        testCase27a_RunTest< 5,1,1,1,1,1,2,2,2,2,2>(&mX);
-        testCase27a_RunTest< 6,1,1,1,1,1,1,2,2,2,2>(&mX);
-        testCase27a_RunTest< 7,1,1,1,1,1,1,1,2,2,2>(&mX);
-        testCase27a_RunTest< 8,1,1,1,1,1,1,1,1,2,2>(&mX);
-        testCase27a_RunTest< 9,1,1,1,1,1,1,1,1,1,2>(&mX);
-        testCase27a_RunTest<10,1,1,1,1,1,1,1,1,1,1>(&mX);
+        testCase26a_RunTest< 0,2,2,2,2,2,2,2,2,2,2>(&mX);
+        testCase26a_RunTest< 1,1,2,2,2,2,2,2,2,2,2>(&mX);
+        testCase26a_RunTest< 2,1,1,2,2,2,2,2,2,2,2>(&mX);
+        testCase26a_RunTest< 3,1,1,1,2,2,2,2,2,2,2>(&mX);
+        testCase26a_RunTest< 4,1,1,1,1,2,2,2,2,2,2>(&mX);
+        testCase26a_RunTest< 5,1,1,1,1,1,2,2,2,2,2>(&mX);
+        testCase26a_RunTest< 6,1,1,1,1,1,1,2,2,2,2>(&mX);
+        testCase26a_RunTest< 7,1,1,1,1,1,1,1,2,2,2>(&mX);
+        testCase26a_RunTest< 8,1,1,1,1,1,1,1,1,2,2>(&mX);
+        testCase26a_RunTest< 9,1,1,1,1,1,1,1,1,1,2>(&mX);
+        testCase26a_RunTest<10,1,1,1,1,1,1,1,1,1,1>(&mX);
     }
     if (verbose) printf("\tTesting emplace_back 1..10 args, move=0.\n");
     {
         bslma::TestAllocator oa("object", veryVeryVeryVerbose);
         Obj                  mX(&oa);
 
-        testCase27a_RunTest< 0,2,2,2,2,2,2,2,2,2,2>(&mX);
-        testCase27a_RunTest< 1,0,2,2,2,2,2,2,2,2,2>(&mX);
-        testCase27a_RunTest< 2,0,0,2,2,2,2,2,2,2,2>(&mX);
-        testCase27a_RunTest< 3,0,0,0,2,2,2,2,2,2,2>(&mX);
-        testCase27a_RunTest< 4,0,0,0,0,2,2,2,2,2,2>(&mX);
-        testCase27a_RunTest< 5,0,0,0,0,0,2,2,2,2,2>(&mX);
-        testCase27a_RunTest< 6,0,0,0,0,0,0,2,2,2,2>(&mX);
-        testCase27a_RunTest< 7,0,0,0,0,0,0,0,2,2,2>(&mX);
-        testCase27a_RunTest< 8,0,0,0,0,0,0,0,0,2,2>(&mX);
-        testCase27a_RunTest< 9,0,0,0,0,0,0,0,0,0,2>(&mX);
-        testCase27a_RunTest<10,0,0,0,0,0,0,0,0,0,0>(&mX);
+        testCase26a_RunTest< 0,2,2,2,2,2,2,2,2,2,2>(&mX);
+        testCase26a_RunTest< 1,0,2,2,2,2,2,2,2,2,2>(&mX);
+        testCase26a_RunTest< 2,0,0,2,2,2,2,2,2,2,2>(&mX);
+        testCase26a_RunTest< 3,0,0,0,2,2,2,2,2,2,2>(&mX);
+        testCase26a_RunTest< 4,0,0,0,0,2,2,2,2,2,2>(&mX);
+        testCase26a_RunTest< 5,0,0,0,0,0,2,2,2,2,2>(&mX);
+        testCase26a_RunTest< 6,0,0,0,0,0,0,2,2,2,2>(&mX);
+        testCase26a_RunTest< 7,0,0,0,0,0,0,0,2,2,2>(&mX);
+        testCase26a_RunTest< 8,0,0,0,0,0,0,0,0,2,2>(&mX);
+        testCase26a_RunTest< 9,0,0,0,0,0,0,0,0,0,2>(&mX);
+        testCase26a_RunTest<10,0,0,0,0,0,0,0,0,0,0>(&mX);
     }
     if (verbose) printf("\tTesting emplace_back with 0 args.\n");
     {
         bslma::TestAllocator oa("object", veryVeryVeryVerbose);
         Obj                  mX(&oa);
 
-        testCase27a_RunTest<0,2,2,2,2,2,2,2,2,2,2>(&mX);
+        testCase26a_RunTest<0,2,2,2,2,2,2,2,2,2,2>(&mX);
     }
     if (verbose) printf("\tTesting emplace_back with 1 args.\n");
     {
         bslma::TestAllocator oa("object", veryVeryVeryVerbose);
         Obj                  mX(&oa);
 
-        testCase27a_RunTest<1,0,2,2,2,2,2,2,2,2,2>(&mX);
-        testCase27a_RunTest<1,1,2,2,2,2,2,2,2,2,2>(&mX);
+        testCase26a_RunTest<1,0,2,2,2,2,2,2,2,2,2>(&mX);
+        testCase26a_RunTest<1,1,2,2,2,2,2,2,2,2,2>(&mX);
     }
     if (verbose) printf("\tTesting emplace_back with 2 args.\n");
     {
         bslma::TestAllocator oa("object", veryVeryVeryVerbose);
         Obj                  mX(&oa);
 
-        testCase27a_RunTest<2,0,0,2,2,2,2,2,2,2,2>(&mX);
-        testCase27a_RunTest<2,1,0,2,2,2,2,2,2,2,2>(&mX);
-        testCase27a_RunTest<2,0,1,2,2,2,2,2,2,2,2>(&mX);
-        testCase27a_RunTest<2,1,1,2,2,2,2,2,2,2,2>(&mX);
+        testCase26a_RunTest<2,0,0,2,2,2,2,2,2,2,2>(&mX);
+        testCase26a_RunTest<2,1,0,2,2,2,2,2,2,2,2>(&mX);
+        testCase26a_RunTest<2,0,1,2,2,2,2,2,2,2,2>(&mX);
+        testCase26a_RunTest<2,1,1,2,2,2,2,2,2,2,2>(&mX);
     }
     if (verbose) printf("\tTesting emplace_back with 3 args.\n");
     {
         bslma::TestAllocator oa("object", veryVeryVeryVerbose);
         Obj                  mX(&oa);
 
-        testCase27a_RunTest<3,0,0,0,2,2,2,2,2,2,2>(&mX);
-        testCase27a_RunTest<3,1,0,0,2,2,2,2,2,2,2>(&mX);
-        testCase27a_RunTest<3,0,1,0,2,2,2,2,2,2,2>(&mX);
-        testCase27a_RunTest<3,0,0,1,2,2,2,2,2,2,2>(&mX);
-        testCase27a_RunTest<3,1,1,1,2,2,2,2,2,2,2>(&mX);
+        testCase26a_RunTest<3,0,0,0,2,2,2,2,2,2,2>(&mX);
+        testCase26a_RunTest<3,1,0,0,2,2,2,2,2,2,2>(&mX);
+        testCase26a_RunTest<3,0,1,0,2,2,2,2,2,2,2>(&mX);
+        testCase26a_RunTest<3,0,0,1,2,2,2,2,2,2,2>(&mX);
+        testCase26a_RunTest<3,1,1,1,2,2,2,2,2,2,2>(&mX);
     }
 
     if (verbose) printf("\tTesting emplace_back with 10 args.\n");
@@ -3697,18 +3766,18 @@ void TestDriver3<TYPE, ALLOC>::testCase27a()
         bslma::TestAllocator oa("object", veryVeryVeryVerbose);
         Obj                  mX(&oa);
 
-        testCase27a_RunTest<10,0,0,0,0,0,0,0,0,0,0>(&mX);
-        testCase27a_RunTest<10,1,0,0,0,0,0,0,0,0,0>(&mX);
-        testCase27a_RunTest<10,0,1,0,0,0,0,0,0,0,0>(&mX);
-        testCase27a_RunTest<10,0,0,1,0,0,0,0,0,0,0>(&mX);
-        testCase27a_RunTest<10,0,0,0,1,0,0,0,0,0,0>(&mX);
-        testCase27a_RunTest<10,0,0,0,0,1,0,0,0,0,0>(&mX);
-        testCase27a_RunTest<10,0,0,0,0,0,1,0,0,0,0>(&mX);
-        testCase27a_RunTest<10,0,0,0,0,0,0,1,0,0,0>(&mX);
-        testCase27a_RunTest<10,0,0,0,0,0,0,0,1,0,0>(&mX);
-        testCase27a_RunTest<10,0,0,0,0,0,0,0,0,1,0>(&mX);
-        testCase27a_RunTest<10,0,0,0,0,0,0,0,0,0,1>(&mX);
-        testCase27a_RunTest<10,1,1,1,1,1,1,1,1,1,1>(&mX);
+        testCase26a_RunTest<10,0,0,0,0,0,0,0,0,0,0>(&mX);
+        testCase26a_RunTest<10,1,0,0,0,0,0,0,0,0,0>(&mX);
+        testCase26a_RunTest<10,0,1,0,0,0,0,0,0,0,0>(&mX);
+        testCase26a_RunTest<10,0,0,1,0,0,0,0,0,0,0>(&mX);
+        testCase26a_RunTest<10,0,0,0,1,0,0,0,0,0,0>(&mX);
+        testCase26a_RunTest<10,0,0,0,0,1,0,0,0,0,0>(&mX);
+        testCase26a_RunTest<10,0,0,0,0,0,1,0,0,0,0>(&mX);
+        testCase26a_RunTest<10,0,0,0,0,0,0,1,0,0,0>(&mX);
+        testCase26a_RunTest<10,0,0,0,0,0,0,0,1,0,0>(&mX);
+        testCase26a_RunTest<10,0,0,0,0,0,0,0,0,1,0>(&mX);
+        testCase26a_RunTest<10,0,0,0,0,0,0,0,0,0,1>(&mX);
+        testCase26a_RunTest<10,1,1,1,1,1,1,1,1,1,1>(&mX);
     }
 #else
     if (verbose) printf("\tTesting emplace_back 1..10 args, move=0.\n");
@@ -3716,23 +3785,23 @@ void TestDriver3<TYPE, ALLOC>::testCase27a()
         bslma::TestAllocator oa("object", veryVeryVeryVerbose);
         Obj                  mX(&oa);
 
-        testCase27a_RunTest< 0,2,2,2,2,2,2,2,2,2,2>(&mX);
-        testCase27a_RunTest< 1,0,2,2,2,2,2,2,2,2,2>(&mX);
-        testCase27a_RunTest< 2,0,0,2,2,2,2,2,2,2,2>(&mX);
-        testCase27a_RunTest< 3,0,0,0,2,2,2,2,2,2,2>(&mX);
-        testCase27a_RunTest< 4,0,0,0,0,2,2,2,2,2,2>(&mX);
-        testCase27a_RunTest< 5,0,0,0,0,0,2,2,2,2,2>(&mX);
-        testCase27a_RunTest< 6,0,0,0,0,0,0,2,2,2,2>(&mX);
-        testCase27a_RunTest< 7,0,0,0,0,0,0,0,2,2,2>(&mX);
-        testCase27a_RunTest< 8,0,0,0,0,0,0,0,0,2,2>(&mX);
-        testCase27a_RunTest< 9,0,0,0,0,0,0,0,0,0,2>(&mX);
-        testCase27a_RunTest<10,0,0,0,0,0,0,0,0,0,0>(&mX);
+        testCase26a_RunTest< 0,2,2,2,2,2,2,2,2,2,2>(&mX);
+        testCase26a_RunTest< 1,0,2,2,2,2,2,2,2,2,2>(&mX);
+        testCase26a_RunTest< 2,0,0,2,2,2,2,2,2,2,2>(&mX);
+        testCase26a_RunTest< 3,0,0,0,2,2,2,2,2,2,2>(&mX);
+        testCase26a_RunTest< 4,0,0,0,0,2,2,2,2,2,2>(&mX);
+        testCase26a_RunTest< 5,0,0,0,0,0,2,2,2,2,2>(&mX);
+        testCase26a_RunTest< 6,0,0,0,0,0,0,2,2,2,2>(&mX);
+        testCase26a_RunTest< 7,0,0,0,0,0,0,0,2,2,2>(&mX);
+        testCase26a_RunTest< 8,0,0,0,0,0,0,0,0,2,2>(&mX);
+        testCase26a_RunTest< 9,0,0,0,0,0,0,0,0,0,2>(&mX);
+        testCase26a_RunTest<10,0,0,0,0,0,0,0,0,0,0>(&mX);
     }
 #endif
 }
 
 template <class TYPE, class ALLOC>
-void TestDriver3<TYPE, ALLOC>::testCase26()
+void TestDriver3<TYPE, ALLOC>::testCase27()
 {
     // ------------------------------------------------------------------------
     // TESTING 'iterator insert(const_iterator position, T&&)'
@@ -4046,7 +4115,7 @@ void TestDriver3<TYPE, ALLOC>::testCase26()
 }
 template <class TYPE, class ALLOC>
 template <class CONTAINER>
-void TestDriver3<TYPE, ALLOC>::testCase26Range(const CONTAINER&)
+void TestDriver3<TYPE, ALLOC>::testCase27Range(const CONTAINER&)
 {
     // ------------------------------------------------------------------------
     // TESTING INSERTION
@@ -4672,6 +4741,39 @@ void TestDriver3<TYPE, ALLOC>::testCase25()
 }
 
 template <class TYPE, class ALLOC>
+void TestDriver3<TYPE, ALLOC>::testCase24_move_assignment_noexcept()
+{
+    // ------------------------------------------------------------------------
+    // TESTING MOVE-ASSIGNMENT OPERATOR: NOEXCEPT SPECIFICATION
+    //
+    // Concerns:
+    //: 1 If either 'allocator_traits<Allocator>::
+    //:   propagate_on_container_move_assignment::value' or
+    //:   'allocator_traits<Allocator>::is_always_equal::value' is
+    //:   true, the move assignment operator is 'noexcept(true)'.
+    //
+    // Plan:
+    //: 1 Get ORed value of the both traits.
+    //:
+    //: 2 Compare the value with noexcept specification of the move assignment
+    //:   operator.
+    //
+    // Testing:
+    //   vector& operator=(bslmf::MovableRef<vector> rhs);
+    // ------------------------------------------------------------------------
+
+#if BSLS_KEYWORD_NOEXCEPT_AVAILABLE
+    bsl::vector<TYPE, ALLOC> a, b;
+
+    const bool isNoexcept =
+        AllocatorTraits::propagate_on_container_move_assignment::value ||
+        AllocatorTraits::is_always_equal::value;
+    ASSERT(isNoexcept ==
+           BSLS_KEYWORD_NOEXCEPT_OPERATOR(a = bslmf::MovableRefUtil::move(b)));
+#endif
+}
+
+template <class TYPE, class ALLOC>
 void TestDriver3<TYPE, ALLOC>::testCase24_dispatch()
 {
     // ------------------------------------------------------------------------
@@ -4722,6 +4824,10 @@ void TestDriver3<TYPE, ALLOC>::testCase24_dispatch()
     //:
     //:13 Assigning an object to itself behaves as expected (alias-safety).
     //:
+    //:14 If either 'allocator_traits<Allocator>::is_always_equal::value' or
+    //:   'allocator_traits<Allocator>::propagate_on_container_move_assignment
+    //:   ::value' is true, the move assignment operator is 'noexcept(true)'.
+    //
     // Plan:
     //
     //: 1 Use the address of 'operator=' to initialize a member-function
@@ -4780,6 +4886,10 @@ void TestDriver3<TYPE, ALLOC>::testCase24_dispatch()
     //:
     //: 6 Use a test allocator installed as the default allocator to verify
     //:   that no memory is ever allocated from the default allocator.
+    //:
+    //: 7 To address concern 14, pass allocators with all combinations of
+    //:   'is_always_equal' and 'propagate_on_container_move_assignment'
+    //:   values.
     //
     // Testing:
     //   vector& operator=(bslmf::MovableRef<vector> rhs);
@@ -5053,6 +5163,12 @@ void TestDriver3<TYPE, ALLOC>::testCase24_dispatch()
     }
 
     ASSERTV(e_STATEFUL == s_allocCategory || 0 == da.numBlocksTotal());
+
+    // Verify move assignment noexcept specifications for the basic template
+    // and the partial specialization of 'vector' for pointer types.
+
+    TestDriver3<TYPE , ALLOC>::testCase24_move_assignment_noexcept();
+    TestDriver3<TYPE*, ALLOC>::testCase24_move_assignment_noexcept();
 }
 
 template <class TYPE>
@@ -5080,6 +5196,20 @@ void MetaTestDriver3<TYPE>::testCase24()
     TestDriver3<TYPE, A01>::testCase24_dispatch();
     TestDriver3<TYPE, A10>::testCase24_dispatch();
     TestDriver3<TYPE, A11>::testCase24_dispatch();
+
+    // is_always_equal == true &&
+    // propagate_on_container_move_assignment == true
+    TestDriver3<TYPE , StatelessAllocator<TYPE , false, true> >::
+        testCase24_move_assignment_noexcept();
+    TestDriver3<TYPE*, StatelessAllocator<TYPE*, false, true> >::
+        testCase24_move_assignment_noexcept();
+
+    // is_always_equal == true &&
+    // propagate_on_container_move_assignment == false
+    TestDriver3<TYPE , StatelessAllocator<TYPE > >::
+        testCase24_move_assignment_noexcept();
+    TestDriver3<TYPE*, StatelessAllocator<TYPE*> >::
+        testCase24_move_assignment_noexcept();
 }
 
 #ifdef BSLS_COMPILERFEATURES_SUPPORT_CTAD
@@ -5276,10 +5406,45 @@ int main(int argc, char *argv[])
     printf("TEST " __FILE__ " CASE %d\n", test);
 
     switch (test) { case 0:  // Zero is always the leading case.
-      case 42: {
+      case 43: {
         if (verbose) printf(
                     "\nUSAGE EXAMPLE TEST CASE IS IN 'bslstl_vector.t.cpp'"
                     "\n===================================================\n");
+      } break;
+      case 42: {
+        // --------------------------------------------------------------------
+        // CONCERN: Default constructor is called for default-inserted elems
+        //
+        // Concerns:
+        //: 1 Default constructor must be called for each new default-inserted
+        //:   element.
+        //
+        // Plan:
+        //: 1 Every element gets a unique int value in the default constructor.
+        //:   All default-constructed elements must have different values.  If
+        //:   two elements have the same value, one is a copy of another.
+        //
+        // Testing:
+        //   CONCERN: Default constructor is called for default-inserted elems
+        // --------------------------------------------------------------------
+
+        if (verbose) printf(
+        "\nCONCERN: Default constructor is called for default-inserted elems"
+        "\n================================================================="
+        "\n");
+
+        bsl::vector<UniqueInt> mX(4);
+        ASSERT(mX.size() == 4);
+        // No duplicates
+        ASSERT(mX[0] != mX[1] && mX[0] != mX[2] && mX[0] != mX[3]);
+        ASSERT(                  mX[1] != mX[2] && mX[1] != mX[3]);
+        ASSERT(                                    mX[2] != mX[3]);
+
+        mX.resize(8);
+        ASSERT(mX.size() == 8);
+        ASSERT(mX[4] != mX[5] && mX[4] != mX[6] && mX[4] != mX[7]);
+        ASSERT(                  mX[5] != mX[6] && mX[5] != mX[7]);
+        ASSERT(                                    mX[6] != mX[7]);
       } break;
       case 41: {
         // --------------------------------------------------------------------
@@ -5343,10 +5508,10 @@ int main(int argc, char *argv[])
         }
 
         {
-            bsl::vector<IncompleteTypeSupportChecker> source(initialSize);
-            IncompleteTypeSupportChecker              mIT(source.begin(),
-                                                          source.end());
-            const IncompleteTypeSupportChecker&       IT = mIT;            // 4
+            IncompleteTypeSupportChecker        source[initialSize];
+            IncompleteTypeSupportChecker        mIT(source,
+                                                    source + initialSize);
+            const IncompleteTypeSupportChecker& IT = mIT;                  // 4
 
             ASSERT(initialSize == IT.size());
         }
@@ -5408,7 +5573,7 @@ int main(int argc, char *argv[])
             IncompleteTypeSupportChecker               source3;
             IncompleteTypeSupportChecker               source4;
             IncompleteTypeSupportChecker               source5(initialSize);
-            bsl::vector<IncompleteTypeSupportChecker>  source6(initialSize);
+            IncompleteTypeSupportChecker               source6[initialSize];
             IncompleteTypeSupportChecker              *nullPtr = 0;
 
             IncompleteTypeSupportChecker        mIT;
@@ -5441,7 +5606,7 @@ int main(int argc, char *argv[])
             IncompleteTypeSupportChecker::increaseFunctionCallCounter(14);
 #endif
 
-            mIT.assign(source6.begin(), source6.end());                   // 15
+            mIT.assign(source6, source6 + initialSize);                   // 15
 
             ASSERT(initialSize == IT.size());
 
@@ -5526,7 +5691,7 @@ int main(int argc, char *argv[])
             ASSERT(initialSize + 10 == IT.size());
             ASSERT(IT.begin()       == mIter    );
 
-            mIter = mIT.insert(mIT.cbegin(), source6.begin(), source6.end());
+            mIter = mIT.insert(mIT.cbegin(), source6, source6 + initialSize);
                                                                           // 38
             ASSERT(initialSize + 15 == IT.size());
             ASSERT(IT.begin()       == mIter    );
@@ -6112,13 +6277,13 @@ int main(int argc, char *argv[])
             printf("This test has not yet been fully implemented.\n");
 
         RUN_EACH_TYPE(TestDriver3,
-                      testCase26,
+                      testCase27,
                       BSLTF_TEMPLATETESTFACILITY_TEST_TYPES_REGULAR,
                       bsltf::MoveOnlyAllocTestType,
                       bsltf::WellBehavedMoveOnlyAllocTestType);
 
         RUN_EACH_TYPE(StdBslmaTestDriver3,
-                      testCase26,
+                      testCase27,
                       bsltf::StdAllocTestType<bsl::allocator<int> >,
                       BSLTF_TEMPLATETESTFACILITY_TEST_TYPES_PRIMITIVE,
                       bsltf::MoveOnlyAllocTestType,
@@ -6126,7 +6291,7 @@ int main(int argc, char *argv[])
 
 #if 0
         ITER_CONTAINER_RUN_EACH_TYPE(TestDriver3,
-                                     testCase26Range,
+                                     testCase27Range,
                                      bsltf::NonDefaultConstructibleTestType,
                                      bsltf::MoveOnlyAllocTestType,
                                      bsltf::WellBehavedMoveOnlyAllocTestType,
@@ -6134,11 +6299,22 @@ int main(int argc, char *argv[])
                                      BitwiseNotAssignable);
 #else
         ITER_CONTAINER_RUN_EACH_TYPE(TestDriver3,
-                                     testCase26Range,
+                                     testCase27Range,
                                      bsltf::NonDefaultConstructibleTestType,
                                      int,   // dummy, need 4 types
                                      int,   // dummy, need 4 types
                                      int);  // dummy, need 4 types
+#endif
+
+#if BSLS_COMPILERFEATURES_CPLUSPLUS >= 201103L
+        // Testing move-only types.  Although we can simulate a move-only type
+        // in C++03, we cannot simulate a noexcept move constructor as vector
+        // requires.
+        {
+            bsl::vector<MoveOnlyType> mX;
+            MoveOnlyType value;
+            mX.insert(mX.end(), MoveUtil::move(value));
+        }
 #endif
       } break;
       case 26: {
@@ -6157,7 +6333,7 @@ int main(int argc, char *argv[])
 
         // TBD: should be 'BSLTF_TEMPLATETESTFACILITY_TEST_TYPES_REGULAR'
         RUN_EACH_TYPE(TestDriver3,
-                      testCase27,
+                      testCase26,
                       BSLTF_TEMPLATETESTFACILITY_TEST_TYPES_REGULAR,
                       bsltf::NonDefaultConstructibleTestType,
 //                      bsltf::MoveOnlyAllocTestType,
@@ -6165,12 +6341,12 @@ int main(int argc, char *argv[])
                      BitwiseNotAssignable);
 
         RUN_EACH_TYPE(TestDriver3,
-                      testCase27a,
+                      testCase26a,
                       bsltf::EmplacableTestType,
                       bsltf::AllocEmplacableTestType);
 
         RUN_EACH_TYPE(StdBslmaTestDriver3,
-                      testCase27,
+                      testCase26,
                       bsltf::StdAllocTestType<bsl::allocator<int> >,
                       BSLTF_TEMPLATETESTFACILITY_TEST_TYPES_PRIMITIVE
 //                   , bsltf::MoveOnlyAllocTestType

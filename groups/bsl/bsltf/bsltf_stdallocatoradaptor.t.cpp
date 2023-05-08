@@ -141,7 +141,7 @@ void aSsErT(bool condition, const char *message, int line)
 
 #if defined(BSLS_LIBRARYFEATURES_HAS_CPP17_BOOL_CONSTANT)
 # define DECLARE_BOOL_CONSTANT(NAME, EXPRESSION)                              \
-    BSLS_KEYWORD_CONSTEXPR_MEMBER bsl::bool_constant<EXPRESSION> NAME{}
+    const BSLS_KEYWORD_CONSTEXPR bsl::bool_constant<EXPRESSION> NAME{}
     // This leading branch is the preferred version for C++17, but the feature
     // test macro is (currently) for documentation purposes only, and never
     // defined.  This is the ideal (simplest) form for such declarations:
@@ -193,6 +193,14 @@ class ConstructTestType {
     ALLOC               d_allocator;  // allocator
 
   public:
+#ifndef BSLMA_USESBSLMAALLOCATOR_AUTODETECT_ALLOCATOR_TYPE
+    // TRAITS
+    BSLMF_NESTED_TRAIT_DECLARATION_IF(
+                    ConstructTestType,
+                    bslma::UsesBslmaAllocator,
+                    (bsl::is_convertible<bslma::Allocator *, ALLOC>::value));
+#endif
+
     // PUBLIC TYPES
     typedef ALLOC allocator_type;
 
@@ -1738,7 +1746,7 @@ int main(int argc, char *argv[])
             const ObjType ANOTHER(&ata);
 
             Obj           *objPtr = 0;
-            const ObjType *expected;
+            const ObjType *expected = &DEFAULT;
 
             switch (CONFIG) {
               case 'a': {
@@ -1758,7 +1766,7 @@ int main(int argc, char *argv[])
                 expected = &ANOTHER;
               } break;
               default: {
-                  BSLS_ASSERT_INVOKE_NORETURN("Bad constructor config.");
+                BSLS_ASSERT_INVOKE_NORETURN("Bad constructor config.");
               } break;
             }
 

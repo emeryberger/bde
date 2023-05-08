@@ -18,6 +18,7 @@
 
 #include <bslmf_assert.h>
 #include <bslmf_haspointersemantics.h>
+#include <bslmf_iscopyconstructible.h>
 #include <bslmf_issame.h>
 #include <bslmf_istriviallydefaultconstructible.h>
 #include <bslmf_removeconst.h>
@@ -174,6 +175,8 @@ using bsl::pair;
 // [24] const VALUE& at(const KEY&) const;
 //
 // search:
+// [13] bool contains(const key_type& key);
+// [13] bool contains(const LOOKUP_KEY& key);
 // [13] size_type count(const KEY& key) const;
 // [13] pair<iterator, iterator> equal_range(const KEY& key);
 // [13] pair<const_iter, const_iter> equal_range(const KEY&) const;
@@ -6000,6 +6003,61 @@ class TestHashFunctor {
     }
 };
 
+                            // =======================
+                            // struct ThrowingSwapHash
+                            // =======================
+
+template <class TYPE>
+struct ThrowingSwapHash : public bsl::hash<TYPE> {
+    // Hash functor with throwing 'swap'.
+
+    // MANIPULATORS
+    void swap(
+            ThrowingSwapHash& other) BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(false)
+        // Exchange the value of this object with that of the specified 'other'
+        // object.
+    {
+         (void)other;
+   }
+
+    // FREE FUNCTIONS
+    friend void swap(
+                ThrowingSwapHash& a,
+                ThrowingSwapHash& b) BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(false)
+        // Exchange the values of the specified 'a' and 'b' objects.
+    {
+        (void)a;
+        (void)b;
+    }
+};
+                            // ========================
+                            // struct ThrowingSwapEqual
+                            // ========================
+
+template <class TYPE>
+struct ThrowingSwapEqual : public bsl::equal_to<TYPE> {
+    // Equal functor with throwing 'swap'.
+
+    // MANIPULATORS
+    void swap(
+           ThrowingSwapEqual& other) BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(false)
+        // Exchange the value of this object with that of the specified 'other'
+        // object.
+    {
+        (void)other;
+    }
+
+    // FREE FUNCTIONS
+    friend void swap(
+               ThrowingSwapEqual& a,
+               ThrowingSwapEqual& b) BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(false)
+        // Exchange the values of the specified 'a' and 'b' objects.
+    {
+        (void)a;
+        (void)b;
+    }
+};
+
                        // =====================
                        // class TemplateWrapper
                        // =====================
@@ -6289,6 +6347,57 @@ TestIncompleteType::~TestIncompleteType()
 }
 #endif
 
+                            // =================
+                            // struct NeqFunctor
+                            // =================
+
+template <class TYPE, bool = bsl::is_copy_constructible<TYPE>::value>
+class NeqFunctor;
+    // A class for storing a value away, and later comparing it to a second
+    // value.   The 'operator()' returns the equivalent of "not equal to",
+    // hence the name 'neqFunctor'.   If the template parameter class 'TYPE'
+    // is not copy-constructible, then the copy is not made, and the functor
+    // will return 'true' for all values passed.
+
+template <class TYPE>
+class NeqFunctor<TYPE, false> {
+     // The specialization for non-copyable types.  Do not save a value, always
+     // return true.
+  public:
+    NeqFunctor(const TYPE &)
+        // Do nothing.
+    {
+    }
+
+    bool operator()(const TYPE &) const
+        // Return 'true'.
+    {
+        return true;
+    }
+};
+
+template <class TYPE>
+class NeqFunctor<TYPE, true> {
+     // The specialization for copyable types.  Save a copy of the value passed
+     // to the constructor, and use it for comparison in the 'operator()'.
+  public:
+    NeqFunctor(const TYPE &value)
+        // Save off the specified 'value' for use later.
+    : d_value(value)
+    {
+    }
+
+    bool operator()(const TYPE &other) const
+        // Return 'true' when the specified 'other' compares 'not equal' to the
+        // saved value, and 'false' otherwise.
+    {
+        return d_value != other;
+    }
+
+  private:
+    TYPE d_value;
+};
+
 }  // close unnamed namespace
 
 //=============================================================================
@@ -6476,6 +6585,9 @@ class TestDriver {
     static void testCase8_propagate_on_container_swap_dispatch();
     static void testCase8_propagate_on_container_swap();
         // Test 'propagate_on_container_swap'.
+
+    static void testCase8_noexcept();
+        // Test 'swap' noexcept.
 
     static void testCase8();
         // Swap
@@ -7316,6 +7428,23 @@ void TestDriver<KEY, VALUE, HASH, EQUAL, ALLOC>::
 
     testCase8_propagate_on_container_swap_dispatch<true, false>();
     testCase8_propagate_on_container_swap_dispatch<true, true>();
+}
+
+template <class KEY, class VALUE, class HASH, class EQUAL, class ALLOC>
+void TestDriver<KEY, VALUE, HASH, EQUAL, ALLOC>::testCase8_noexcept()
+    // Verify that noexcept specification of the member 'swap' function is
+    // correct.
+{
+    Obj a;
+    Obj b;
+
+#if BSLS_KEYWORD_NOEXCEPT_AVAILABLE
+    const bool isNoexcept =
+                        bsl::allocator_traits<ALLOC>::is_always_equal::value &&
+                        bsl::is_nothrow_swappable<HASH>::value &&
+                        bsl::is_nothrow_swappable<EQUAL>::value;
+    ASSERT(isNoexcept == BSLS_KEYWORD_NOEXCEPT_OPERATOR(a.swap(b)));
+#endif
 }
 
 template <class KEY, class VALUE, class HASH, class EQUAL, class ALLOC>
@@ -8189,8 +8318,13 @@ void TestDriver<KEY, VALUE, HASH, EQUAL, ALLOC>::testCase6()
         // Verify that the signatures and return types are standard.
 
         OP op = bsl::operator==;
-        (void) op;
+#ifdef BSLS_COMPILERFEATURES_SUPPORT_THREE_WAY_COMPARISON
+        (void) [](const Obj& lhs, const Obj& rhs) -> bool {
+            return lhs != rhs;
+        };
+#else
         op    = bsl::operator!=;
+#endif
         (void) op;
     }
 
@@ -9796,13 +9930,17 @@ void TestDriver<KEY, VALUE, HASH, EQUAL, ALLOC>::testCase2()
             }
 
             // ----------------------------------------------------------------
+            // We use 'NeqFunctor' to save a copy of the key for comparison
+            // later.  If the key type is not copyable, then 'NeqFunctor' will
+            // not copy it, and simply report that all existing keys are not
+            // equal.
 
             if (veryVerbose) printf("\n\tTesting 'erase(it)'.\n");
             {
                 size_t sz = X.size();
                 for (Iter it = mX.begin(), nextIt; mX.end() != it;
                                                                  it = nextIt) {
-                    const KEY& K = it->first;
+                    NeqFunctor<KEY> neq(it->first);
 
                     numPasses = 0;
                     EXCEPTION_TEST_BEGIN(mX) {
@@ -9814,10 +9952,13 @@ void TestDriver<KEY, VALUE, HASH, EQUAL, ALLOC>::testCase2()
 
                     ASSERTV(X.size(), sz, X.size() == --sz);
 
+                    // Ensure that the key is no longer in the map, and the
+                    // iterator returned by 'erase' points to an element in the
+                    // map.
                     bool found = mX.end() == nextIt;
                     for (Iter itB = mX.begin(); mX.end() != itB; ++itB) {
                         ASSERTV(it != itB);
-                        ASSERTV(K != itB->first);
+                        ASSERTV(neq(itB->first));
                         if (nextIt == itB) {
                             found = true;
                         }
@@ -10573,6 +10714,128 @@ int main(int argc, char *argv[])
 
         TestDriver<TestKeyType, TestValueType>::
                                        testCase8_propagate_on_container_swap();
+
+#if BSLS_KEYWORD_NOEXCEPT_AVAILABLE
+        // Test noexcept
+#ifndef BSLMF_ISNOTHROWSWAPPABLE_ALWAYS_FALSE
+        {
+            typedef bsltf::StdStatefulAllocator<bsl::pair<const int, int>,
+                                                false,
+                                                false,
+                                                false,
+                                                false> Alloc;
+            typedef bsl::hash<int>     Hash;
+            typedef bsl::equal_to<int> Equal;
+
+            ASSERT(!bsl::allocator_traits<Alloc>::is_always_equal::value);
+            ASSERT( bsl::is_nothrow_swappable<Hash>::value);
+            ASSERT( bsl::is_nothrow_swappable<Equal>::value);
+            TestDriver<int, int, Hash, Equal, Alloc>::testCase8_noexcept();
+        }
+        {
+            typedef bsltf::StdStatefulAllocator<bsl::pair<const int, int>,
+                                                false,
+                                                false,
+                                                false,
+                                                false> Alloc;
+            typedef u::ThrowingSwapHash<int> Hash;
+            typedef bsl::equal_to<int>       Equal;
+
+            ASSERT(!bsl::allocator_traits<Alloc>::is_always_equal::value);
+            ASSERT(!bsl::is_nothrow_swappable<Hash>::value);
+            ASSERT( bsl::is_nothrow_swappable<Equal>::value);
+            TestDriver<int, int, Hash, Equal, Alloc>::testCase8_noexcept();
+        }
+        {
+            typedef bsltf::StdStatefulAllocator<bsl::pair<const int, int>,
+                                                false,
+                                                false,
+                                                false,
+                                                false> Alloc;
+            typedef bsl::hash<int>            Hash;
+            typedef u::ThrowingSwapEqual<int> Equal;
+
+            ASSERT(!bsl::allocator_traits<Alloc>::is_always_equal::value);
+            ASSERT( bsl::is_nothrow_swappable<Hash>::value);
+            ASSERT(!bsl::is_nothrow_swappable<Equal>::value);
+            TestDriver<int, int, Hash, Equal, Alloc>::testCase8_noexcept();
+        }
+        {
+            typedef bsltf::StdStatefulAllocator<bsl::pair<const int, int>,
+                                                false,
+                                                false,
+                                                false,
+                                                false,
+                                                true> Alloc;
+            typedef bsl::hash<int>     Hash;
+            typedef bsl::equal_to<int> Equal;
+
+            ASSERT( bsl::allocator_traits<Alloc>::is_always_equal::value);
+            ASSERT( bsl::is_nothrow_swappable<Hash>::value);
+            ASSERT( bsl::is_nothrow_swappable<Equal>::value);
+            TestDriver<int, int, Hash, Equal, Alloc>::testCase8_noexcept();
+        }
+        {
+            typedef bsltf::StdStatefulAllocator<bsl::pair<const int, int>,
+                                                false,
+                                                false,
+                                                false,
+                                                false,
+                                                true> Alloc;
+            typedef u::ThrowingSwapHash<int> Hash;
+            typedef bsl::equal_to<int>       Equal;
+
+            ASSERT( bsl::allocator_traits<Alloc>::is_always_equal::value);
+            ASSERT(!bsl::is_nothrow_swappable<Hash>::value);
+            ASSERT( bsl::is_nothrow_swappable<Equal>::value);
+            TestDriver<int, int, Hash, Equal, Alloc>::testCase8_noexcept();
+        }
+        {
+            typedef bsltf::StdStatefulAllocator<bsl::pair<const int, int>,
+                                                false,
+                                                false,
+                                                false,
+                                                false,
+                                                true> Alloc;
+            typedef bsl::hash<int>            Hash;
+            typedef u::ThrowingSwapEqual<int> Equal;
+
+            ASSERT( bsl::allocator_traits<Alloc>::is_always_equal::value);
+            ASSERT( bsl::is_nothrow_swappable<Hash>::value);
+            ASSERT(!bsl::is_nothrow_swappable<Equal>::value);
+            TestDriver<int, int, Hash, Equal, Alloc>::testCase8_noexcept();
+        }
+#endif
+        {
+            typedef bsltf::StdStatefulAllocator<bsl::pair<const int, int>,
+                                                false,
+                                                false,
+                                                false,
+                                                false> Alloc;
+            typedef u::ThrowingSwapHash<int>  Hash;
+            typedef u::ThrowingSwapEqual<int> Equal;
+
+            ASSERT(!bsl::allocator_traits<Alloc>::is_always_equal::value);
+            ASSERT(!bsl::is_nothrow_swappable<Hash>::value);
+            ASSERT(!bsl::is_nothrow_swappable<Equal>::value);
+            TestDriver<int, int, Hash, Equal, Alloc>::testCase8_noexcept();
+        }
+        {
+            typedef bsltf::StdStatefulAllocator<bsl::pair<const int, int>,
+                                                false,
+                                                false,
+                                                false,
+                                                false,
+                                                true> Alloc;
+            typedef u::ThrowingSwapHash<int>  Hash;
+            typedef u::ThrowingSwapEqual<int> Equal;
+
+            ASSERT( bsl::allocator_traits<Alloc>::is_always_equal::value);
+            ASSERT(!bsl::is_nothrow_swappable<Hash>::value);
+            ASSERT(!bsl::is_nothrow_swappable<Equal>::value);
+            TestDriver<int, int, Hash, Equal, Alloc>::testCase8_noexcept();
+        }
+#endif
       } break;
       case 7: {
         // --------------------------------------------------------------------

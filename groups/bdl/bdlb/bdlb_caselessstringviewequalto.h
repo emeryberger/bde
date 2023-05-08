@@ -26,7 +26,7 @@ BSLS_IDENT("$Id: $")
 ///-----
 // This section illustrates intended use of this component.
 //
-// Example 1: Basic Use of 'bdlb::CaselessStringViewEqualTo':
+///Example 1: Basic Use of 'bdlb::CaselessStringViewEqualTo'
 ///- - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 // Suppose we have some strings that compare equal, some that don't, and some
 // of which are equal except for the cases of some of the letters.
@@ -38,7 +38,8 @@ BSLS_IDENT("$Id: $")
 // Now, we create an object of type 'bdlb::CaselessStringViewEqualTo' to do the
 // comparisons:
 //..
-//  const bdlb::CaselessStringViewEqualTo equals;
+//  bdlb::CaselessStringViewEqualTo        eq;
+//  const bdlb::CaselessStringViewEqualTo& equals = eq;
 //..
 // Finally, we observe that 'a' matches 'b', but neither matches 'c':
 //..
@@ -77,6 +78,8 @@ struct CaselessStringViewEqualTo {
     typedef bsl::string_view first_argument_type;
     typedef bsl::string_view second_argument_type;
     typedef bool             result_type;
+    typedef void             is_transparent;
+        // Type alias indicating this is a transparent hash functor.
 
     // TRAITS
     BSLMF_NESTED_TRAIT_DECLARATION(CaselessStringViewEqualTo,

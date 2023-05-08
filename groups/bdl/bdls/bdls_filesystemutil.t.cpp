@@ -55,6 +55,8 @@
 #include <bsl_string.h>
 #include <bsl_string_view.h>
 
+#include <ctime>
+
 #ifndef BSLS_PLATFORM_OS_WINDOWS
     #include <fcntl.h>
     #include <sys/socket.h>
@@ -107,6 +109,8 @@ using namespace bsl;
 // [25] int visitTree(const char * , const string&, const Func&, bool);
 // [25] int visitPaths(const char * , const Func&);
 // [26] int getLastModificationTime(bdlt::Datetime *, FileDescriptor);
+// [27] bool isSymbolicLink(STRING_TYPE);
+// [27] int getSymbolicLinkTarget(STRING_TYPE *, STRING_TYPE);
 //-----------------------------------------------------------------------------
 // [ 1] BREATHING TEST
 // [11] CONCERN: findMatchingPaths incorrect on ibm 64-bit
@@ -119,8 +123,8 @@ using namespace bsl;
 // [23] CONCERN: directory permissions
 // [24] CONCERN: error codes for 'createDirectories'
 // [24] CONCERN: error codes for 'createPrivateDirectory'
-// [27] USAGE EXAMPLE 1
-// [28] USAGE EXAMPLE 2
+// [28] USAGE EXAMPLE 1
+// [29] USAGE EXAMPLE 2
 
 // ============================================================================
 //                     STANDARD BDE ASSERT TEST FUNCTION
@@ -366,6 +370,30 @@ void makeArbitraryFile(const char *path)
     ASSERT(0 == Obj::close(fd));
 }
 
+static bool createSymlink(const bsl::string& oldPath,
+                          const bsl::string& newPath)
+    // Create a symbolic link, referring to the specified 'oldPath', at the
+    // specified 'newPath' path.
+{
+#ifdef BSLS_PLATFORM_OS_WINDOWS
+    bsl::wstring wideOld, wideNew;
+    int rc = bdlde::CharConvertUtf16::utf8ToUtf16(&wideOld, oldPath);
+    ASSERT(rc == 0);
+    rc = bdlde::CharConvertUtf16::utf8ToUtf16(&wideNew, newPath);
+    ASSERT(rc == 0);
+
+    DWORD dwFlags = SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE;
+        // Developer mode must be enabled for this flag to take effect
+    if (Obj::isDirectory(oldPath)) {
+        dwFlags |= SYMBOLIC_LINK_FLAG_DIRECTORY;
+    }
+    // Available since Windows Vista / Server 2008
+    return CreateSymbolicLinkW(wideNew.c_str(), wideOld.c_str(), dwFlags);
+#else // POSIX
+    return ::symlink(oldPath.c_str(), newPath.c_str()) == 0;
+#endif
+}
+
 struct VisitTreeTestVisitor {
     // DATA
     bsl::vector<bsl::string> *d_vec;
@@ -578,6 +606,23 @@ struct TestUtil {
         // exist by the time this or any other process attempts to create a
         // file at the 'path'.
 
+    BSLA_MAYBE_UNUSED
+    static bool isBigtimeSupportAvailable(FileDescriptor fd);
+        // Determine whether the filsystem used for the specified 'fd' has
+        // support for timestamps beyond that representable by a 32-bit
+        // timestamp field (ie beyond the year 2038).  Return 'true' if
+        // timestamps beyond 32 bits are supported and 'false' otherwise.  If
+        // an error occurs, 'true' is returned.  This is a destructive test in
+        // that the modification time of the file referred to by 'fd' may be
+        // updated by this function.  Note that unix filesystems typically used
+        // to store timestamps in a 32-bit integer representing seconds since
+        // 1970, resulting in an upper limit in the year 2038.  Various
+        // approaches have been adopted to extend this limit, such as "bigtime"
+        // (also referred to elsewhere as "big timestamps") on XFS which
+        // extends the limit to 2486: https://lwn.net/Articles/829314/
+        // and ext4 which extends the limit to 2446:
+        // https://www.kernel.org/doc/html/v5.7/filesystems/ext4/dynamic.html#inode-timestamps
+
     static bool isValidModificationTime(const bdlt::Datetime& utcTime);
         // Return 'true' if the specified 'utcTime' is neither greater than
         // 'getMaxFileTime()' nor less than 'getMinFileTime()', and return
@@ -693,6 +738,22 @@ struct TestUtil_UnixImpUtil {
         // unique, nor is it guaranteed that a file at the 'path' will not
         // exist by the time this or any other process attempts to create a
         // file at the 'path'.
+
+    static bool isBigtimeSupportAvailable(FileDescriptor fd);
+        // Determine whether the filsystem used for the specified 'fd' has
+        // support for timestamps beyond that representable by a 32-bit
+        // timestamp field (ie beyond the year 2038).  Return 'true' if
+        // timestamps beyond 32 bits are supported and 'false' otherwise.  If
+        // an error occurs, 'true' is returned.  This is a destructive test in
+        // that the modification time of the file referred to by 'fd' may be
+        // updated by this function.  Note that unix filesystems typically used
+        // to store timestamps in a 32-bit integer representing seconds since
+        // 1970, resulting in an upper limit in the year 2038.  Various
+        // approaches have been adopted to extend this limit, such as "bigtime"
+        // (also referred to elsewhere as "big timestamps") on XFS which
+        // extends the limit to 2486: https://lwn.net/Articles/829314/
+        // and ext4 which extends the limit to 2446:
+        // https://www.kernel.org/doc/html/v5.7/filesystems/ext4/dynamic.html#inode-timestamps
 
     static int modifyTemporaryFile(FileDescriptor fd);
         // Write and flush sample data to the specified 'fd'.  Return 0 on
@@ -810,6 +871,22 @@ struct TestUtil_WindowsImpUtil {
         // unique, nor is it guaranteed that a file at the 'path' will not
         // exist by the time this or any other process attempts to create a
         // file at the 'path'.
+
+    static bool isBigtimeSupportAvailable(FileDescriptor fd);
+        // Determine whether the filsystem used for the specified 'fd' has
+        // support for timestamps beyond that representable by a 32-bit
+        // timestamp field (ie beyond the year 2038).  Return 'true' if
+        // timestamps beyond 32 bits are supported and 'false' otherwise.  If
+        // an error occurs, 'true' is returned.  This is a destructive test in
+        // that the modification time of the file referred to by 'fd' may be
+        // updated by this function.  Note that unix filesystems typically used
+        // to store timestamps in a 32-bit integer representing seconds since
+        // 1970, resulting in an upper limit in the year 2038.  Various
+        // approaches have been adopted to extend this limit, such as "bigtime"
+        // (also referred to elsewhere as "big timestamps") on XFS which
+        // extends the limit to 2486: https://lwn.net/Articles/829314/
+        // and ext4 which extends the limit to 2446:
+        // https://www.kernel.org/doc/html/v5.7/filesystems/ext4/dynamic.html#inode-timestamps
 
     static int modifyTemporaryFile(FileDescriptor fd);
         // Write and flush sample data to the specified 'fd'.  Return 0 on
@@ -987,6 +1064,12 @@ int TestUtil::getTemporaryFilePath(bsl::string *path)
     return TestUtil_UnixImpUtil::getTemporaryFilePath(path);
 }
 
+bool TestUtil::isBigtimeSupportAvailable(
+                                           TestUtil::FileDescriptor fd)
+{
+    return TestUtil_UnixImpUtil::isBigtimeSupportAvailable(fd);
+}
+
 int TestUtil::modifyTemporaryFile(TestUtil::FileDescriptor fd)
 {
     return TestUtil_UnixImpUtil::modifyTemporaryFile(fd);
@@ -1065,6 +1148,12 @@ bdlt::Datetime TestUtil::getMinFileTime()
 int TestUtil::getTemporaryFilePath(bsl::string *path)
 {
     return TestUtil_UnixImpUtil::getTemporaryFilePath(path);
+}
+
+bool TestUtil::isBigtimeSupportAvailable(
+                                           TestUtil::FileDescriptor fd)
+{
+    return TestUtil_UnixImpUtil::isBigtimeSupportAvailable(fd);
 }
 
 int TestUtil::modifyTemporaryFile(TestUtil::FileDescriptor fd)
@@ -1200,6 +1289,12 @@ bdlt::Datetime TestUtil::getMaxFileTime()
 int TestUtil::getTemporaryFilePath(bsl::string *path)
 {
     return TestUtil_WindowsImpUtil::getTemporaryFilePath(path);
+}
+
+bool TestUtil::isBigtimeSupportAvailable(
+                                           TestUtil::FileDescriptor fd)
+{
+    return TestUtil_WindowsImpUtil::isBigtimeSupportAvailable(fd);
 }
 
 int TestUtil::modifyTemporaryFile(TestUtil::FileDescriptor fd)
@@ -1437,6 +1532,62 @@ int TestUtil_UnixImpUtil::getTemporaryFilePath(bsl::string *path)
     return 0;
 }
 
+bool TestUtil_UnixImpUtil::isBigtimeSupportAvailable(
+                               TestUtil_UnixImpUtil::FileDescriptor fd)
+{
+    // 'tm32' and 'smallModTime' will hold the maximum possible date and time
+    // that can be stored in a 32-bit timestamp.
+    bsl::tm tm32 = bsl::tm();     // zero initialise
+    tm32.tm_year  = 2038 - 1900;  // 2038
+    tm32.tm_mon   = 1 - 1;        // January
+    tm32.tm_mday  = 19;           // 19th
+    tm32.tm_hour  = 3;            // 03:00
+    tm32.tm_min   = 14;           // 00:14
+    tm32.tm_sec   = 7;            // 03:14:07
+    tm32.tm_isdst = 0;            // Not daylight saving
+
+    bsl::time_t smallModTime = bsl::mktime(&tm32);
+
+    // 'tmw' and 'writeModTime' represent a date and time that is too large to
+    // store in a 32-bit filesystem timestamp, but can be stored if "big
+    // timestamp" support is available.
+    bsl::tm tmw = bsl::tm();     // zero initialise
+    tmw.tm_year  = 2200 - 1900;  // 2020
+    tmw.tm_mon   = 1 - 1;        // January
+    tmw.tm_mday  = 1;            // 1st
+    tmw.tm_hour  = 0;            // 00:00
+    tmw.tm_min   = 0;            // 00:00
+    tmw.tm_isdst = 0;            // Not daylight saving
+
+    bsl::time_t writeModTime = bsl::mktime(&tmw);
+
+    // Update the file modification time to 'writeModTime'.
+    struct timespec times[2] = {};
+
+    struct timespec& lastAccessTime = times[0];
+    lastAccessTime.tv_sec           = 0;
+    lastAccessTime.tv_nsec          = UTIME_OMIT;
+
+    struct timespec& lastModificationTime = times[1];
+    lastModificationTime.tv_sec           = writeModTime;
+    lastModificationTime.tv_nsec          = 0L;
+
+    int rc = ::futimens(fd, times);
+    if (0 != rc)
+        return true;                                                  // RETURN
+
+    // Read back the file modification time.
+    struct ::stat statResult;
+
+    rc = fstat(fd, &statResult);
+    if (0 != rc)
+        return true;                                                  // RETURN
+
+    bsl::time_t readModTime = statResult.st_mtime;
+
+    return (readModTime != smallModTime);
+}
+
 int TestUtil_UnixImpUtil::modifyTemporaryFile(
                                        TestUtil_UnixImpUtil::FileDescriptor fd)
 {
@@ -1578,6 +1729,14 @@ int TestUtil_WindowsImpUtil::getTemporaryFilePath(bsl::string *path)
 
     *path = result;
     return 0;
+}
+
+bool TestUtil_WindowsImpUtil::isBigtimeSupportAvailable(
+                            TestUtil_WindowsImpUtil::FileDescriptor fd)
+{
+    (void) fd;
+    // We assume that windows supports timestamps beyond 2038.
+    return true;
 }
 
 int TestUtil_WindowsImpUtil::modifyTemporaryFile(
@@ -2919,7 +3078,7 @@ int main(int argc, char *argv[])
     ASSERT(0 == Obj::setWorkingDirectory(tmpWorkingDir));
 
     switch(test) { case 0:
-      case 28: {
+      case 29: {
         // --------------------------------------------------------------------
         // TESTING USAGE EXAMPLE 2
         //
@@ -3001,7 +3160,7 @@ int main(int argc, char *argv[])
         ASSERT(0 == bdls::PathUtil::popLeaf(&logPath));
         ASSERT(0 == Obj::remove(logPath.c_str(), true));
       } break;
-      case 27: {
+      case 28: {
         // --------------------------------------------------------------------
         // TESTING USAGE EXAMPLE 1
         //
@@ -3116,6 +3275,83 @@ int main(int argc, char *argv[])
         ASSERT(0 == bdls::PathUtil::popLeaf(&logPath));
         ASSERT(0 == bdls::PathUtil::popLeaf(&logPath));
         ASSERT(0 == Obj::remove(logPath.c_str(), true));
+      } break;
+      case 27: {
+        // --------------------------------------------------------------------
+        // TESTING SYMLINKS
+        //
+        // Concerns:
+        //: 1 'isSymbolicLink' returns 'true' for file and directory symlinks
+        //:   and 'false' for other FS objects.
+        //:
+        //: 2 'getSymbolicLinkTarget' correctly returns the symlink target.
+        //:
+        //: 3 Windows directory junctions are treated as directory symlinks.
+        //
+        // Plan:
+        //: 1 Create a file and a directory.
+        //:
+        //: 2 Create a symlink for the file and for the directory.
+        //:
+        //: 3 Verify that 'isSymbolicLink' returns 'true' for the both symlinks
+        //:   and 'false' for the file and the directory. (C1)
+        //:
+        //: 4 Verify that 'getSymbolicLinkTarget' returns the directory name
+        //:   for the directory symlink and the file name for the file symlink.
+        //:   (C2)
+        //:
+        //: 6 If running on Windows, create a directory junction for the
+        //:   directory and verify the functions work correctly with it. (C3)
+        //
+        // TESTING
+        //   bool isSymbolicLink(STRING_TYPE);
+        //   int getSymbolicLinkTarget(STRING_TYPE *, STRING_TYPE);
+        // --------------------------------------------------------------------
+
+        if (verbose) cout << "TESTING SYMLINKS\n"
+                             "================\n";
+
+        const bsl::string dir("dir");
+        const bsl::string file("file");
+        const bsl::string dir_symlink("dir_symlink");
+        const bsl::string file_symlink("file_symlink");
+        bsl::string st;
+
+        ASSERT(Obj::createDirectories(dir, true) == 0);
+        ASSERT(Obj::isDirectory(dir));
+
+        localTouch(file);
+        ASSERT(Obj::isRegularFile(file));
+
+        ASSERT(createSymlink(dir, dir_symlink));
+        ASSERT( Obj::isSymbolicLink(dir_symlink));
+        ASSERT(!Obj::isSymbolicLink(dir));
+        ASSERT(Obj::getSymbolicLinkTarget(&st, dir_symlink) == 0);
+        ASSERT(st == dir);
+        ASSERT(Obj::getSymbolicLinkTarget(&st, dir        ) != 0);
+
+        ASSERT(createSymlink(file, file_symlink));
+        ASSERT( Obj::isSymbolicLink(file_symlink));
+        ASSERT(!Obj::isSymbolicLink(file));
+        ASSERT(Obj::getSymbolicLinkTarget(&st, file_symlink) == 0);
+        ASSERT(st == file);
+        ASSERT(Obj::getSymbolicLinkTarget(&st, file        ) != 0);
+
+#ifdef BSLS_PLATFORM_OS_WINDOWS
+        // TEST directory junctions
+        const bsl::string dir_junction("dir_junction");
+
+        bsl::string cmd("mklink /J ");
+        cmd += dir_junction;
+        cmd += ' ';
+        cmd += dir;
+        ASSERT(system(cmd.c_str()) == 0);
+
+        ASSERT(Obj::isSymbolicLink(dir_junction));
+        st.clear();
+        ASSERT(Obj::getSymbolicLinkTarget(&st, dir_junction) == 0);
+        ASSERT(st == dir);
+#endif
       } break;
       case 26: {
         // --------------------------------------------------------------------
@@ -3433,6 +3669,8 @@ int main(int argc, char *argv[])
             {    L_, DT(2020,  1,  1,  1, 59, 59, 999, 999) },
             {    L_, DT(2020, 12, 31, 23, 59, 59, 999, 999) },
 
+            {    L_, DT(2038,  1, 19,  3, 14,  7,   0,   0) },
+
             {    L_, DT(2200,  1,  1,  0,  0,  0,   0,   0) },
             {    L_, DT(2200,  1,  1,  0,  0,  0,   0,   1) },
             {    L_, DT(2200,  1,  1,  0,  0,  0,   1,   0) },
@@ -3445,11 +3683,28 @@ int main(int argc, char *argv[])
             {    L_, DT(2200, 12, 31, 23, 59, 59, 999, 999) },
         };
 
+        bool haveBigtimeSupport = true;
+        {
+            const Obj::FileDescriptor fd = u::TestUtil::createEphemeralFile();
+            ASSERT(Obj::k_INVALID_FD != fd);
+            const u::FileDescriptorCloseGuard closeGuard(fd);
+            haveBigtimeSupport =
+                               u::TestUtil::isBigtimeSupportAvailable(fd);
+        }
+
+        const DT min32BitUnixTimeAsDatetime(1901, 12, 13, 20, 45, 52);
+        const DT max32BitUnixTimeAsDatetime(2038, 1, 19, 3, 14, 7);
+
         const int NUM_DATA = sizeof DATA / sizeof *DATA;
 
         for (int i = 0; i != NUM_DATA; ++i) {
             const int LINE     = DATA[i].d_line;
             DT        MOD_TIME = DATA[i].d_modTime;
+
+            if (!haveBigtimeSupport &&
+                 MOD_TIME > max32BitUnixTimeAsDatetime) {
+                continue;
+            }
 
             int setModTimeStatus = -1;
             int getModTimeStatus = -1;
@@ -3463,8 +3718,6 @@ int main(int argc, char *argv[])
                 // number of seconds since the Unix epoch, and for no other
                 // reason.
 
-                const DT min32BitUnixTimeAsDatetime(1901, 12, 13, 20, 45, 52);
-                const DT max32BitUnixTimeAsDatetime(2038,  1, 19,  3, 14,  7);
                 LOOP_ASSERT_EQ(LINE,
                                u::TestUtil::getMinFileTime(),
                                min32BitUnixTimeAsDatetime);

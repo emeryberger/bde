@@ -12,14 +12,17 @@
 
 #include <bslma_default.h>
 #include <bslma_defaultallocatorguard.h>
+#include <bslma_managedptr.h>
 #include <bslma_testallocator.h>
 #include <bslma_testallocatormonitor.h>
 
+#include <bslmf_assert.h>
 #include <bslmf_issame.h>
 
 #include <bsls_buildtarget.h>
 #include <bsls_bsltestutil.h>
 #include <bsls_nameof.h>
+#include <bsls_objectbuffer.h>
 #include <bsls_types.h> // 'bsls::Types::Int64'
 
 // A list of disabled tests :
@@ -69,6 +72,7 @@ using namespace bsl;
 // TYPEDEFS
 // [15] typedef TYPE ValueType;
 // [15] typename bsl::allocator<char> allocator_type;
+// [26] bsl::optional<bslma::ManagedPtr<void>>
 //
 // TRAITS
 // [15] bsl::is_trivially_copyable
@@ -191,6 +195,10 @@ using namespace bsl;
 // [ 6] bool operator<=(const optional<LHS>&, const std::optional<RHS>&);
 // [ 6] bool operator>=(const optional<LHS>&, const std::optional<RHS>&);
 // [ 6] bool operator> (const optional<LHS>&, const std::optional<RHS>&);
+// [ 6] auto operator<=>(const optional<LHS>&, const optional<RHS>&);
+// [ 6] auto operator<=>(const optional<LHS>&, const RHS&);
+// [ 6] auto operator<=>(const optional<LHS>&, nullopt_t);
+// [ 6] auto operator<=>(const optional<LHS>&, const std::optional<RHS>&);
 // [17] optional make_optional(alloc_arg, const alloc&, TYPE&&);
 // [17] optional make_optional(alloc_arg, const alloc&, ARGS&&...);
 // [17] optional make_optional(alloc_arg, const alloc&, init_list, ARGS&&...);
@@ -203,6 +211,10 @@ using namespace bsl;
 // [14] DRQS 169300521
 // [19] DRQS 165776192
 // [21] CLASS TEMPLATE DEDUCTION GUIDES
+// [23] TESTING DERIVED -- 'TYPE' ALLOCATES
+// [24] TESTING DERIVED -- 'TYPE' DOES NOT ALLOCATE
+// [25] IMPLICIT/EXPLICIT C'TORS TEST
+// [27] CONCEPTS
 
 // Further, there are a number of behaviors that explicitly should not compile
 // by accident that we will provide tests for.  These tests should fail to
@@ -291,6 +303,9 @@ using namespace bsl;
 
 typedef bslmf::MovableRefUtil MoveUtil;
 
+typedef bsltf::TemplateTestFacility TTF;
+typedef bsltf::MoveState            MoveState;
+
 namespace {
     enum { k_MOVED_FROM_VAL = 0x01d };
     enum { k_DESTROYED = 0x05c };
@@ -300,6 +315,22 @@ namespace {
 //=============================================================================
 //                  CLASSES FOR TESTING USAGE EXAMPLES
 //-----------------------------------------------------------------------------
+
+#define ASSERT_IS_MOVED_FROM(val)                                             \
+    ASSERT(TTF::getMovedFromState(val) == MoveState::e_MOVED ||               \
+           TTF::getMovedFromState(val) == MoveState::e_UNKNOWN);
+
+#define ASSERT_IS_MOVED_INTO(val)                                             \
+    ASSERT(TTF::getMovedIntoState(val) == MoveState::e_MOVED ||               \
+           TTF::getMovedIntoState(val) == MoveState::e_UNKNOWN);
+
+#define ASSERT_IS_NOT_MOVED_FROM(val)                                         \
+    ASSERT(TTF::getMovedFromState(val) == MoveState::e_NOT_MOVED ||           \
+           TTF::getMovedFromState(val) == MoveState::e_UNKNOWN);
+
+#define ASSERT_IS_NOT_MOVED_INTO(val)                                         \
+    ASSERT(TTF::getMovedIntoState(val) == MoveState::e_NOT_MOVED ||           \
+           TTF::getMovedIntoState(val) == MoveState::e_UNKNOWN);
 
 #define BSLSTL_OPTIONAL_TEST_TYPES_INSTANCE_COUNTING                          \
     MyClass1, MyClass1a, MyClass2, MyClass2a
@@ -762,14 +793,26 @@ bool operator==(const MyClass2& lhs, const MyClass2& rhs)
 {
     return (lhs.value() == rhs.value());
 }
-
-bool operator==(const int& lhs, const MyClass2& rhs)
-{
-    return (lhs == rhs.value());
-}
 bool operator==(const MyClass2& lhs, const int& rhs)
 {
     return (lhs.value() == rhs);
+}
+
+#ifdef BSLS_COMPILERFEATURES_SUPPORT_THREE_WAY_COMPARISON
+
+auto operator<=>(const MyClass2& lhs, const MyClass2& rhs)
+{
+    return lhs.value() <=> rhs.value();
+}
+auto operator<=>(const MyClass2& lhs, const int& rhs)
+{
+    return lhs.value() <=> rhs;
+}
+
+#else
+bool operator==(const int& lhs, const MyClass2& rhs)
+{
+    return (lhs == rhs.value());
 }
 bool operator!=(const MyClass2& lhs, const MyClass2& rhs)
 {
@@ -836,6 +879,7 @@ bool operator>=(const MyClass2& lhs, const int& rhs)
 {
     return (lhs.value() >= rhs);
 }
+#endif  // BSLS_COMPILERFEATURES_SUPPORT_THREE_WAY_COMPARISON
 
 
                                  // =========
@@ -5165,6 +5209,67 @@ void swap(SwappableAA& a, SwappableAA& b)
     bslalg::SwapUtil::swap(&a.d_def.d_value, &b.d_def.d_value);
 }
 
+                              // ============================
+                              // class ThrowMoveConstructible
+                              // ============================
+
+template <bool SWAP_NOEXCEPT>
+struct ThrowMoveConstructible {
+    // Type with throwing move constructor.
+
+    // CREATORS
+    ThrowMoveConstructible()
+        // Create a 'ThrowMoveConstructible' object.
+    {
+    }
+    ThrowMoveConstructible(bslmf::MovableRef<ThrowMoveConstructible> )
+                                     BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(false)
+        // Create a 'ThrowMoveConstructible' object.
+    {
+    }
+
+    // MANIPULATORS
+    void swap(ThrowMoveConstructible& other)
+                             BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(SWAP_NOEXCEPT)
+        // Exchange the value of this object with that of the specified 'other'
+        // object.
+    {
+        (void) other;
+    }
+    // FREE FUNCTIONS
+    friend void swap(ThrowMoveConstructible& a,
+                     ThrowMoveConstructible& b)
+                             BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(SWAP_NOEXCEPT)
+        // Exchange the values of the specified 'a' and 'b' objects.
+    {
+        (void) a;
+        (void) b;
+    }
+};
+
+                                // ------------
+                                // Test Case 26
+                                // ------------
+
+#if defined(BSLS_LIBRARYFEATURES_HAS_CPP17_BASELINE_LIBRARY) &&               \
+   !(defined(BSLS_PLATFORM_CMP_CLANG) &&                                      \
+     defined(BSLS_LIBRARYFEATURES_STDCPP_GNU))               &&               \
+   !(defined(BSLS_PLATFORM_CMP_CLANG) &&                                      \
+     defined(BSLS_LIBRARYFEATURES_STDCPP_LLVM))
+// Ensure that we can do 'bsl::optional<bslma::ManagedPtr<void> > on C++17.  As
+// per DRQS 168171178.  Note that there are differences in implementation
+// between pre-C++17 and C++17.
+
+// This is a compile-only test, and only test on C++17.
+
+template class bsl::optional<bslma::ManagedPtr<void>>;
+template class std::optional<bslma::ManagedPtr<void>>;
+#endif
+
+                                // ------------
+                                // Test Case 22
+                                // ------------
+
 namespace BloombergLP {
 namespace bslh {
 
@@ -5813,6 +5918,190 @@ bool hasSameAllocator(const TYPE& obj1, const TYPE& obj2)
     return Test_Util<TYPE>::hasSameAllocator(obj1, obj2);
 }
 
+                                // ------------
+                                // Test Case 25
+                                // ------------
+
+namespace TEST_CASE_25 {
+
+struct Src {};
+
+struct ImplicitDst {
+    // Non-allocating class implicitly constructible and move-constructible
+    // from 'Src'.
+
+    ImplicitDst(const Src&) {}
+    ImplicitDst(bslmf::MovableRef<Src>) {}
+};
+
+struct ImplicitDstAlloc {
+    // Allocating class implicitly constructible and move-constructible from
+    // 'Src'.
+
+    BSLMF_NESTED_TRAIT_DECLARATION(ImplicitDstAlloc,
+                                   bslma::UsesBslmaAllocator);
+
+    ImplicitDstAlloc(const Src&) {}
+    ImplicitDstAlloc(bslmf::MovableRef<Src>) {}
+};
+
+struct ExplicitDst {
+    // Non-allocating class explicitly constructible and move-constructible
+    // from 'Src'.
+
+    explicit ExplicitDst(const Src&) {}
+    explicit ExplicitDst(bslmf::MovableRef<Src>) {}
+};
+
+struct ExplicitDstAlloc {
+    // Allocating class explicitly constructible and move-constructible from
+    // 'Src'.
+
+    BSLMF_NESTED_TRAIT_DECLARATION(ExplicitDstAlloc,
+                                   bslma::UsesBslmaAllocator);
+
+    explicit ExplicitDstAlloc(const Src&) {}
+    explicit ExplicitDstAlloc(bslmf::MovableRef<Src>) {}
+};
+
+void testCase25()
+{
+    ASSERT(( bsl::is_convertible<Src, ImplicitDst>::value));
+    ASSERT(( bsl::is_convertible<bslmf::MovableRef<Src>, ImplicitDst>::value));
+
+    ASSERT(( bsl::is_convertible<Src, ImplicitDstAlloc>::value));
+    ASSERT(( bsl::is_convertible<bslmf::MovableRef<Src>,
+                                 ImplicitDstAlloc>::value));
+
+    ASSERT((!bsl::is_convertible<Src, ExplicitDst>::value));
+    ASSERT((!bsl::is_convertible<bslmf::MovableRef<Src>, ExplicitDst>::value));
+
+    ASSERT((!bsl::is_convertible<Src, ExplicitDstAlloc>::value));
+    ASSERT((!bsl::is_convertible<bslmf::MovableRef<Src>,
+                                 ExplicitDstAlloc>::value));
+
+    using bsl::optional;
+
+    ASSERT(( bsl::is_convertible<Src, optional<Src> >::value));
+    ASSERT(( bsl::is_convertible<bslmf::MovableRef<Src>,
+                                 optional<Src> >::value));
+
+    ASSERT(( bsl::is_convertible<Src, optional<ImplicitDst> >::value));
+    ASSERT(( bsl::is_convertible<bslmf::MovableRef<Src>,
+                                 optional<ImplicitDst> >::value));
+
+    ASSERT(( bsl::is_convertible<Src, optional<ImplicitDstAlloc> >::value));
+    ASSERT(( bsl::is_convertible<bslmf::MovableRef<Src>,
+                                 optional<ImplicitDstAlloc> >::value));
+
+    ASSERT((!bsl::is_convertible<Src, optional<ExplicitDst> >::value));
+    ASSERT((!bsl::is_convertible<bslmf::MovableRef<Src>,
+                                 optional<ExplicitDst> >::value));
+
+    ASSERT((!bsl::is_convertible<Src, optional<ExplicitDstAlloc> >::value));
+    ASSERT((!bsl::is_convertible<bslmf::MovableRef<Src>,
+                                 optional<ExplicitDstAlloc> >::value));
+
+    ASSERT(( bsl::is_convertible<optional<Src>,
+                                 optional<ImplicitDst> >::value));
+    ASSERT(( bsl::is_convertible<bslmf::MovableRef<optional<Src> >,
+                                 optional<ImplicitDst> >::value));
+
+    ASSERT(( bsl::is_convertible<optional<Src>,
+                                 optional<ImplicitDstAlloc> >::value));
+    ASSERT(( bsl::is_convertible<bslmf::MovableRef<optional<Src> >,
+                                 optional<ImplicitDstAlloc> >::value));
+
+    ASSERT((!bsl::is_convertible<optional<Src>,
+                                 optional<ExplicitDst> >::value));
+    ASSERT((!bsl::is_convertible<bslmf::MovableRef<optional<Src> >,
+                                 optional<ExplicitDst> >::value));
+
+    ASSERT((!bsl::is_convertible<optional<Src>,
+                                 optional<ExplicitDstAlloc> >::value));
+    ASSERT((!bsl::is_convertible<bslmf::MovableRef<optional<Src> >,
+                                 optional<ExplicitDstAlloc> >::value));
+
+#if 201103L <= BSLS_COMPILERFEATURES_CPLUSPLUS
+    ASSERT(( std::is_constructible<optional<Src>, Src>::value));
+    ASSERT(( std::is_constructible<optional<Src>,
+                                   bslmf::MovableRef<Src> >::value));
+
+    ASSERT(( std::is_constructible<optional<ImplicitDst>, Src>::value));
+    ASSERT(( std::is_constructible<optional<ImplicitDst>,
+                                   bslmf::MovableRef<Src> >::value));
+
+    ASSERT(( std::is_constructible<optional<ImplicitDstAlloc>, Src>::value));
+    ASSERT(( std::is_constructible<optional<ImplicitDstAlloc>,
+                                   bslmf::MovableRef<Src> >::value));
+
+    ASSERT(( std::is_constructible<optional<ExplicitDst>, Src>::value));
+    ASSERT(( std::is_constructible<optional<ExplicitDst>,
+                                   bslmf::MovableRef<Src> >::value));
+
+    ASSERT(( std::is_constructible<optional<ExplicitDstAlloc>, Src>::value));
+    ASSERT(( std::is_constructible<optional<ExplicitDstAlloc>,
+                                   bslmf::MovableRef<Src> >::value));
+
+    ASSERT(( std::is_constructible<optional<ImplicitDst>,
+                                   optional<Src> >::value));
+    ASSERT(( std::is_constructible<optional<ImplicitDst>,
+                                   bslmf::MovableRef<optional<Src> > >
+                                                                     ::value));
+
+    ASSERT(( std::is_constructible<optional<ImplicitDstAlloc>,
+                                   optional<Src> >::value));
+    ASSERT(( std::is_constructible<optional<ImplicitDstAlloc>,
+                                   bslmf::MovableRef<optional<Src> > >
+                                                                     ::value));
+
+    ASSERT(( std::is_constructible<optional<ExplicitDst>,
+                                   optional<Src> >::value));
+    ASSERT(( std::is_constructible<optional<ExplicitDst>,
+                                   bslmf::MovableRef<optional<Src> > >
+                                                                     ::value));
+
+    ASSERT(( std::is_constructible<optional<ExplicitDstAlloc>,
+                                   optional<Src> >::value));
+    ASSERT(( std::is_constructible<optional<ExplicitDstAlloc>,
+                                   bslmf::MovableRef<optional<Src> > >
+                                                                     ::value));
+#endif
+}
+
+}  // close namespace TEST_CASE_25
+
+
+
+                              // ---------------
+                              // Test Case 23-24
+                              // ---------------
+
+template <class TYPE,
+          bool  USES_BSLMA_ALLOC =
+                           BloombergLP::bslma::UsesBslmaAllocator<TYPE>::value>
+struct Derived;
+
+template <class TYPE>
+struct Derived<TYPE, true> : bsl::optional<TYPE, true> {
+    // CREATORS
+    Derived(bsl::allocator_arg_t aarg,
+            bsl::allocator<char> alloc,
+            const TYPE&          value)
+    : bsl::optional<TYPE, true>(aarg, alloc, value)
+    {
+    }
+};
+
+template <class TYPE>
+struct Derived<TYPE, false> : bsl::optional<TYPE, false> {
+    // CREATORS
+    Derived(const TYPE& value)
+    : bsl::optional<TYPE, false>(value)
+    {
+    }
+};
+
                               // ------------
                               // Test Case 22
                               // ------------
@@ -5901,6 +6190,12 @@ class TestDriver {
         // Array of test values of 'TYPE'.
 
   public:
+
+    static void testCase24();
+        // TESTING DERIVED -- 'TYPE' DOES NOT ALLOCATE
+
+    static void testCase23();
+        // TESTING DERIVED -- 'TYPE' ALLOCATES
 
     static void testCase20();
         // TESTING NOEXCEPT
@@ -6040,6 +6335,313 @@ void bslstl_optional_value_type_deduce(const bsl::optional<TYPE>&)
 template <class TYPE>
 void bslstl_optional_optional_type_deduce(const TYPE&)
 {
+}
+
+template <class TYPE>
+void TestDriver<TYPE>::testCase24()
+{
+    // ------------------------------------------------------------------------
+    // TESTING ASSIGNABILITY/CONSTRUCTIBILITY FROM DERIVED CLASS
+    //
+    // The 'class' 'Derived<TYPE>' (defined in this file above) is derived from
+    // 'bsl::optional<TYPE>'.  In this test case, we only consider 'TYPE's
+    // which don't allocate memory.
+    //
+    // Concerns:
+    //: 1 'optional' can be assigned from a const 'Derived' object.
+    //:
+    //: 2 'optional' can be constructed from a const 'Derived' object.
+    //:
+    //: 3 'optional' can be assigned from a moved 'Derived' object.
+    //:
+    //: 4 'optional' can be constructed from a moved 'Derived' object.
+    //
+    // Plan:
+    //: 1 assign to an 'optional' from a const 'Derived'.
+    //:
+    //: 2 construct an 'optional' from a const 'Derived'.
+    //:
+    //: 3 assign to an 'optional' from a moved 'Derived'.
+    //:
+    //: 4 construct an 'optional' from a moved 'Derived'.
+    //
+    // TESTING DERIVED -- 'TYPE' DOES NOT ALLOCATE
+    // ------------------------------------------------------------------------
+
+    BSLMF_ASSERT(!BloombergLP::bslma::UsesBslmaAllocator<TYPE>::value);
+
+    const TestValues     tvs;
+
+    ASSERT(tvs[0] != tvs[1]);
+
+    Obj            ov(tvs[0]);
+    Derived<TYPE>  dv(tvs[1]);    const Derived<TYPE>& DV = dv;
+
+    ASSERT(tvs[0] == *ov);
+    ASSERT(tvs[1] == *DV);
+
+    // assign from const 'Derived'
+
+    ov = DV;
+
+    ASSERT(tvs[1] == *ov);
+    ASSERT(tvs[1] == *DV);
+
+    ov = tvs[0];
+
+    // construct from const 'Derived'
+
+    Obj odv(DV);
+
+    ASSERT(*odv == tvs[1]);
+
+    // assign from moved 'Derived'
+
+    ov = MoveUtil::move(dv);
+
+    ASSERT_IS_NOT_MOVED_FROM(*ov);
+    ASSERT_IS_MOVED_INTO(*ov);
+    ASSERT_IS_MOVED_FROM(*dv);
+    ASSERT_IS_NOT_MOVED_INTO(*dv);
+
+    ASSERT(tvs[1] == *ov);
+
+    *ov = tvs[0];
+    *dv = tvs[1];
+
+    ASSERT_IS_NOT_MOVED_FROM(*ov);
+    ASSERT_IS_NOT_MOVED_INTO(*ov);
+    ASSERT_IS_NOT_MOVED_FROM(*dv);
+    ASSERT_IS_NOT_MOVED_INTO(*dv);
+
+    ASSERT(tvs[0] == *ov);
+    ASSERT(tvs[1] == *dv);
+
+    // construct from moved 'Derived'
+
+    Obj oev(MoveUtil::move(dv));
+
+    ASSERT_IS_NOT_MOVED_FROM(*oev);
+    ASSERT_IS_MOVED_INTO(*oev);
+    ASSERT_IS_MOVED_FROM(*dv);
+    ASSERT_IS_NOT_MOVED_INTO(*dv);
+
+    ASSERT(tvs[1] == *oev);
+}
+
+template <class TYPE>
+void TestDriver<TYPE>::testCase23()
+{
+    // ------------------------------------------------------------------------
+    // TESTING ASSIGNABILITY/CONSTRUCTIBILITY FROM DERIVED CLASS
+    //
+    // The 'class' 'Derived<TYPE>' (defined in this file above) is derived from
+    // 'bsl::optional<TYPE>'.  In this test case, we only consider 'TYPE's
+    // which allocate memory.
+    //
+    // Concerns:
+    //: 1 'optional' can be assigned from a const 'Derived' object.
+    //:   o allocators match
+    //:
+    //:   o allocators don't match
+    //:
+    //: 2 'optional' can be constructed from a const 'Derived' object.
+    //:   o No allocator passed
+    //:
+    //:   o non-matching allocator passed
+    //:
+    //:   o matching allocator passed
+    //:
+    //: 3 'optional' can be assigned from a moved 'Derived' object.
+    //:
+    //: 4 'optional' can be constructed from a moved 'Derived' object.
+    //:   o No allocator passed
+    //:
+    //:   o non-matching allocator passed
+    //:
+    //:   o matching allocator passed
+    //
+    // Plan:
+    //: 1 Create 3 'bsl::allocator' objects, 'aa', 'ab', and 'ad', where 'ad'
+    //:   is the default allocator.
+    //:
+    //: 2 Iterate a loop through 'c' equals 'a', 'b', and 'c', where a
+    //:   reference 'aExp' is set to allocators 'aa', 'ab', and 'ad' depending
+    //:   on the value of 'c'.  We will do our tests, both assignments and
+    //:   constructions, so that the expected allocator of the result matches
+    //:   'aExp'.
+    //:   o Create an 'optional' object 'ov' which uses 'aExp'.  'ov' will be
+    //:     used as the destination for assignments.
+    //:
+    //:   o Create a 'Derived' object 'dv' which uses 'ab', and 'DV', a const
+    //:     ref to that.
+    //;
+    //:   o Assign to 'ov' from 'DV' (C-1).
+    //:
+    //:   o Check that the value and allocator of 'ov' are as expected.
+    //:
+    //:   o Reset 'ov' to its original value.
+    //:
+    //:   o Create a 'bsls::ObjectBuffer<optional>' 'oBuf', and 'odv', an
+    //:     'optional' reference to it.
+    //:
+    //:   o Go into a switch and call placement constructors to construct 'odv'
+    //:     from DV.  If 'aExp' is 'aa' or 'ab' pass 'aExp' to the constructor,
+    //:     otherwise pass no allocator to the constructor (in which case we
+    //:     expect the result to use the default allocator 'ad', which will
+    //:     match 'aExp').  (C-2)
+    //:
+    //:   o Check that the value and allocator of 'odv' are as expected.
+    //:
+    //:   o Destroy 'odv'
+    //:
+    //:   o Assign to 'ov' from moved 'dv'.  (C-3)
+    //:
+    //:   o Check that the value and allocator of 'ov' are as expected.
+    //:
+    //:   o Reset 'ov' to its original value.
+    //:
+    //:   o Go into a switch and call placement constructors to construct 'odv'
+    //:     from moved 'dv'.  If 'aExp' is 'aa' or 'ad' pass 'aExp' to the
+    //:     constructor, otherwise pass no allocator to the constructor (in
+    //:     which case we expect the result to use 'dv's allocator 'ab', which
+    //:     will match 'aExp').  (C-4)
+    //:
+    //:   o Check that the value and allocator of 'odv' are as expected.
+    //:
+    //:   o Destroy 'odv'
+    //
+    // TESTING DERIVED -- 'TYPE' ALLOCATES
+    // ------------------------------------------------------------------------
+
+    BSLMF_ASSERT(BloombergLP::bslma::UsesBslmaAllocator<TYPE>::value);
+
+    bslma::TestAllocator         da("default", veryVeryVeryVerbose);
+    bslma::DefaultAllocatorGuard dag(&da);
+
+    bslma::TestAllocator ta, tb;
+    bsl::allocator<char> aa(&ta), ab(&tb), ad(&da);
+
+    const TestValues     tvs;
+
+    ASSERT(tvs[0] != tvs[1]);
+
+    for (char c = 'a'; c <= 'c'; ++c) {
+        bsl::allocator<char>& aExp = 'a' == c ? aa    // 'aExp' is always
+                                   : 'b' == c ? ab    // expected to be the
+                                   : ad;              // allocator of the
+                                                      // destinations, both
+                                                      // 'ov' and 'odv'.
+
+        Obj ov(bsl::allocator_arg, aExp, tvs[0]);
+        Derived<TYPE>        dv(bsl::allocator_arg, ab, tvs[1]);
+        const Derived<TYPE>& DV = dv;
+
+        ASSERT(tvs[0] == *ov);
+        ASSERT(tvs[1] == *DV);
+
+        ASSERT(aExp == ov.get_allocator());
+        ASSERT(ab   == DV.get_allocator());
+
+        // assign from const
+
+        ov = DV;
+
+        ASSERT_IS_NOT_MOVED_FROM(*ov);
+        ASSERT_IS_NOT_MOVED_INTO(*ov);
+        ASSERT_IS_NOT_MOVED_FROM(*DV);
+        ASSERT_IS_NOT_MOVED_INTO(*DV);
+
+        ASSERT(tvs[1] == *ov);
+        ASSERT(tvs[1] == *dv);
+
+        ASSERT(aExp == ov.get_allocator());
+        ASSERT(ab == DV.get_allocator());
+
+        ov = tvs[0];
+
+        // construct from const
+
+        bsls::ObjectBuffer<Obj> oBuf;
+        Obj& odv = oBuf.object();
+        switch (c) {
+          case 'a':
+          case 'b': {
+            new (oBuf.address()) Obj(bsl::allocator_arg, aExp, DV);
+          } break;
+          case 'c': {
+            new (oBuf.address()) Obj(DV);
+          } break;
+          default: {
+            ASSERT(0);
+          }
+        }
+
+        ASSERT(tvs[1] == *odv);
+        ASSERT(tvs[1] == *DV);
+
+        ASSERT_IS_NOT_MOVED_FROM(*odv);
+        ASSERT_IS_NOT_MOVED_INTO(*odv);
+        ASSERT_IS_NOT_MOVED_FROM(*DV);
+        ASSERT_IS_NOT_MOVED_INTO(*DV);
+
+        ASSERT(aExp == odv.get_allocator());
+
+        odv.~Obj();
+
+        // assign from moved
+
+        ov = MoveUtil::move(dv);
+
+        ASSERT_IS_NOT_MOVED_FROM(*ov);
+        ASSERT_IS_MOVED_INTO(*ov);
+        ASSERT_IS_MOVED_FROM(*dv);
+        ASSERT_IS_NOT_MOVED_INTO(*dv);
+
+        ASSERT(tvs[1] == *ov);
+
+        ASSERT(aExp == ov.get_allocator());
+        ASSERT(ab == DV.get_allocator());
+
+        *ov = tvs[0];
+        *dv = tvs[1];
+
+        ASSERT_IS_NOT_MOVED_FROM(*ov);
+        ASSERT_IS_NOT_MOVED_INTO(*ov);
+        ASSERT_IS_NOT_MOVED_FROM(*dv);
+        ASSERT_IS_NOT_MOVED_INTO(*dv);
+
+        ASSERT(tvs[0] == *ov);
+        ASSERT(tvs[1] == *dv);
+
+        // construct from moved
+
+        switch (c) {
+          case 'a':
+          case 'c': {
+            new (oBuf.address()) Obj(bsl::allocator_arg,
+                                     aExp,
+                                     MoveUtil::move(dv));
+          } break;
+          case 'b': {
+            // No allocator passed, will get allocator from 'dv', which is
+            // 'ab', which matched 'aExp' if 'c == 'b''.
+
+            new (oBuf.address()) Obj(MoveUtil::move(dv));
+          } break;
+        }
+
+        ASSERT(tvs[1] == *odv);
+
+        ASSERT_IS_NOT_MOVED_FROM(*odv);
+        ASSERT_IS_MOVED_INTO(*odv);
+        ASSERT_IS_MOVED_FROM(*dv);
+        ASSERT_IS_NOT_MOVED_INTO(*dv);
+
+        ASSERT(aExp == odv.get_allocator());
+
+        odv.~Obj();
+    }
 }
 
 template <class TYPE>
@@ -8809,14 +9411,9 @@ void TestDriver<TYPE>::testCase10c()
             TEST_ASSIGN_VAL_ENGAGED(i);
             TEST_MOVE_ASSIGN_VAL_ENGAGED(int, i);
 
-#ifdef BSLS_COMPILERFEATURES_SUPPORT_RVALUE_REFERENCES
-            // C++03 MovableRef isn't const friendly which will make this test
-            // fail
-
             const int ci = 6;
             TEST_ASSIGN_VAL_ENGAGED(ci);
             TEST_ASSIGN_VAL_ENGAGED(MoveUtil::move(ci));
-#endif
         }
         if (veryVeryVerbose)
             printf("\t\tChecking assignment to a disengaged"
@@ -9203,6 +9800,21 @@ void testCase9_imp()
     }
 }
 
+template <class TYPE>
+void testCase9_noexcept()
+    // Verify that noexcept specification of the member 'swap' function is
+    // correct.
+{
+    bsl::optional<TYPE> a;
+    bsl::optional<TYPE> b;
+
+#if BSLS_KEYWORD_NOEXCEPT_AVAILABLE
+    const bool isNoexcept = bsl::is_nothrow_move_constructible<TYPE>::value &&
+                            bsl::is_nothrow_swappable<TYPE>::value;
+    ASSERT(isNoexcept == BSLS_KEYWORD_NOEXCEPT_OPERATOR(a.swap(b)));
+#endif
+}
+
 void testCase9()
 {
 
@@ -9224,6 +9836,28 @@ void testCase9()
     testCase9_imp<bsl::optional<SwappableAA>,
                    bsl::optional<SwappableAA> >();
 
+#if BSLS_KEYWORD_NOEXCEPT_AVAILABLE
+    // Test 'noexcept'
+    ASSERT( bsl::is_nothrow_move_constructible<Swappable>::value);
+    ASSERT(!bsl::is_nothrow_swappable<Swappable>::value);
+    testCase9_noexcept<Swappable>();
+
+#ifndef BSLMF_ISNOTHROWSWAPPABLE_ALWAYS_FALSE
+    ASSERT( bsl::is_nothrow_move_constructible<int>::value);
+    ASSERT( bsl::is_nothrow_swappable<int>::value);
+    testCase9_noexcept<int>();
+
+    ASSERT(!bsl::is_nothrow_move_constructible<
+                                        ThrowMoveConstructible<true> >::value);
+    ASSERT( bsl::is_nothrow_swappable<ThrowMoveConstructible<true> >::value);
+    testCase9_noexcept<ThrowMoveConstructible<true> >();
+#endif
+
+    ASSERT(!bsl::is_nothrow_move_constructible<
+                                       ThrowMoveConstructible<false> >::value);
+    ASSERT(!bsl::is_nothrow_swappable<ThrowMoveConstructible<false> >::value);
+    testCase9_noexcept<ThrowMoveConstructible<false> >();
+#endif
 }
 
 
@@ -9424,7 +10058,11 @@ void TestDriver<TYPE>::testCase7a_imp()
     //    optional(std::optional<ANY_TYPE>&&);
     // --------------------------------------------------------------------
 
+    if (veryVerbose) printf("testCase7a_imp<%s><%s, %s, %d>\n",
+                 bsls::NameOf<TYPE>().name(), bsls::NameOf<DEST_TYPE>().name(),
+                 bsls::NameOf<SRC_TYPE>().name(), PROPAGATE_ON_MOVE);
     {
+
         bslma::TestAllocator da("default", veryVeryVeryVerbose);
         bslma::TestAllocator oa("other", veryVeryVeryVerbose);
 
@@ -9535,6 +10173,8 @@ void TestDriver<TYPE>::testCase7a_imp_constmovebug()
 template <class TYPE>
 void TestDriver<TYPE>::testCase7a()
 {
+    if (verbose) printf("testCase7a<%s>\n", bsls::NameOf<TYPE>().name());
+
     testCase7a_imp<TYPE, TYPE, true>();
     testCase7a_imp<TYPE, int, false>();
     testCase7a_imp<TYPE, const TYPE, false>();
@@ -9600,6 +10240,12 @@ void testCase6_imp_a()
 {
     OPT_TYPE1 X;
     OPT_TYPE2 Y;
+#if defined BSLS_COMPILERFEATURES_SUPPORT_THREE_WAY_COMPARISON \
+ && defined BSLS_LIBRARYFEATURES_HAS_CPP20_CONCEPTS
+    constexpr bool threeWayComparable = bsl::three_way_comparable_with<
+                                               typename OPT_TYPE1::value_type,
+                                               typename OPT_TYPE2::value_type>;
+#endif
 
     //comparing two disengaged optionals
     ASSERT(X == Y);     // If bool(x) != bool(y), false;
@@ -9610,6 +10256,18 @@ void testCase6_imp_a()
     ASSERT(X <= Y);     // If !x, true;
     ASSERT(X >= Y);     // If !y, true;
 
+#if defined BSLS_COMPILERFEATURES_SUPPORT_THREE_WAY_COMPARISON \
+ && defined BSLS_LIBRARYFEATURES_HAS_CPP20_CONCEPTS
+    if constexpr (threeWayComparable) {
+        ASSERT(  X <=> Y == 0 );
+        ASSERT(!(X <=> Y != 0));
+        ASSERT(!(X <=> Y <  0));
+        ASSERT(!(X <=> Y >  0));
+        ASSERT(  X <=> Y <= 0 );
+        ASSERT(  X <=> Y >= 0 );
+    }
+#endif
+
     //'rhs' disengaged, 'lhs' engaged
     Y.emplace(3);
     ASSERT(!(X == Y));  // If bool(x) != bool(y), false;
@@ -9619,6 +10277,18 @@ void testCase6_imp_a()
     ASSERT(!(X > Y));   // If !x, false;
     ASSERT(X <= Y);     // If !x, true;
     ASSERT(!(X >= Y));  // If !y, true; otherwise, if !x, false;
+
+#if defined BSLS_COMPILERFEATURES_SUPPORT_THREE_WAY_COMPARISON \
+ && defined BSLS_LIBRARYFEATURES_HAS_CPP20_CONCEPTS
+    if constexpr (threeWayComparable) {
+        ASSERT(!(X <=> Y == 0));
+        ASSERT(  X <=> Y != 0 );
+        ASSERT(  X <=> Y <  0 );
+        ASSERT(!(X <=> Y >  0));
+        ASSERT(  X <=> Y <= 0 );
+        ASSERT(!(X <=> Y >= 0));
+    }
+#endif
 
     //'rhs' engaged, 'lhs' disengaged
     X.emplace(5);
@@ -9631,6 +10301,18 @@ void testCase6_imp_a()
     ASSERT(!(X <= Y));  // If !x, true; otherwise, if !y, false;
     ASSERT((X >= Y));   // If !y, true; otherwise, if !x, false;
 
+#if defined BSLS_COMPILERFEATURES_SUPPORT_THREE_WAY_COMPARISON \
+ && defined BSLS_LIBRARYFEATURES_HAS_CPP20_CONCEPTS
+    if constexpr (threeWayComparable) {
+        ASSERT(!(X <=> Y == 0));
+        ASSERT(  X <=> Y != 0 );
+        ASSERT(!(X <=> Y <  0));
+        ASSERT(  X <=> Y >  0 );
+        ASSERT(!(X <=> Y <= 0));
+        ASSERT(  X <=> Y >= 0 );
+    }
+#endif
+
     //both engaged, compare the values
     X.emplace(1);
     Y.emplace(3);
@@ -9641,6 +10323,18 @@ void testCase6_imp_a()
     ASSERT(!(X > Y));   // If !x, false; otherwise, if !y, true;
     ASSERT((X <= Y));   // If !x, true; otherwise, if !y, false;
     ASSERT(!(X >= Y));  // If !y, true; otherwise, if !x, false;
+
+#if defined BSLS_COMPILERFEATURES_SUPPORT_THREE_WAY_COMPARISON \
+ && defined BSLS_LIBRARYFEATURES_HAS_CPP20_CONCEPTS
+    if constexpr (threeWayComparable) {
+        ASSERT(!(X <=> Y == 0));
+        ASSERT(  X <=> Y != 0 );
+        ASSERT(  X <=> Y <  0 );
+        ASSERT(!(X <=> Y >  0));
+        ASSERT(  X <=> Y <= 0 );
+        ASSERT(!(X <=> Y >= 0));
+    }
+#endif
 }
 
 template <class OPT_TYPE, class VAL_TYPE>
@@ -9648,6 +10342,12 @@ void testCase6_imp_b()
 {
     OPT_TYPE X;
     VAL_TYPE Y = 3;
+#if defined BSLS_COMPILERFEATURES_SUPPORT_THREE_WAY_COMPARISON \
+ && defined BSLS_LIBRARYFEATURES_HAS_CPP20_CONCEPTS
+    constexpr bool threeWayComparable = bsl::three_way_comparable_with<
+                                                 typename OPT_TYPE::value_type,
+                                                 VAL_TYPE>;
+#endif
 
     //comparison with a disengaged optional on 'rhs'
     ASSERT(!(X == Y));  // return bool(x) ? *x == v : false;
@@ -9664,6 +10364,25 @@ void testCase6_imp_b()
     ASSERT((Y > X));    // return bool(x) ? v > *x : true;
     ASSERT(!(Y <= X));  // return bool(x) ? v <= *x : false;
     ASSERT((Y >= X));   // return bool(x) ? v >= *x : true;
+
+#if defined BSLS_COMPILERFEATURES_SUPPORT_THREE_WAY_COMPARISON \
+ && defined BSLS_LIBRARYFEATURES_HAS_CPP20_CONCEPTS
+    if constexpr (threeWayComparable) {
+        ASSERT(!(X <=> Y == 0));
+        ASSERT(  X <=> Y != 0 );
+        ASSERT(  X <=> Y <  0 );
+        ASSERT(!(X <=> Y >  0));
+        ASSERT(  X <=> Y <= 0 );
+        ASSERT(!(X <=> Y >= 0));
+
+        ASSERT(!(Y <=> X == 0));
+        ASSERT(  Y <=> X != 0 );
+        ASSERT(!(Y <=> X <  0));
+        ASSERT(  Y <=> X >  0 );
+        ASSERT(!(Y <=> X <= 0));
+        ASSERT(  Y <=> X >= 0 );
+    }
+#endif
 
     //comparison with an engaged optional on 'rhs'
     X.emplace(7);
@@ -9683,6 +10402,25 @@ void testCase6_imp_b()
     ASSERT(!(Y > X));   // If !x, false;
     ASSERT((Y <= X));   // If !x, true;
     ASSERT(!(Y >= X));  // If !y, true; otherwise, if !x, false;
+
+#if defined BSLS_COMPILERFEATURES_SUPPORT_THREE_WAY_COMPARISON \
+ && defined BSLS_LIBRARYFEATURES_HAS_CPP20_CONCEPTS
+    if constexpr (threeWayComparable) {
+        ASSERT(!(X <=> Y == 0));
+        ASSERT(  X <=> Y != 0 );
+        ASSERT(!(X <=> Y <  0));
+        ASSERT(  X <=> Y >  0 );
+        ASSERT(!(X <=> Y <= 0));
+        ASSERT(  X <=> Y >= 0 );
+
+        ASSERT(!(Y <=> X == 0));
+        ASSERT(  Y <=> X != 0 );
+        ASSERT(  Y <=> X <  0 );
+        ASSERT(!(Y <=> X >  0));
+        ASSERT(  Y <=> X <= 0 );
+        ASSERT(!(Y <=> X >= 0));
+    }
+#endif
 }
 
 template <class TYPE>
@@ -9706,6 +10444,23 @@ void testCase6_imp_c()
     ASSERT((bsl::nullopt <= X));   // true
     ASSERT((bsl::nullopt >= X));   // !x
 
+#if defined BSLS_COMPILERFEATURES_SUPPORT_THREE_WAY_COMPARISON \
+ && defined BSLS_LIBRARYFEATURES_HAS_CPP20_CONCEPTS
+    ASSERT(  X <=> bsl::nullopt == 0 );
+    ASSERT(!(X <=> bsl::nullopt != 0));
+    ASSERT(!(X <=> bsl::nullopt <  0));
+    ASSERT(!(X <=> bsl::nullopt >  0));
+    ASSERT(  X <=> bsl::nullopt <= 0 );
+    ASSERT(  X <=> bsl::nullopt >= 0 );
+
+    ASSERT(  bsl::nullopt <=> X == 0);
+    ASSERT(!(bsl::nullopt <=> X != 0));
+    ASSERT(!(bsl::nullopt <=> X <  0));
+    ASSERT(!(bsl::nullopt <=> X >  0));
+    ASSERT(  bsl::nullopt <=> X <= 0);
+    ASSERT(  bsl::nullopt <=> X >= 0);
+#endif
+
     //comparison with an engaged optional on 'rhs'
     X.emplace(7);
     ASSERT(!(X == bsl::nullopt));  // !x
@@ -9722,6 +10477,23 @@ void testCase6_imp_c()
     ASSERT(!(bsl::nullopt > X));   // false
     ASSERT((bsl::nullopt <= X));   // true
     ASSERT(!(bsl::nullopt >= X));  // !x
+
+#if defined BSLS_COMPILERFEATURES_SUPPORT_THREE_WAY_COMPARISON \
+ && defined BSLS_LIBRARYFEATURES_HAS_CPP20_CONCEPTS
+    ASSERT(!(X <=> bsl::nullopt == 0));
+    ASSERT(  X <=> bsl::nullopt != 0 );
+    ASSERT(!(X <=> bsl::nullopt <  0));
+    ASSERT(  X <=> bsl::nullopt >  0 );
+    ASSERT(!(X <=> bsl::nullopt <= 0));
+    ASSERT(  X <=> bsl::nullopt >= 0 );
+
+    ASSERT(!(bsl::nullopt <=> X == 0));
+    ASSERT(  bsl::nullopt <=> X != 0 );
+    ASSERT(  bsl::nullopt <=> X <  0 );
+    ASSERT(!(bsl::nullopt <=> X >  0));
+    ASSERT(  bsl::nullopt <=> X <= 0 );
+    ASSERT(!(bsl::nullopt <=> X >= 0));
+#endif
 }
 void testCase6()
 {
@@ -9739,6 +10511,8 @@ void testCase6()
     //:
     //: 3 We can compare any 'optional' object with 'nulllopt_t'.  The result
     //:   depends on whether the 'optional' object is engaged or not.
+    //:
+    //: 4 'operator<=>' is consistent with '<', '>', '<=', '>='.
     //
     // Plan:
     //: 1 For each relation operator, compare two 'optional' objects of
@@ -9796,6 +10570,10 @@ void testCase6()
     //    bool operator<=(const optional<LHS>&, const std::optional<RHS>&);
     //    bool operator>=(const optional<LHS>&, const std::optional<RHS>&);
     //    bool operator> (const optional<LHS>&, const std::optional<RHS>&);
+    //    auto operator<=>(const optional<LHS>&, const optional<RHS>&);
+    //    auto operator<=>(const optional<LHS>&, const RHS&);
+    //    auto operator<=>(const optional<LHS>&, nullopt_t);
+    //    auto operator<=>(const optional<LHS>&, const std::optional<RHS>&);
 
     if (veryVerbose)
         printf("\tComparison with an 'optional'.\n");
@@ -12461,6 +13239,157 @@ int main(int argc, char **argv)
     bsls::ReviewFailureHandlerGuard reviewGuard(&bsls::Review::failByAbort);
 
     switch (test) {  case 0:
+      case 27: {
+        //---------------------------------------------------------------------
+        // TESTING CONCEPTS
+        //
+        // Concern:
+        //: 1 'Optional_ConvertibleToBool' is 'true' only for types convertible
+        //:   to 'bool'.
+        //:
+        //: 2 'Optional_DerivedFromOptional' is 'true' only for types that are
+        //:   either 'bsl::optional' or 'std::optional'  or derived from one of
+        //:   them.
+        //
+        // Plan:
+        //: 1 Apply the concepts to different types and verify the result.
+        //
+        // Testing:
+        //   CONCEPTS
+        //---------------------------------------------------------------------
+        if (verbose) printf("\nTESTING CONCEPTS"
+                            "\n================\n");
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP20_CONCEPTS
+        BSLMF_ASSERT(( Optional_ConvertibleToBool<bool>));
+        BSLMF_ASSERT(( Optional_ConvertibleToBool<int>));
+        BSLMF_ASSERT((!Optional_ConvertibleToBool<bsl::weak_ordering>));
+        BSLMF_ASSERT((!Optional_ConvertibleToBool<bsl::nullopt_t>));
+
+        class Derived : public bsl::optional<int> {};
+        class C {};
+
+        BSLMF_ASSERT(( Optional_DerivedFromOptional<bsl::optional<int>>));
+        BSLMF_ASSERT(( Optional_DerivedFromOptional<std::optional<int>>));
+        BSLMF_ASSERT(( Optional_DerivedFromOptional<Derived>));
+        BSLMF_ASSERT((!Optional_DerivedFromOptional<int>));
+        BSLMF_ASSERT((!Optional_DerivedFromOptional<C>));
+#endif
+      } break;
+      case 26: {
+        //---------------------------------------------------------------------
+        // bsl::optional<bslma::ManagedPtr<void>>
+        //
+        // Concern:
+        //: 1 That 'bsl::optional<bslma::ManagedPtr<void>>' can be explicitly
+        //:   instantiated on C++17 when implementation of 'bsl::optional' is
+        //:   delegated to 'std::optional' for non-allocator-aware types (see
+        //:   DRQS 168171178).  Note that we omit this test for clang with
+        //:   libstdc++ where the explicit instantiation of
+        //:   'std::optional<bslma::ManagedPtr<void>>' fails to compile.
+        //
+        // Plan:
+        //: 1 Do 'template class ...' declarations at file scope and see if
+        //:   they compile on C++17.
+        //:
+        //: 2 Use 'BSLMF_ASSERT' to examine type traits to verify that
+        //:   'optional<bslma::ManagedPtr>' is neither copy-constructible nor
+        //:   copy-assignable (due to the standard maintaining that the
+        //:   corresponding functions having a const-reference argument).
+        //
+        // Testing:
+        //   bsl::optional<bslma::ManagedPtr<void>>
+        //---------------------------------------------------------------------
+
+        if (verbose) printf("TEST bsl::optional<bslma::ManagedPtr<void>>\n"
+                            "===========================================\n");
+
+        if (veryVerbose) {
+#if defined(BSLS_LIBRARYFEATURES_STDCPP_GNU)
+            printf("stdcpp_gnu\n");
+#endif
+#if defined(BSLS_LIBRARYFEATURES_STDCPP_LLVM)
+            printf("stdcpp_llvm\n");
+#endif
+        }
+
+#if defined(BSLS_LIBRARYFEATURES_HAS_CPP17_BASELINE_LIBRARY) &&               \
+   !(defined(BSLS_PLATFORM_CMP_CLANG) &&                                      \
+     defined(BSLS_LIBRARYFEATURES_STDCPP_GNU))               &&               \
+   !(defined(BSLS_PLATFORM_CMP_CLANG) &&                                      \
+     defined(BSLS_LIBRARYFEATURES_STDCPP_LLVM))
+        typedef bsl::optional<bslma::ManagedPtr<void>> Obj;
+
+        BSLMF_ASSERT(!bsl::is_copy_constructible<Obj>::value);
+        BSLMF_ASSERT(!std::is_copy_assignable<Obj>::value);
+
+        typedef std::optional<bslma::ManagedPtr<void>> SObj;
+
+        BSLMF_ASSERT(!bsl::is_copy_constructible<SObj>::value);
+        BSLMF_ASSERT(!std::is_copy_assignable<SObj>::value);
+#endif
+      } break;
+      case 25: {
+        //---------------------------------------------------------------------
+        // IMPLICIT/EXPLICIT C'TORS TEST
+        //
+        // Concern:
+        //: 1 That constructors that should be explicit are explicit, and those
+        //:   that should be implicit are implicit.
+        //:
+        // Plan:
+        //: 1 Declare a source type 'Src'.
+        //:
+        //: 2 Declare a destination type 'ImplicitDst', a non-allocating type
+        //:   which can be implicitly constructed from 'Src'.
+        //:
+        //: 3 Declare a destination type 'ImplicitDstAlloc', an allocating type
+        //:   which can be implicitly constructed from 'Src'.
+        //:
+        //: 4 Declare a destination type 'ExplicitDst', a non-allocating type
+        //:   which can be explicitly constructed from 'Src'.
+        //:
+        //: 5 Declare a destination type 'ExplicitDstAlloc', an allocating type
+        //:   which can be implicitly constructed from 'Src'.
+        //:
+        //: 6 Use 'bsl::is_convertible' to verify that 'optional<ImplicitDst>'
+        //:   and 'optional<ImplicitDstAlloc>' are implicitly constructible and
+        //:   move-constructible from 'Src', and that 'optional<ExplicitDst>'
+        //:   and 'optional<ExplicitDstAlloc>' are not.
+        //:
+        //: 7 Use 'bsl::is_convertible' to verify that 'optional<ImplicitDst>'
+        //:   and 'optional<ImplicitDstAlloc>' are implicitly constructible and
+        //:   move-constructible from 'optional<Src>', and that
+        //:   'optional<ExplicitDst>' and 'optional<ExplicitDstAlloc>' are not.
+        //:
+        //: 8 Use 'std::is_constructible' to verify that all of the above
+        //:   conversions in '6' and '7' are either implicitly or explicitly
+        //:   possible.
+        //
+        // Testing:
+        //   IMPLICIT/EXPLICIT C'TORS TEST
+        //---------------------------------------------------------------------
+
+        if (verbose) printf("IMPLICIT/EXPLICIT C'TORS TEST\n"
+                            "=============================\n");
+
+        TEST_CASE_25::testCase25();
+      } break;
+      case 24: {
+        RUN_EACH_TYPE(TestDriver,
+                      testCase24,
+                      BSLTF_TEMPLATETESTFACILITY_TEST_TYPES_PRIMITIVE,
+                      bsltf::SimpleTestType,
+                      bsltf::BitwiseCopyableTestType,
+                      bsltf::BitwiseMoveableTestType,
+                      bsltf::MovableTestType);
+      } break;
+      case 23: {
+        RUN_EACH_TYPE(TestDriver,
+                      testCase23,
+                      bsltf::AllocTestType,
+                      bsltf::AllocBitwiseMoveableTestType,
+                      bsltf::MovableAllocTestType);
+      } break;
       case 22: {
         //---------------------------------------------------------------------
         // REPRODUCE DRQS 168615744 bsl::optional<bdef_Function>

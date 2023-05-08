@@ -210,13 +210,11 @@ Sun_Studio_only_gives_a_warning_for_pound_error;
 #pragma bde_verify append dictionary src tbd unspecialized  // Doesn't work ??
 #endif
 
-#include <cstdio>   // for 'std::puts', 'std::printf'
-#include <cstdlib>  // for 'std::atoi'
+#include <stdio.h>   // for 'puts', 'printf'
+#include <stdlib.h>  // for 'atoi'
 
 using namespace BloombergLP;
 using namespace bsl;
-
-using std::printf;
 
 // COMPILE-FAIL CONFIGURATION MACROS
 // ---------------------------------
@@ -649,16 +647,6 @@ void dumpExTest(const char *s,
 #define MSVC_2015 1
 #else
 #define MSVC_2015 0
-#endif
-
-#ifdef BSLS_COMPILERFEATURES_SUPPORT_RVALUE_REFERENCES
-# ifndef BSLMF_MOVABLEREF_USES_RVALUE_REFERENCES
-#  error "This test driver requires 'bslmf::MovableRef<T>' be 'T&&' if" \
-         " the current compiler supports rvalue references."
-# endif
-# define DEDUCED_MOVABLE_REF(T) T&&
-#else
-# define DEDUCED_MOVABLE_REF(T) ::BloombergLP::bslmf::MovableRef<T >
 #endif
 
 namespace {
@@ -2109,7 +2097,7 @@ struct ArgGenerator<TYPE&> : ArgGeneratorBase<TYPE> {
 };
 
 template <class TYPE>
-struct ArgGenerator<DEDUCED_MOVABLE_REF(TYPE)> : ArgGeneratorBase<TYPE> {
+struct ArgGenerator<BSLMF_MOVABLEREF_DEDUCE(TYPE)> : ArgGeneratorBase<TYPE> {
     // Specialization of 'ArgGenerator' for movable references to the specified
     // 'TYPE'.
 
@@ -2154,7 +2142,7 @@ struct ArgGenerator<SmartPtr<TYPE> > : ArgGeneratorBase<TYPE> {
 };
 
 template <class TYPE>
-struct ArgGenerator<DEDUCED_MOVABLE_REF(SmartPtr<TYPE>)>
+struct ArgGenerator<BSLMF_MOVABLEREF_DEDUCE(SmartPtr<TYPE>)>
 : ArgGeneratorBase<TYPE> {
     // Specialization of 'ArgGenerator' for movable references of modifiable
     // smart pointers smart pointers to the specified 'TYPE'.
@@ -3000,7 +2988,7 @@ bool allocPropagationCheckImp(const Obj& f, bsl::true_type /*usesBslmaAlloc*/)
     }
 
     const FUNC *target = f.target<FUNC>();
-    return f.allocator() == target->allocator();
+    return f.get_allocator() == target->get_allocator();
 }
 
 template <class FUNC>
@@ -5616,6 +5604,7 @@ int main(int argc, char *argv[])
                             "\n=====================================\n");
 
 #ifdef BSLSTL_FUNCTION_TEST_PART_09
+#ifndef BDE_OMIT_INTERNAL_DEPRECATED
         using BloombergLP::bdef_Function;
 
         bsl::function<int(const char *)>           original;
@@ -5625,6 +5614,7 @@ int main(int argc, char *argv[])
 
         ASSERT(&converted == &ORIGINAL);
         ASSERT(&CONVERTED == &ORIGINAL);
+#endif  // BDE_OMIT_INTERNAL_DEPRECATED
 #else
         BSLSTL_FUNCTION_TEST_CASE_IS_NOT_IN_THIS_EXECUTABLE(test);
 #endif  // BSLSTL_FUNCTION_TEST_PART_09
@@ -9718,13 +9708,17 @@ int main(int argc, char *argv[])
             bsl::function<int(float)> f1;
             ASSERT(f1 ? false : true);  // Succeed if empty
             ASSERT(bsl::allocator<char>() == f1.get_allocator());
+#ifndef BDE_OMIT_INTERNAL_DEPRECATED
             ASSERT(&defaultTestAllocator == f1.allocator());
+#endif
             ASSERT(defaultAllocMonitor.isInUseSame());
 
             bsl::function<int(float)> f2(0);
             ASSERT(f2 ? false : true);  // Succeed if empty
             ASSERT(bsl::allocator<char>() == f2.get_allocator());
+#ifndef BDE_OMIT_INTERNAL_DEPRECATED
             ASSERT(&defaultTestAllocator == f2.allocator());
+#endif
             ASSERT(defaultAllocMonitor.isInUseSame());
 
             // Null allocator pointer behaves as though allocator were not
@@ -9734,13 +9728,17 @@ int main(int argc, char *argv[])
             bsl::function<int(float)> f3(bsl::allocator_arg, nullTa_p);
             ASSERT(! f3);
             ASSERT(bsl::allocator<char>() == f3.get_allocator());
+#ifndef BDE_OMIT_INTERNAL_DEPRECATED
             ASSERT(&defaultTestAllocator == f3.allocator());
+#endif
             ASSERT(defaultAllocMonitor.isInUseSame());
 
             bsl::function<int(float)> f4(bsl::allocator_arg, nullTa_p, 0);
             ASSERT(! f4);
             ASSERT(bsl::allocator<char>() == f4.get_allocator());
+#ifndef BDE_OMIT_INTERNAL_DEPRECATED
             ASSERT(&defaultTestAllocator == f4.allocator());
+#endif
             ASSERT(defaultAllocMonitor.isInUseSame());
         }
 
@@ -9754,7 +9752,9 @@ int main(int argc, char *argv[])
             bsl::function<int(float)> f(bsl::allocator_arg, alloc);
             ASSERT(! f);
             ASSERT(alloc == f.get_allocator());
+#ifndef BDE_OMIT_INTERNAL_DEPRECATED
             ASSERT(&ta == f.allocator());
+#endif
             ASSERT(0 == ta.numBlocksInUse());
             ASSERT(defaultAllocMonitor.isInUseSame());
 
@@ -9762,7 +9762,9 @@ int main(int argc, char *argv[])
                                          bsl::nullptr_t());
             ASSERT(! f2);
             ASSERT(alloc == f2.get_allocator());
+#ifndef BDE_OMIT_INTERNAL_DEPRECATED
             ASSERT(&ta == f2.allocator());
+#endif
             ASSERT(0 == ta.numBlocksInUse());
             ASSERT(defaultAllocMonitor.isInUseSame());
         }
@@ -9773,14 +9775,18 @@ int main(int argc, char *argv[])
             bsl::function<int(float)> f(bsl::allocator_arg, &ta);
             ASSERT(! f);
             ASSERT(bsl::allocator<char>(&ta) == f.get_allocator());
+#ifndef BDE_OMIT_INTERNAL_DEPRECATED
             ASSERT(&ta == f.allocator());
+#endif
             ASSERT(0 == ta.numBlocksInUse());
             ASSERT(defaultAllocMonitor.isInUseSame());
 
             bsl::function<int(float)> f2(bsl::allocator_arg, &ta, 0);
             ASSERT(! f2);
             ASSERT(bsl::allocator<char>(&ta) == f2.get_allocator());
+#ifndef BDE_OMIT_INTERNAL_DEPRECATED
             ASSERT(&ta == f2.allocator());
+#endif
             ASSERT(0 == ta.numBlocksInUse());
             ASSERT(defaultAllocMonitor.isInUseSame());
         }
@@ -9803,7 +9809,9 @@ int main(int argc, char *argv[])
             ASSERT(typeid(void) == F.target_type());
             ASSERT(0 == F.target<bsl::function<int()> >());
             ASSERT(0 == f.target<bsl::function<int()> >());
+#ifndef BDE_OMIT_INTERNAL_DEPRECATED
             ASSERT(&defaultTestAllocator == f.allocator());
+#endif
         }
         ASSERT(defaultAllocMonitor.isInUseSame());
 #endif  // DRQS_164241820_FIXED

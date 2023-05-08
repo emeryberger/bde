@@ -213,12 +213,15 @@
 // [21] bool operator> (const deque& lhs, const deque& rhs);
 // [21] bool operator<=(const deque& lhs, const deque& rhs);
 // [21] bool operator>=(const deque& lhs, const deque& rhs);
+// [21] auto operator<=>(const deque& lhs, const deque& rhs);
 //
 // FREE FUNCTIONS
 // [20] void swap(deque& a, deque& b);
 // [33] size_t erase(deque<T,A>&, const U&);
 // [33] size_t erase_if(deque<T,A>&, PREDICATE);
 // ----------------------------------------------------------------------------
+// [11] CONCERN: non-copyable/non-movable types are supported.
+// [13] CONCERN: non-copyable/non-movable types are supported.
 // [22] CONCERN: 'std::length_error' is used properly.
 //
 // ~~ bslstl_deque.3.t.cpp ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -828,6 +831,15 @@ bool operator==(const TestTypeAlloc& lhs, const TestTypeAlloc& rhs)
     return lhs.value() == rhs.value();
 }
 
+#ifdef BSLALG_SYNTHTHREEWAYUTIL_AVAILABLE
+auto operator<=>(const TestTypeAlloc& lhs, const TestTypeAlloc& rhs)
+{
+    ASSERT(isalpha(lhs.value()));
+    ASSERT(isalpha(rhs.value()));
+
+    return lhs.value() <=> rhs.value();
+}
+#else
 bool operator<(const TestTypeAlloc& lhs, const TestTypeAlloc& rhs)
 {
     ASSERT(isalpha(lhs.value()));
@@ -835,6 +847,7 @@ bool operator<(const TestTypeAlloc& lhs, const TestTypeAlloc& rhs)
 
     return lhs.value() < rhs.value();
 }
+#endif
 
 // TestTypeAlloc-specific print function.
 void debugprint(const TestTypeAlloc& rhs)
@@ -1390,6 +1403,44 @@ struct IsBitwiseMoveable<LimitAllocator<ALLOCATOR> >
 
 }  // close namespace bslmf
 }  // close enterprise namespace
+
+                             // =====================
+                             // class NonCopyableType
+                             // =====================
+
+class NonCopyableType {
+    // Non-copyable and non-movable type.
+
+    // DATA
+    int value;
+
+    // NOT IMPLEMENTED
+    NonCopyableType(const NonCopyableType &) BSLS_KEYWORD_DELETED;
+    NonCopyableType &operator=(const NonCopyableType &) BSLS_KEYWORD_DELETED;
+  public:
+    // CREATORS
+    NonCopyableType() : value(0)
+        // Create a 'NonCopyableType' object.
+     {
+     }
+
+    // FREE OPERATORS
+    friend bool operator==(const NonCopyableType &v1,
+                           const NonCopyableType &v2)
+        // Equality comparison.
+    {
+        return v1.value == v2.value;
+    }
+
+#ifndef BSLS_COMPILERFEATURES_SUPPORT_THREE_WAY_COMPARISON
+    friend bool operator!=(const NonCopyableType &v1,
+                           const NonCopyableType &v2)
+        // Inequality comparison.
+    {
+        return !(v1 == v2);
+    }
+#endif
+};
 
                         // ==========================
                         // template struct PageLength
@@ -2273,6 +2324,66 @@ template <class TYPE>
 struct AssertAllocator<TYPE, false> {
     void operator() (const TYPE&, bslma::Allocator *) const
     {}
+};
+
+                    // =================================
+                    // template class StatelessAllocator
+                    // =================================
+
+template <class TYPE>
+struct StatelessAllocator {
+    // Stateless std allocator with 'is_always_equal == true_type'
+
+    // TYPES
+    typedef TYPE      value_type;
+    typedef size_t    size_type;
+    typedef ptrdiff_t difference_type;
+
+    typedef value_type       *pointer;
+    typedef const value_type *const_pointer;
+
+    template <class OTHER_TYPE> struct rebind {
+        typedef StatelessAllocator<OTHER_TYPE> other;
+    };
+
+    typedef bsl::true_type is_always_equal;
+
+    // CREATORS
+    StatelessAllocator()
+        // Create a 'StatelessAllocator' object.
+    {
+    }
+    template <class OTHER_TYPE>
+    StatelessAllocator(const StatelessAllocator<OTHER_TYPE>&)
+        // Create a 'StatelessAllocator' object.
+    {
+    }
+
+    // MANIPULATORS
+    pointer allocate(size_type count)
+        // Return a pointer to an uninitialized memory that is enough to store
+        // an array of the specified 'count' objects.
+    {
+        return static_cast<pointer>(::operator new(count *
+                                                   sizeof(value_type)));
+    }
+    void deallocate(pointer address, size_type)
+        // Return the memory at the specified 'address' to this allocator.
+    {
+        ::operator delete(static_cast<void *>(address));
+    }
+
+    // FREE OPERATORS
+    friend bool operator==(StatelessAllocator, StatelessAllocator)
+    {
+        return true;
+    }
+#ifndef BSLS_COMPILERFEATURES_SUPPORT_THREE_WAY_COMPARISON
+    friend bool operator!=(StatelessAllocator, StatelessAllocator)
+    {
+        return false;
+    }
+#endif
 };
 
                  // =======================================

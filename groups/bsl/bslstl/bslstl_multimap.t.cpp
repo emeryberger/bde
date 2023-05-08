@@ -153,6 +153,8 @@
 // [21] value_compare value_comp() const;
 //
 // multimap operations:
+// [13] bool contains(const key_type& key);
+// [13] bool contains(const LOOKUP_KEY& key);
 // [13] iterator find(const key_type& key);
 // [13] const_iterator find(const key_type& key) const;
 // [13] size_type count(const key_type& key) const;
@@ -169,6 +171,7 @@
 // [19] bool operator> (const multimap& lhs, const multimap& rhs);
 // [19] bool operator>=(const multimap& lhs, const multimap& rhs);
 // [19] bool operator<=(const multimap& lhs, const multimap& rhs);
+// [19] auto operator<=>(const multimap& lhs, const multimap& rhs);
 //
 //// specialized algorithms:
 // [ 8] void swap(multimap& a, multimap& b);
@@ -761,6 +764,34 @@ class TestComparatorNonConst {
     }
 };
 
+                            // =============================
+                            // struct ThrowingSwapComparator
+                            // =============================
+
+template <class TYPE>
+struct ThrowingSwapComparator : public std::less<TYPE> {
+    // Comparator with throwing 'swap'.
+
+    // MANIPULATORS
+    void swap(
+      ThrowingSwapComparator& other) BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(false)
+        // Exchange the value of this object with that of the specified 'other'
+        // object.
+    {
+        (void)other;
+    }
+
+    // FREE FUNCTIONS
+    friend void swap(
+          ThrowingSwapComparator& a,
+          ThrowingSwapComparator& b) BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(false)
+        // Exchange the values of the specified 'a' and 'b' objects.
+    {
+        (void)a;
+        (void)b;
+    }
+};
+
                        // =====================
                        // class TemplateWrapper
                        // =====================
@@ -1260,6 +1291,9 @@ class TestDriver {
     static void testCase8_dispatch();
         // Test 'swap' member.
 
+    static void testCase8_noexcept();
+        // Test 'swap' noexcept.
+
     template <bool SELECT_ON_CONTAINER_COPY_CONSTRUCTION_FLAG,
               bool OTHER_FLAGS>
     static void testCase7_select_on_container_copy_construction_dispatch();
@@ -1712,6 +1746,22 @@ void TestDriver<KEY, VALUE, COMP, ALLOC>::testCase8_dispatch()
 
         if (veryVerbose) { T_ P_(X) P(Y) }
     }
+}
+
+template <class KEY, class VALUE, class COMP, class ALLOC>
+void TestDriver<KEY, VALUE, COMP, ALLOC>::testCase8_noexcept()
+    // Verify that noexcept specification of the member 'swap' function is
+    // correct.
+{
+    Obj a;
+    Obj b;
+
+#if BSLS_KEYWORD_NOEXCEPT_AVAILABLE
+    const bool isNoexcept =
+                        bsl::allocator_traits<ALLOC>::is_always_equal::value &&
+                        bsl::is_nothrow_swappable<COMP>::value;
+    ASSERT(isNoexcept == BSLS_KEYWORD_NOEXCEPT_OPERATOR(a.swap(b)));
+#endif
 }
 
 template <class KEY, class VALUE, class COMP, class ALLOC>
@@ -2246,10 +2296,16 @@ void TestDriver<KEY, VALUE, COMP, ALLOC>::testCase6()
         // Verify that the signatures and return types are standard.
 
         operatorPtr operatorEq = operator==;
-        operatorPtr operatorNe = operator!=;
-
         (void) operatorEq;  // quash potential compiler warnings
+
+#ifdef BSLS_COMPILERFEATURES_SUPPORT_THREE_WAY_COMPARISON
+        (void) [](const Obj& lhs, const Obj& rhs) -> bool {
+            return lhs != rhs;
+        };
+#else
+        operatorPtr operatorNe = operator!=;
         (void) operatorNe;
+#endif
     }
 
     const int NUM_DATA                     = DEFAULT_NUM_DATA;
@@ -4039,6 +4095,62 @@ int main(int argc, char *argv[])
         MetaTestDriver<int,
                        bsltf::WellBehavedMoveOnlyAllocTestType>::testCase8();
         MetaTestDriver<TestKeyType, TestValueType>::testCase8();
+
+#if BSLS_KEYWORD_NOEXCEPT_AVAILABLE
+        // Test noexcept
+#ifndef BSLMF_ISNOTHROWSWAPPABLE_ALWAYS_FALSE
+        {
+            typedef bsltf::StdStatefulAllocator<int,
+                                                false,
+                                                false,
+                                                false,
+                                                false> Alloc;
+            typedef TestComparator<int> Comp;
+
+            ASSERT(!bsl::allocator_traits<Alloc>::is_always_equal::value);
+            ASSERT( bsl::is_nothrow_swappable<Comp>::value);
+            TestDriver<int, int, Comp, Alloc>::testCase8_noexcept();
+        }
+        {
+            typedef bsltf::StdStatefulAllocator<int,
+                                                false,
+                                                false,
+                                                false,
+                                                false,
+                                                true> Alloc;
+            typedef TestComparator<int> Comp;
+
+            ASSERT( bsl::allocator_traits<Alloc>::is_always_equal::value);
+            ASSERT( bsl::is_nothrow_swappable<Comp>::value);
+            TestDriver<int, int, Comp, Alloc>::testCase8_noexcept();
+        }
+#endif
+        {
+            typedef bsltf::StdStatefulAllocator<int,
+                                                false,
+                                                false,
+                                                false,
+                                                false> Alloc;
+            typedef ThrowingSwapComparator<int> Comp;
+
+            ASSERT(!bsl::allocator_traits<Alloc>::is_always_equal::value);
+            ASSERT(!bsl::is_nothrow_swappable<Comp>::value);
+            TestDriver<int, int, Comp, Alloc>::testCase8_noexcept();
+        }
+        {
+            typedef bsltf::StdStatefulAllocator<int,
+                                                false,
+                                                false,
+                                                false,
+                                                false,
+                                                true> Alloc;
+            typedef ThrowingSwapComparator<int> Comp;
+
+            ASSERT( bsl::allocator_traits<Alloc>::is_always_equal::value);
+            ASSERT(!bsl::is_nothrow_swappable<Comp>::value);
+            TestDriver<int, int, Comp, Alloc>::testCase8_noexcept();
+        }
+#endif
       } break;
       case 7: {
         // --------------------------------------------------------------------

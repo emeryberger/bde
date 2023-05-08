@@ -2,8 +2,6 @@
 #define BSLSTL_LIST_0T_AS_INCLUDE
 #include <bslstl_list.0.t.cpp>
 
-#include <bslstl_vector.h>
-
 // ============================================================================
 //                             TEST PLAN
 // ----------------------------------------------------------------------------
@@ -128,6 +126,9 @@ struct TestDriver2 : TestSupport<TYPE, ALLOC> {
     static void test19_propagate_on_container_swap();
         // Test 'propagate_on_container_swap'.
 
+    static void test19_swap_noexcept();
+        // Test noexcept specification of 'swap'.
+
     static void test19_swap();
         // Test 'swap' member and global swap.
 
@@ -196,6 +197,9 @@ struct TestDriver2 : TestSupport<TYPE, ALLOC> {
     static void test31_propagate_on_container_move_assignment_dispatch();
     static void test31_propagate_on_container_move_assignment();
         // Test 'propagate_on_container_move_assignment'.
+
+    static void test31_moveAssign_noexcept();
+        // Test noexcept specification of move assign.
 
     static void test31_moveAssign();
         // Test move assign.
@@ -1129,6 +1133,33 @@ void TestDriver2<TYPE, ALLOC>::test31_propagate_on_container_move_assignment()
 }
 
 template <class TYPE, class ALLOC>
+void TestDriver2<TYPE,ALLOC>::test31_moveAssign_noexcept()
+{
+    // ------------------------------------------------------------------------
+    // TESTING MOVE-ASSIGNMENT OPERATOR: NOEXCEPT SPECIFICATION
+    //
+    // Concerns:
+    //: 1 If 'allocator_traits<Allocator>::is_always_equal::value' is true, the
+    //:   move assignment operator is 'noexcept(true)'.
+    //
+    // Plan:
+    //: 1 Compare the value of the trait with the noexcept specification of the
+    //:    move assignment operator.
+    //
+    // Testing:
+    //   list& operator=(bslmf::MovableRef<list> rhs);
+    // ------------------------------------------------------------------------
+
+#if BSLS_KEYWORD_NOEXCEPT_AVAILABLE
+    bsl::list<TYPE, ALLOC> a, b;
+
+    const bool isNoexcept = AllocTraits::is_always_equal::value;
+    ASSERT(isNoexcept ==
+        BSLS_KEYWORD_NOEXCEPT_OPERATOR(a = bslmf::MovableRefUtil::move(b)));
+#endif
+}
+
+template <class TYPE, class ALLOC>
 void TestDriver2<TYPE,ALLOC>::test31_moveAssign()
 {
     // ------------------------------------------------------------------------
@@ -1152,6 +1183,9 @@ void TestDriver2<TYPE,ALLOC>::test31_moveAssign()
     //: 5 The object has its internal memory management system hooked up
     //:   properly so that *all* internally allocated memory draws from a
     //:   user-supplied allocator whenever one is specified.
+    //:
+    //: 6 If 'allocator_traits<Allocator>::is_always_equal::value' is
+    //:   true, the move assignment operator is 'noexcept(true)'.
     //
     // Plan:
     //: 1 Specify a set S of object values with substantial and varied
@@ -1168,6 +1202,9 @@ void TestDriver2<TYPE,ALLOC>::test31_moveAssign()
     //: 4 To address concern 5, observe the default allocator before and after
     //:   the whole test and observe that it is never used (after the first
     //:   call to 'checkIntegrity'.
+    //:
+    //: 5 To address concern 6, pass allocators with both 'is_always_equal'
+    //:   values (true & false).
     //
     // Testing:
     //   list& operator=(list&& orig);
@@ -1412,6 +1449,13 @@ void TestDriver2<TYPE,ALLOC>::test31_moveAssign()
     } // X
 
     ASSERTV(bsls::NameOf<TYPE>(), defaultAllocator_p->numBlocksTotal() == DD);
+
+    // Test noexcept specification of the move assignment operator.
+    TestDriver2<TYPE, ALLOC>::test31_moveAssign_noexcept();
+    // is_always_equal == true
+    typedef StatelessAllocator<TYPE> StatelessAlloc;
+    ASSERT(bsl::allocator_traits<StatelessAlloc>::is_always_equal::value);
+    TestDriver2<TYPE, StatelessAlloc>::test31_moveAssign_noexcept();
 }
 
 template <class TYPE, class ALLOC>
@@ -4120,7 +4164,9 @@ void TestDriver2<TYPE,ALLOC>::test20_comparisonOps(bsl::true_type)
     //: 2 'operator>', 'operator<=', and 'operator>=' are correctly tied to
     //:   'operator<'.
     //:
-    //: 3 That traits get selected properly.
+    //: 3 'operator<=>' is consistent with '<', '>', '<=', '>='.
+    //:
+    //: 4 That traits get selected properly.
     //
     // Plan:
     //: 1 For a variety of lists of different sizes and different values, test
@@ -4131,6 +4177,7 @@ void TestDriver2<TYPE,ALLOC>::test20_comparisonOps(bsl::true_type)
     //   bool operator>(const list<T,A>&, const list<T,A>&);
     //   bool operator<=(const list<T,A>&, const list<T,A>&);
     //   bool operator>=(const list<T,A>&, const list<T,A>&);
+    //   auto operator<=>(const list&, const list&);
     // ------------------------------------------------------------------------
 
     // NOTE: These specs must be sorted in lexicographical order
@@ -4227,6 +4274,13 @@ void TestDriver2<TYPE,ALLOC>::test20_comparisonOps(bsl::true_type)
                 ASSERTV(si, sj, isGE == (U >= V));
                 ASSERTV(si, sj, (U <  V) == !(U >= V));
                 ASSERTV(si, sj, (U >  V) == !(U <= V));
+#ifdef BSLALG_SYNTHTHREEWAYUTIL_AVAILABLE
+                const auto cmp = U <=> V;
+                ASSERTV(si, sj, isLT == (cmp <  0));
+                ASSERTV(si, sj, isLE == (cmp <= 0));
+                ASSERTV(si, sj, isGT == (cmp >  0));
+                ASSERTV(si, sj, isGE == (cmp >= 0));
+#endif
             }
         }
     }
@@ -4440,6 +4494,37 @@ void TestDriver2<TYPE, ALLOC>::test19_propagate_on_container_swap()
 }
 
 template <class TYPE, class ALLOC>
+void TestDriver2<TYPE,ALLOC>::test19_swap_noexcept()
+{
+    // ------------------------------------------------------------------------
+    // SWAP MEMBER AND FREE FUNCTIONS: NOEXCEPT SPECIFICATIONS
+    //
+    // Concerns:
+    //: 1 If 'allocator_traits<Allocator>::is_always_equal::value' is
+    //:   true, the 'swap' functions are 'noexcept(true)'.
+    //
+    // Plan:
+    //: 1 Compare the value of the trait with the member 'swap' function
+    //:   noexcept specification.
+    //:
+    //: 2 Compare the value of the trait with the free 'swap' function noexcept
+    //:   specification.
+    //
+    // Testing:
+    //   list::swap()
+    //   swap(list& , list& )
+    // ------------------------------------------------------------------------
+
+#if BSLS_KEYWORD_NOEXCEPT_AVAILABLE
+    bsl::list<TYPE, ALLOC> a, b;
+
+    const bool isNoexcept = AllocTraits::is_always_equal::value;
+    ASSERT(isNoexcept == BSLS_KEYWORD_NOEXCEPT_OPERATOR(a.swap(b)));
+    ASSERT(isNoexcept == BSLS_KEYWORD_NOEXCEPT_OPERATOR(swap(a,b)));
+#endif
+}
+
+template <class TYPE, class ALLOC>
 void TestDriver2<TYPE,ALLOC>::test19_swap()
 {
     // ------------------------------------------------------------------------
@@ -4476,6 +4561,9 @@ void TestDriver2<TYPE,ALLOC>::test19_swap()
     //: 9 While the 'swap' functions may allocate memory, they free as much
     //:   memory as they allocate for no net change in memory in use, provided
     //:   both allocators are of type 'bslma::TestAllocator'.
+    //:
+    //:10 If 'allocator_traits<Allocator>::is_always_equal::value' is
+    //:   true, the 'swap' functions are 'noexcept(true)'.
     //
     // Plan:
     //: 1 Use the addresses of the 'swap' member and free functions defined
@@ -4597,6 +4685,9 @@ void TestDriver2<TYPE,ALLOC>::test19_swap()
     //:         is unchanged in both objects.  (C-4)
     //:
     //:       4 There was no additional object memory allocation.  (C-4)
+    //:
+    //: 6 To address concern 10, pass allocators with both 'is_always_equal'
+    //:   values (true & false).
     //
     // Testing:
     //   void swap(Obj& rhs);
@@ -4862,6 +4953,13 @@ void TestDriver2<TYPE,ALLOC>::test19_swap()
         ASSERTV(SPEC1, SPEC2, oam.isTotalSame());
         ASSERTV(SPEC1, SPEC2, dam.isTotalSame());
     }
+
+    // Test noexcept specifications of the 'swap' functions.
+    TestDriver2<TYPE, ALLOC>::test19_swap_noexcept();
+    // is_always_equal == true
+    typedef StatelessAllocator<TYPE> StatelessAlloc;
+    ASSERT(bsl::allocator_traits<StatelessAlloc>::is_always_equal::value);
+    TestDriver2<TYPE, StatelessAlloc>::test19_swap_noexcept();
 }
 
 template <class TYPE, class ALLOC>
@@ -7908,15 +8006,13 @@ struct TestDeductionGuides {
                      // ==================================
 
 class IncompleteTypeSupportChecker {
-    // This class is intended to test the support of incomplete types by public
-    // methods of 'bsl::list'.  The interface completely copies the existing
+    // This class tests that 'bsl::list' can be instantiated using an
+    // incomplete type and that methods within that incomplete type can
+    // reference such a 'list'.  The interface completely copies the existing
     // 'bsl::list' interface and the only purpose of the functions is to call
     // the corresponding methods of the list parameterized by the incomplete
-    // type.  Therefore function-level documentation differs from that
-    // described in the standard.  To preserve type incompleteness we have to
-    // implement all public methods inline.  Each method increases its own
-    // invocation counter so we can make sure that each method is compiled and
-    // called.
+    // type.  Each method increases its own invocation counter so we can make
+    // sure that each method is compiled and called.
 
     // PRIVATE TYPES
     typedef BloombergLP::bslmf::MovableRefUtil                      MoveUtil;
@@ -7938,12 +8034,9 @@ class IncompleteTypeSupportChecker {
 
   private:
     // CLASS DATA
-    static const int        s_numFunctions;          // number of public
-                                                     // methods
-
-    static bsl::vector<int> s_functionCallCounters;  // counters storing the
-                                                     // number of each function
-                                                     // calls
+    static int const s_numFunctions;            // number of public methods
+    static int       s_functionCallCounters[];  // number of times each
+                                                // public method is called
 
     // DATA
     ListType d_list;  // underlying list parameterized with incomplete type
@@ -7992,20 +8085,25 @@ class IncompleteTypeSupportChecker {
         s_functionCallCounters[3]++;
     }
 
-    IncompleteTypeSupportChecker(size_type         numElements,
-                                 const value_type& value)
-        // Call 'bsl::list' constructor passing the specified 'numElements' and
-        // 'value' as parameters.
-    : d_list(numElements, value)
+    IncompleteTypeSupportChecker(size_type             numElements,
+                                 const value_type&     value,
+                                 const allocator_type& basicAllocator
+                                                            = allocator_type())
+        // Call 'bsl::list' constructor passing the specified 'numElements',
+        // 'value', and 'basicAllocator' as parameters.
+    : d_list(numElements, value, basicAllocator)
     {
         s_functionCallCounters[4]++;
     }
 
     template <class INPUT_ITERATOR>
-    IncompleteTypeSupportChecker(INPUT_ITERATOR first, INPUT_ITERATOR last)
-        // Call 'bsl::list' constructor passing the specified 'first' and
-        // 'last' as parameters.
-    : d_list(first, last)
+    IncompleteTypeSupportChecker(INPUT_ITERATOR        first,
+                                 INPUT_ITERATOR        last,
+                                 const allocator_type& basicAllocator
+                                                            = allocator_type())
+        // Call 'bsl::list' constructor passing the specified 'first',
+        // 'last', and 'basicAllocator' as parameters.
+    : d_list(first, last, basicAllocator)
     {
         s_functionCallCounters[5]++;
     }
@@ -8048,11 +8146,12 @@ class IncompleteTypeSupportChecker {
     }
 
 #if defined(BSLS_COMPILERFEATURES_SUPPORT_GENERALIZED_INITIALIZERS)
-    explicit IncompleteTypeSupportChecker(
-                                      std::initializer_list<value_type> values)
-        // Call 'bsl::list' constructor passing the specified 'values' as a
-        // parameter.
-    : d_list(values)
+    IncompleteTypeSupportChecker(
+           std::initializer_list<value_type> values,
+           const allocator_type&             basicAllocator = allocator_type())
+        // Call 'bsl::list' constructor passing the specified 'values' and
+        // 'basicAllocator as parameters.
+    : d_list(values, basicAllocator)
     {
         s_functionCallCounters[10]++;
     }
@@ -8711,15 +8810,15 @@ class IncompleteTypeEqualityPredicate {
                   // class IncompleteTypeSupportChecker
                   // ----------------------------------
 // CLASS DATA
-const int        IncompleteTypeSupportChecker::s_numFunctions = 75;
-bsl::vector<int> IncompleteTypeSupportChecker::s_functionCallCounters(
-                                                                s_numFunctions,
-                                                                0);
+const int IncompleteTypeSupportChecker::s_numFunctions = 75;
+int       IncompleteTypeSupportChecker::s_functionCallCounters[s_numFunctions]
+                                                                         = { };
+
 
 // CLASS METHODS
 void IncompleteTypeSupportChecker::checkInvokedFunctions()
 {
-    for (std::size_t i = 0; i < s_functionCallCounters.size(); ++i) {
+    for (std::size_t i = 0; i < s_numFunctions; ++i) {
         const size_t INDEX = i;
         ASSERTV(INDEX, 0 < s_functionCallCounters[INDEX]);
     }
@@ -8733,7 +8832,9 @@ void IncompleteTypeSupportChecker::increaseFunctionCallCounter(
 
 void IncompleteTypeSupportChecker::resetFunctionCallCounters()
 {
-    s_functionCallCounters.assign(s_numFunctions, 0);
+    for (std::size_t i = 0; i < s_numFunctions; ++i) {
+        s_functionCallCounters[i] = 0;
+    }
 }
 
 // ACCESSORS
@@ -8880,10 +8981,10 @@ int main(int argc, char *argv[])
         }
 
         {
-            bsl::vector<IncompleteTypeSupportChecker> source(initialSize);
-            IncompleteTypeSupportChecker              mIT(source.begin(),
-                                                          source.end());
-            const IncompleteTypeSupportChecker&       IT = mIT;            // 5
+            IncompleteTypeSupportChecker        source[initialSize];
+            IncompleteTypeSupportChecker        mIT(source,
+                                                    source + initialSize);
+            const IncompleteTypeSupportChecker& IT = mIT;                  // 5
 
             ASSERT(initialSize == IT.size());
         }
@@ -8943,7 +9044,7 @@ int main(int argc, char *argv[])
             const IncompleteTypeSupportChecker         source0;
             const IncompleteTypeSupportChecker         source1(initialSize);
             IncompleteTypeSupportChecker               source2;
-            bsl::vector<IncompleteTypeSupportChecker>  source3(initialSize);
+            IncompleteTypeSupportChecker               source3[initialSize];
             IncompleteTypeSupportChecker               source4;
             IncompleteTypeSupportChecker               source5;
             IncompleteTypeSupportChecker               source6;
@@ -8983,7 +9084,7 @@ int main(int argc, char *argv[])
             IncompleteTypeSupportChecker::increaseFunctionCallCounter(14);
 #endif
 
-            mIT.assign(source3.begin(), source3.end());                   // 15
+            mIT.assign(source3, source3 + initialSize);                   // 15
 
             ASSERT(initialSize == IT.size());
 
@@ -8999,7 +9100,7 @@ int main(int argc, char *argv[])
             IncompleteTypeSupportChecker::increaseFunctionCallCounter(17);
 #endif
 
-            mIT.assign(source3.begin(), source3.begin());
+            mIT.assign(source3, source3);  // Empty range
 
             ASSERT(mIT.end()    == mIT.begin() );                         // 18
             ASSERT(mIT.begin()  == mIT.end()   );                         // 19
@@ -9100,7 +9201,7 @@ int main(int argc, char *argv[])
             ASSERT(2 * initialSize + 10 == IT.size());
             ASSERT(IT.begin()           == mIter    );
 
-            mIter = mIT.insert(mIT.cbegin(), source3.begin(), source3.end());
+            mIter = mIT.insert(mIT.cbegin(), source3, source3 + initialSize);
                                                                           // 41
             ASSERT(2 * initialSize + 15 == IT.size());
             ASSERT(IT.begin()           == mIter    );
@@ -10206,7 +10307,9 @@ int main(int argc, char *argv[])
         //: 2 'operator>', 'operator<=', and 'operator>=' are correctly tied to
         //:   'operator<'.
         //:
-        //: 3 That traits get selected properly.
+        //: 3 'operator<=>' is consistent with '<', '>', '<=', '>='.
+        //:
+        //: 4 That traits get selected properly.
         //
         // Plan:
         //: 1 For a variety of lists of different sizes and different values,
@@ -10217,6 +10320,8 @@ int main(int argc, char *argv[])
         //   bool operator>(const list&, const list&);
         //   bool operator<=(const list&, const list&);
         //   bool operator>=(const list&, const list&);
+        //   bool operator>=(const list&, const list&);
+        //   auto operator<=>(const list&, const list&);
         // --------------------------------------------------------------------
 
         if (verbose) printf("TESTING COMPARISON FREE OPERATORS\n"

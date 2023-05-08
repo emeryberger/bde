@@ -9,13 +9,6 @@
 
 #include <bdlmt_timereventscheduler.h>
 
-#include <bslma_testallocator.h>
-#include <bslmt_barrier.h>
-#include <bslmt_threadgroup.h>
-#include <bsls_atomic.h>
-#include <bsls_review.h>
-#include <bsls_systemtime.h>
-
 #include <bdlf_bind.h>
 #include <bdlf_placeholder.h>
 #include <bdlf_memfn.h>
@@ -24,13 +17,18 @@
 #include <bdlt_datetime.h>
 #include <bdlt_timeunitratio.h>
 
+#include <bslma_default.h>
+#include <bslma_newdeleteallocator.h>
+#include <bslma_testallocator.h>
 #include <bslmt_timedsemaphore.h>
 #include <bslmt_semaphore.h>
 #include <bslmt_barrier.h>
 #include <bslmt_testutil.h>
+#include <bslmt_threadgroup.h>
 #include <bslmt_threadutil.h>
 #include <bsls_atomic.h>
 #include <bsls_platform.h>
+#include <bsls_review.h>
 #include <bsls_stopwatch.h>
 #include <bsls_systemtime.h>
 #include <bsls_types.h>
@@ -198,14 +196,13 @@ static bslmt::Mutex printMutex;  // mutex to protect output macros
 #define PT(X) { printMutex.lock(); P(X); printMutex.unlock(); }
 #define PT_(X) { printMutex.lock(); P_(X); printMutex.unlock(); }
 
-static bslmt::Mutex &assertMutex = printMutex;// mutex to protect assert macros
-
 // ============================================================================
 //         GLOBAL TYPEDEFS/CONSTANTS/VARIABLES/FUNCTIONS FOR TESTING
 // ----------------------------------------------------------------------------
 static int verbose;
 static int veryVerbose;
 static int veryVeryVerbose;
+static int veryVeryVeryVerbose;
 
 typedef bdlmt::TimerEventScheduler          Obj;
 typedef Obj::Handle                         Handle;
@@ -238,6 +235,7 @@ static inline bool isUnacceptable(const bsls::TimeInterval& t1,
     // definition of *unacceptable* is implementation-defined) equal, otherwise
     // return false.
 {
+    (void) UNACCEPTABLE_DIFFERENCE;
     bsls::TimeInterval absDifference = (t1 > t2) ? (t1 - t2) : (t2 - t1);
     return (ALLOWABLE_DIFFERENCE > absDifference)? true : false;
 }
@@ -306,6 +304,15 @@ void noop()
 {
 }
 
+#if defined(BSLS_PLATFORM_OS_WINDOWS) || defined(BSLS_PLATFORM_OS_AIX)
+// On Windows, the thread name will only be set if we're running on Windows 10,
+// version 1607 or later, otherwise it will be empty. AIX does not support
+// thread naming.
+static const bool k_threadNameCanBeEmpty = true;
+#else
+static const bool k_threadNameCanBeEmpty = false;
+#endif
+
                          // ==========================
                          // function executeInParallel
                          // ==========================
@@ -316,18 +323,23 @@ static void executeInParallel(int                               numThreads,
     // Number each thread (sequentially from 0 to 'numThreads-1') by passing i
     // to i'th thread.  Finally join all the threads.
 {
-    bslmt::ThreadUtil::Handle *threads =
-                               new bslmt::ThreadUtil::Handle[numThreads];
-    ASSERT(threads);
+    bslma::Allocator *alloc = &bslma::NewDeleteAllocator::singleton();
 
-    for (int i = 0; i < numThreads; ++i) {
-        bslmt::ThreadUtil::create(&threads[i], func, (void*)(IntPtr)i);
-    }
-    for (int i = 0; i < numThreads; ++i) {
-        bslmt::ThreadUtil::join(threads[i]);
+    bsl::vector<bslmt::ThreadUtil::Handle> handles(alloc);
+
+    for (int ii = 0; ii < numThreads; ++ii) {
+        bslmt::ThreadUtil::Handle handle;
+        ASSERT(0 == bslmt::ThreadUtil::createWithAllocator(
+                                                          &handle,
+                                                          func,
+                                                          (void *) (IntPtr) ii,
+                                                          alloc));
+        handles.push_back(handle);
     }
 
-    delete [] threads;
+    for (int ii = 0; ii < numThreads; ++ii) {
+        bslmt::ThreadUtil::join(handles[ii]);
+    }
 }
 
                               // ===============
@@ -554,13 +566,10 @@ struct TestClass1 {
 
         bsl::string threadName;
         bslmt::ThreadUtil::getThreadName(&threadName);
-#if defined(BSLS_PLATFORM_OS_LINUX) || defined(BSLS_PLATFORM_OS_SOLARIS) ||   \
-                                       defined(BSLS_PLATFORM_OS_DARWIN)
-        ASSERTV(threadName, threadName == "bdl.TimerEvent" ||
-                                                    threadName == "OtherName");
-#else
-        ASSERTV(threadName, threadName.empty());
-#endif
+        ASSERTV(threadName,
+                (k_threadNameCanBeEmpty && threadName.empty()) ||
+                    threadName == "bdl.TimerEvent" ||
+                    threadName == "OtherName");
 
         if (d_executionTime) {
             sleepUntilMs(d_executionTime / 1000);
@@ -576,6 +585,62 @@ struct TestClass1 {
     }
 
     int numExecuted()
+    {
+        return d_numExecuted;
+    }
+};
+
+                              // ================
+                              // class TestClass2
+                              // ================
+
+struct TestClass2 {
+    // This class define a function 'callback' that is used as a callback for a
+    // clock or an event.  The class keeps track of number of times the
+    // callback has been executed.  Unlike 'TestClass1', it does not support a
+    // delay, but instead supports synchronization using up to 2 barriers.
+
+    bsls::AtomicInt  d_numExecuted;
+    bslmt::Barrier  *d_startBarrier_p;
+    bslmt::Barrier  *d_finishBarrier_p;
+
+    // CREATORS
+    TestClass2(bslmt::Barrier *startBarrier, bslmt::Barrier *finishBarrier)
+        // Create a 'TestClass2' object that uses the specified 'startBarrier'
+        // (if non-null) and the specified 'finishBarrier' (if non-null) for
+        // synchronization.
+    : d_numExecuted(0)
+    , d_startBarrier_p(startBarrier)
+    , d_finishBarrier_p(finishBarrier)
+    {
+    }
+
+    // MANIPULATORS
+    void callback()
+        // Arrive and wait at 'd_startBarrier_p' (if non-null), then increment
+        // 'd_numExecuted', and finally arrive and wait at 'd_finishBarrier_p'
+        // (if non-null).
+    {
+        bsl::string threadName;
+        bslmt::ThreadUtil::getThreadName(&threadName);
+        ASSERTV(threadName,
+                (k_threadNameCanBeEmpty && threadName.empty()) ||
+                    threadName == "bdl.TimerEvent" ||
+                    threadName == "OtherName");
+
+        if (d_startBarrier_p) {
+            d_startBarrier_p->wait();
+        }
+
+        ++d_numExecuted;
+
+        if (d_finishBarrier_p) {
+            d_finishBarrier_p->wait();
+        }
+    }
+
+    // ACCESSORS
+    int numExecuted() const
     {
         return d_numExecuted;
     }
@@ -1044,7 +1109,7 @@ namespace TIMER_EVENT_SCHEDULER_TEST_CASE_14
         }
     };
     const double Slowfunctor::SLEEP_SECONDS =
-                                        Slowfunctor::SLEEP_MICROSECONDS * 1e-6;
+                   static_cast<double>(Slowfunctor::SLEEP_MICROSECONDS) * 1e-6;
     struct Fastfunctor {
         typedef bsl::list<double>       dateTimeList;
         static const double TOLERANCE;
@@ -1272,7 +1337,8 @@ void *workerThread10(void *arg)
                                   bdlf::MemFnUtil::memFn(&TestClass1::callback,
                                                          &testObj[id]));
               if (veryVeryVerbose) {
-                  int *handle = reinterpret_cast<int *>(h & 0x8fffffff);
+                  int *handle = reinterpret_cast<int *>(
+                                  static_cast<bsl::uintptr_t>(h & 0x8fffffff));
                   printMutex.lock();
                   cout << "\t\tAdded event: "; P_(id); P_(i); P_(h); P(handle);
                   printMutex.unlock();
@@ -1305,7 +1371,8 @@ void *workerThread10(void *arg)
                                bdlf::MemFnUtil::memFn(&TestClass1::callback,
                                                       &testObj[id]));
               if (veryVeryVerbose) {
-                  void *handle = reinterpret_cast<void *>(h & 0x8fffffff);
+                  void *handle = reinterpret_cast<void *>(
+                                  static_cast<bsl::uintptr_t>(h & 0x8fffffff));
                   printMutex.lock();
                   cout << "\t\tAdded clock: "; P_(id); P_(i); P_(h); P(handle);
                   printMutex.unlock();
@@ -1317,7 +1384,11 @@ void *workerThread10(void *arg)
 
                   bsls::TimeInterval elapsed =
                                     bsls::SystemTime::nowRealtimeClock() - now;
-                  ASSERTV(id, i, reinterpret_cast<void *>(h), elapsed < T6);
+                  ASSERTV(
+                      id,
+                      i,
+                      reinterpret_cast<void *>(static_cast<bsl::uintptr_t>(h)),
+                      elapsed < T6);
                   testTimingFailure = (elapsed >= T6);
               }
           }
@@ -1388,18 +1459,22 @@ void startStopConcurrencyTest()
     bslmt::ThreadUtil::Handle stopThread;
     bslmt::TimedSemaphore stopSema(bsls::SystemClockType::e_MONOTONIC);
     bslmt::Barrier syncBarrier(2);
-    bslmt::ThreadUtil::create(&stopThread,
-                              bdlf::BindUtil::bind(&waitStopAndSignal,
-                                                   &syncBarrier,
-                                                   &x,
-                                                   &stopSema));
+    bslmt::ThreadUtil::createWithAllocator(
+                                       &stopThread,
+                                       bdlf::BindUtil::bind(&waitStopAndSignal,
+                                                            &syncBarrier,
+                                                            &x,
+                                                            &stopSema),
+                                       &ta);
     syncBarrier.wait();
 
     // From another thread, invoke start().  (stop() is blocked at this point,
     // and future implementations might block start() if stop() is running)
     bslmt::ThreadUtil::Handle startThread;
-    bslmt::ThreadUtil::create(&startThread,
-                              bdlf::BindUtil::bind(&startScheduler, &x));
+    bslmt::ThreadUtil::createWithAllocator(
+                                    &startThread,
+                                    bdlf::BindUtil::bind(&startScheduler, &x),
+                                    &ta);
 
     // Release the scheduled event so that the dispatcher thread can complete
     sema.post();
@@ -1484,11 +1559,12 @@ void test7_a()
     const int T8 = 8 * DECI_SEC_IN_MICRO_SEC;
     const bsls::TimeInterval T10(10 * DECI_SEC);
 
+    TestClass1 event;
+    TestClass1 clock;
+
     bslma::TestAllocator ta(veryVeryVerbose);
     Obj x(&ta); x.start();
 
-    TestClass1 event;
-    TestClass1 clock;
     bsls::TimeInterval now = bsls::SystemTime::nowRealtimeClock();
     x.scheduleEvent(
                 now + T2,
@@ -1513,10 +1589,10 @@ void test7_b()
     const int T3 = 3 * DECI_SEC_IN_MICRO_SEC;
     const int T6 = 6 * DECI_SEC_IN_MICRO_SEC;
 
+    TestClass1 testObj;
+
     bslma::TestAllocator ta(veryVeryVerbose);
     Obj x(&ta);
-
-    TestClass1 testObj;
 
     Handle handleToBeCancelled =
         x.scheduleEvent(bsls::SystemTime::nowRealtimeClock() + T,
@@ -1553,11 +1629,11 @@ void test7_c()
     const int T3 = 3 * DECI_SEC_IN_MICRO_SEC;
     const int T6 = 6 * DECI_SEC_IN_MICRO_SEC;
 
-    bslma::TestAllocator ta(veryVeryVerbose);
-    Obj x(&ta);
-
     TestClass1 testObj1;
     TestClass1 testObj2;
+
+    bslma::TestAllocator ta(veryVeryVerbose);
+    Obj x(&ta);
 
     x.scheduleEvent(bsls::SystemTime::nowRealtimeClock() + T,
                     bdlf::BindUtil::bind(&cancelAllEventsCallback, &x, 1));
@@ -1589,10 +1665,10 @@ void test7_d()
     const int T3  = 3 * DECI_SEC_IN_MICRO_SEC;
     const int T6  = 6 * DECI_SEC_IN_MICRO_SEC;
 
+    TestClass1 testObj;
+
     bslma::TestAllocator ta(veryVeryVerbose);
     Obj x(&ta);
-
-    TestClass1 testObj;
 
     Handle handleToBeCancelled = x.startClock(
                                      T,
@@ -1627,10 +1703,10 @@ void test7_e()
     const int T3 = 3 * DECI_SEC_IN_MICRO_SEC;
     const int T6 = 6 * DECI_SEC_IN_MICRO_SEC;
 
+    TestClass1 testObj;
+
     bslma::TestAllocator ta(veryVeryVerbose);
     Obj x(&ta);
-
-    TestClass1 testObj;
 
     x.startClock(T, bdlf::BindUtil::bind(&cancelAllClocksCallback, &x, 1));
 
@@ -1657,10 +1733,10 @@ void test7_f()
     const bsls::TimeInterval T3(3 * DECI_SEC);
     const int T10 = 10 * DECI_SEC_IN_MICRO_SEC;
 
+    TestClass1 testObj;
+
     bslma::TestAllocator ta(veryVeryVerbose);
     Obj x(&ta); x.start();
-
-    TestClass1 testObj;
 
     Handle h1, h2;
     {
@@ -1708,10 +1784,11 @@ void test6_a()
     const bsls::TimeInterval T5(5 * DECI_SEC);
     const int T6 = 6 * DECI_SEC_IN_MICRO_SEC;
 
-    bslma::TestAllocator ta(veryVeryVerbose);
-    Obj x(&ta); x.start();
     TestClass1 testObj1;
     TestClass1 testObj2;
+
+    bslma::TestAllocator ta(veryVeryVerbose);
+    Obj x(&ta); x.start();
 
     bsls::TimeInterval now = bsls::SystemTime::nowRealtimeClock();
     x.startClock(T3, bdlf::MemFnUtil::memFn(&TestClass1::callback, &testObj1));
@@ -1748,12 +1825,12 @@ void test6_b()
     const int TM4  =  4 * DECI_SEC_IN_MICRO_SEC;
     const int TM10 = 10 * DECI_SEC_IN_MICRO_SEC;
 
-    bslma::TestAllocator ta(veryVeryVerbose);
-    Obj x(&ta);
-
     TestClass1 testObj1(TM10);
     TestClass1 testObj2;
     TestClass1 testObj3;
+
+    bslma::TestAllocator ta(veryVeryVerbose);
+    Obj x(&ta);
 
     bsls::TimeInterval now = bsls::SystemTime::nowRealtimeClock();
     x.startClock(T,
@@ -1810,12 +1887,13 @@ void test6_c()
     if (veryVerbose) {
         P_(T4); P_(T5); P_(T10); P(T15);
     }
-    bslma::TestAllocator ta(veryVeryVerbose);
-    Obj x(&ta);
 
     TestClass1 testObj1(T10);
     TestClass1 testObj2;
     TestClass1 testObj3;
+
+    bslma::TestAllocator ta(veryVeryVerbose);
+    Obj x(&ta);
 
     bsls::TimeInterval now = bsls::SystemTime::nowRealtimeClock();
     x.startClock(T,
@@ -1860,7 +1938,32 @@ void test6_c()
 // ----------------------------------------------------------------------------
 namespace TIMER_EVENT_SCHEDULER_TEST_CASE_5
 {
+struct Unblock {
+    Obj            *d_scheduler_p;
+    bslmt::Barrier *d_startBarrier_p;
+    bslmt::Barrier *d_finishBarrier_p;
 
+    Unblock(Obj            *scheduler,
+            bslmt::Barrier *startBarrier,
+            bslmt::Barrier *finishBarrier)
+    : d_scheduler_p(scheduler)
+    , d_startBarrier_p(startBarrier)
+    , d_finishBarrier_p(finishBarrier)
+    {
+    }
+
+    void operator()()
+        // Arrive and wait at '*d_startBarrier_p'.  Wait until '*d_scheduler_p'
+        // no longer has any scheduled clocks, then arrive at
+        // '*d_finishBarrier_p' in order to unblock the main thread.
+    {
+        d_startBarrier_p->wait();
+        while (d_scheduler_p->numClocks()) {
+            bslmt::ThreadUtil::yield();
+        }
+        d_finishBarrier_p->arrive();
+    }
+};
 }  // close namespace TIMER_EVENT_SCHEDULER_TEST_CASE_5
 // ============================================================================
 //                          CASE 4 RELATED ENTITIES
@@ -1886,9 +1989,10 @@ void test3_a()
     const bsls::TimeInterval T5(5 * DECI_SEC);
     const int T6 = 6 * DECI_SEC_IN_MICRO_SEC;
 
+    TestClass1 testObj;
+
     bslma::TestAllocator ta(veryVeryVerbose);
     Obj x(&ta); x.start();
-    TestClass1 testObj;
 
     bsls::TimeInterval now = bsls::SystemTime::nowRealtimeClock();
     Handle h = x.scheduleEvent(now + T5,
@@ -1915,10 +2019,12 @@ void test3_b()
     const bsls::TimeInterval T2(2 * DECI_SEC);
     const int T3 = 3 * DECI_SEC_IN_MICRO_SEC;
     const int T10 = 10 * DECI_SEC_IN_MICRO_SEC;
-    bslma::TestAllocator ta(veryVeryVerbose);
-    Obj x(&ta);
+
     TestClass1 testObj1(T10);
     TestClass1 testObj2;
+
+    bslma::TestAllocator ta(veryVeryVerbose);
+    Obj x(&ta);
 
     bsls::TimeInterval now = bsls::SystemTime::nowRealtimeClock();
     (void)x.scheduleEvent(now + T,
@@ -1952,10 +2058,12 @@ void test3_c()
     const bsls::TimeInterval T2(2 * DECI_SEC);
     const int T3 = 3 * DECI_SEC_IN_MICRO_SEC;
     const int T10 = 10 * DECI_SEC_IN_MICRO_SEC;
-    bslma::TestAllocator ta(veryVeryVerbose);
-    Obj x(&ta);
+
     TestClass1 testObj1(T10);
     TestClass1 testObj2;
+
+    bslma::TestAllocator ta(veryVeryVerbose);
+    Obj x(&ta);
 
     bsls::TimeInterval now = bsls::SystemTime::nowRealtimeClock();
     (void)x.scheduleEvent(now + T,
@@ -1983,9 +2091,11 @@ void test3_d()
     const bsls::TimeInterval T2(2 * DECI_SEC);
     const int T3 = 3 * DECI_SEC_IN_MICRO_SEC;
 
+    TestClass1 testObj;
+
     bslma::TestAllocator ta(veryVeryVerbose);
     Obj x(&ta); x.start();
-    TestClass1 testObj;
+
     Handle handleToBeCancelled;
     bsls::TimeInterval now = bsls::SystemTime::nowRealtimeClock();
     handleToBeCancelled = x.scheduleEvent(
@@ -2022,9 +2132,11 @@ void test3_e()
     const bsls::TimeInterval T2(2 * DECI_SEC);
     const int T3 = 3 * DECI_SEC_IN_MICRO_SEC;
 
+    TestClass1 testObj;
+
     bslma::TestAllocator ta(veryVeryVerbose);
     Obj x(&ta); x.start();
-    TestClass1 testObj;
+
     Handle handleToBeCancelled;
     bsls::TimeInterval now = bsls::SystemTime::nowRealtimeClock();
     handleToBeCancelled = x.scheduleEvent(
@@ -2079,10 +2191,10 @@ void test3_g()
     const bsls::TimeInterval T2(2 * DECI_SEC);
     const int T3 = 3 * DECI_SEC_IN_MICRO_SEC;
 
+    TestClass1 testObj;
+
     bslma::TestAllocator ta(veryVeryVerbose);
     Obj x(&ta);
-
-    TestClass1 testObj;
 
     bsls::TimeInterval now = bsls::SystemTime::nowRealtimeClock();
     Handle handleToBeCancelled = x.scheduleEvent(
@@ -2249,12 +2361,12 @@ void test1_a()
     const bsls::TimeInterval T3(3 * DECI_SEC);
     const bsls::TimeInterval T6(6 * DECI_SEC);
 
+    TestClass1 testObj1;
+    TestClass1 testObj2;
+
     bslma::TestAllocator ta(veryVeryVerbose);
     Obj x(&ta);
     x.start();
-
-    TestClass1 testObj1;
-    TestClass1 testObj2;
 
     bsls::TimeInterval now = bsls::SystemTime::nowRealtimeClock();
     x.startClock(T3, bdlf::MemFnUtil::memFn(&TestClass1::callback, &testObj1));
@@ -2308,12 +2420,12 @@ void test1_b()
     const bsls::TimeInterval T3(3 * DECI_SEC);
     const int T10 = 10 * DECI_SEC_IN_MICRO_SEC;
 
+    TestClass1 testObj1;
+    TestClass1 testObj2;
+
     bslma::TestAllocator ta(veryVeryVerbose);
     Obj x(&ta);
     x.start();
-
-    TestClass1 testObj1;
-    TestClass1 testObj2;
 
     Handle h1 = x.startClock(T3,
                              bdlf::MemFnUtil::memFn(&TestClass1::callback,
@@ -2346,11 +2458,11 @@ void test1_c()
     const int T4 = 4 * DECI_SEC_IN_MICRO_SEC;
     const int T6 = 6 * DECI_SEC_IN_MICRO_SEC;
 
+    TestClass1 testObj;
+
     bslma::TestAllocator ta(veryVeryVerbose);
     Obj x(&ta);
     x.start();
-
-    TestClass1 testObj;
 
     bsls::TimeInterval now = bsls::SystemTime::nowRealtimeClock();
     Handle h = x.startClock(T3,
@@ -2386,13 +2498,13 @@ void test1_d()
 
     const int T5 = 5 * DECI_SEC_IN_MICRO_SEC;
 
-    bslma::TestAllocator ta(veryVeryVerbose);
-    Obj x(&ta);
-    x.start();
-
     TestClass1 testObj1;
     TestClass1 testObj2;
     TestClass1 testObj3;
+
+    bslma::TestAllocator ta(veryVeryVerbose);
+    Obj x(&ta);
+    x.start();
 
     bsls::TimeInterval now = bsls::SystemTime::nowRealtimeClock();
     Handle h1 = x.scheduleEvent(now + T,
@@ -2448,11 +2560,11 @@ void test1_e()
     const bsls::TimeInterval T2(2 * DECI_SEC);
     const int T3 = 3 * DECI_SEC_IN_MICRO_SEC;
 
+    TestClass1 testObj;
+
     bslma::TestAllocator ta(veryVeryVerbose);
     Obj x(&ta);
     x.start();
-
-    TestClass1 testObj;
 
     bsls::TimeInterval now = bsls::SystemTime::nowRealtimeClock();
     Handle h = x.scheduleEvent(now + T2,
@@ -2476,11 +2588,11 @@ void test1_f()
     const int T3 = 3 * DECI_SEC_IN_MICRO_SEC;
     const bsls::TimeInterval T2(2 * DECI_SEC);
 
+    TestClass1 testObj;
+
     bslma::TestAllocator ta(veryVeryVerbose);
     Obj x(&ta);
     x.start();
-
-    TestClass1 testObj;
 
     bsls::TimeInterval now = bsls::SystemTime::nowRealtimeClock();
     Handle h = x.scheduleEvent(now + T2,
@@ -2516,12 +2628,12 @@ void test1_g()
     const bsls::TimeInterval T8(8 * DECI_SEC);
     const bsls::TimeInterval T9(9 * DECI_SEC);
 
+    TestClass1 testObj1;
+    TestClass1 testObj2;
+
     bslma::TestAllocator ta(veryVeryVerbose);
     Obj x(&ta);
     x.start();
-
-    TestClass1 testObj1;
-    TestClass1 testObj2;
 
     bsls::TimeInterval now = bsls::SystemTime::nowRealtimeClock();
     x.startClock(T3, bdlf::MemFnUtil::memFn(&TestClass1::callback, &testObj1));
@@ -2590,11 +2702,11 @@ void test1_h()
     const int T4 = 4 * DECI_SEC_IN_MICRO_SEC;
     const bsls::TimeInterval T6(6 * DECI_SEC);
 
+    TestClass1 testObj;
+
     bslma::TestAllocator ta(veryVeryVerbose);
     Obj x(&ta);
     x.start();
-
-    TestClass1 testObj;
 
     bsls::TimeInterval now = bsls::SystemTime::nowRealtimeClock();
     x.startClock(T3, bdlf::MemFnUtil::memFn(&TestClass1::callback, &testObj));
@@ -2645,15 +2757,15 @@ void test1_i()
     const bsls::TimeInterval T5(5 * DECI_SEC);
     const bsls::TimeInterval T6(6 * DECI_SEC);
 
+    TestClass1 testObj1;
+    TestClass1 testObj2;
+
     bslma::TestAllocator ta(veryVeryVerbose);
     Obj x(&ta);
     x.start();
 
     ASSERT(0 == x.numEvents());
     ASSERT(0 == x.numClocks());
-
-    TestClass1 testObj1;
-    TestClass1 testObj2;
 
     bsls::TimeInterval now = bsls::SystemTime::nowRealtimeClock();
     x.scheduleEvent(now + T4,
@@ -2715,11 +2827,11 @@ void test1_j()
     const bsls::TimeInterval T2(2 * DECI_SEC);
     const int T3 = 3 * DECI_SEC_IN_MICRO_SEC;
 
+    TestClass1 testObj;
+
     bslma::TestAllocator ta(veryVeryVerbose);
     Obj x(&ta);
     x.start();
-
-    TestClass1 testObj;
 
     typedef Obj::EventKey Key;
 
@@ -2763,6 +2875,8 @@ void test1_k()
     const bsls::TimeInterval T2(2 * DECI_SEC);
     const int T3 = 3 * DECI_SEC_IN_MICRO_SEC;
 
+    TestClass1 testObj;
+
     bslma::TestAllocator ta(veryVeryVerbose);
     Obj x(&ta);
 
@@ -2770,8 +2884,6 @@ void test1_k()
     ASSERT(0 == x.numClocks());
 
     x.start();
-
-    TestClass1 testObj;
 
     bsls::TimeInterval now = bsls::SystemTime::nowRealtimeClock();
     x.scheduleEvent(now + T2,
@@ -2809,6 +2921,7 @@ int main(int argc, char *argv[])
     verbose = argc > 2;
     veryVerbose = argc > 3;
     veryVeryVerbose = argc > 4;
+    veryVeryVeryVerbose = argc > 5;
     int nExec;
 
     bslma::TestAllocator ta;
@@ -2817,6 +2930,14 @@ int main(int argc, char *argv[])
 
     // CONCERN: 'BSLS_REVIEW' failures should lead to test failures.
     bsls::ReviewFailureHandlerGuard reviewGuard(&bsls::Review::failByAbort);
+
+    bslma::TestAllocator testAllocator(veryVeryVeryVerbose);
+
+    bslma::TestAllocator globalAllocator;
+    bslma::Default::setGlobalAllocator(&globalAllocator);
+
+    bslma::TestAllocator defaultAllocator;
+    bslma::Default::setDefaultAllocator(&defaultAllocator);
 
     switch (test) { case 0:  // Zero is always the leading case.
       case 29: {
@@ -3190,11 +3311,11 @@ int main(int argc, char *argv[])
         bdlmt::TimerEventScheduler::Dispatcher dispatcher =
           bdlf::BindUtil::bind(&dispatcherFunction, _1);
 
+        TestClass1 testObj;
+
         bslma::TestAllocator ta(veryVeryVerbose);
         Obj x(4, 4, dispatcher, bsls::SystemClockType::e_MONOTONIC, &ta);
         x.start();
-
-        TestClass1 testObj;
 
         x.scheduleEvent(
                  bsls::SystemTime::now(bsls::SystemClockType::e_MONOTONIC) + T,
@@ -3242,10 +3363,10 @@ int main(int argc, char *argv[])
         bdlmt::TimerEventScheduler::Dispatcher dispatcher =
           bdlf::BindUtil::bind(&dispatcherFunction, _1);
 
+        TestClass1 testObj;
+
         bslma::TestAllocator ta(veryVeryVerbose);
         Obj x(4, 4, dispatcher, &ta); x.start();
-
-        TestClass1 testObj;
 
         x.scheduleEvent(bsls::SystemTime::nowRealtimeClock() + T,
                         bdlf::MemFnUtil::memFn(&TestClass1::callback,
@@ -3288,10 +3409,10 @@ int main(int argc, char *argv[])
         const bsls::TimeInterval T(1 * DECI_SEC);
         const int T2 = 2 * DECI_SEC_IN_MICRO_SEC;
 
+        TestClass1 testObj;
+
         bslma::TestAllocator ta(veryVeryVerbose);
         Obj x(4, 4, bsls::SystemClockType::e_MONOTONIC, &ta); x.start();
-
-        TestClass1 testObj;
 
         x.scheduleEvent(
                  bsls::SystemTime::now(bsls::SystemClockType::e_MONOTONIC) + T,
@@ -3335,10 +3456,10 @@ int main(int argc, char *argv[])
         const bsls::TimeInterval T(1 * DECI_SEC);
         const int T2 = 2 * DECI_SEC_IN_MICRO_SEC;
 
+        TestClass1 testObj;
+
         bslma::TestAllocator ta(veryVeryVerbose);
         Obj x(4, 4, &ta); x.start();
-
-        TestClass1 testObj;
 
         x.scheduleEvent(
                       bsls::SystemTime::nowRealtimeClock() + T,
@@ -3386,10 +3507,10 @@ int main(int argc, char *argv[])
         bdlmt::TimerEventScheduler::Dispatcher dispatcher =
           bdlf::BindUtil::bind(&dispatcherFunction, _1);
 
+        TestClass1 testObj;
+
         bslma::TestAllocator ta(veryVeryVerbose);
         Obj x(dispatcher, bsls::SystemClockType::e_MONOTONIC, &ta); x.start();
-
-        TestClass1 testObj;
 
         x.scheduleEvent(
                  bsls::SystemTime::now(bsls::SystemClockType::e_MONOTONIC) + T,
@@ -3433,10 +3554,10 @@ int main(int argc, char *argv[])
         const bsls::TimeInterval T(1 * DECI_SEC);
         const int T2 = 2 * DECI_SEC_IN_MICRO_SEC;
 
+        TestClass1 testObj;
+
         bslma::TestAllocator ta(veryVeryVerbose);
         Obj x(bsls::SystemClockType::e_MONOTONIC, &ta); x.start();
-
-        TestClass1 testObj;
 
         x.scheduleEvent(
                  bsls::SystemTime::now(bsls::SystemClockType::e_MONOTONIC) + T,
@@ -3985,11 +4106,11 @@ int main(int argc, char *argv[])
           const int T6 = 6 * DECI_SEC_IN_MICRO_SEC;
           const bsls::TimeInterval T8(8 * DECI_SEC);
 
+          TestClass1 testObj;
+
           bslma::TestAllocator ta(veryVeryVerbose);
           Obj x(&ta);
           x.start();
-
-          TestClass1 testObj;
 
           bsls::TimeInterval now = bsls::SystemTime::nowRealtimeClock();
           Handle h = x.scheduleEvent(
@@ -4024,11 +4145,11 @@ int main(int argc, char *argv[])
           const int T6 = 6 * DECI_SEC_IN_MICRO_SEC;
           const bsls::TimeInterval T8(8 * DECI_SEC);
 
+          TestClass1 testObj;
+
           bslma::TestAllocator ta(veryVeryVerbose);
           Obj x(&ta);
           x.start();
-
-          TestClass1 testObj;
 
           bsls::TimeInterval now = bsls::SystemTime::nowRealtimeClock();
           Handle h = x.scheduleEvent(
@@ -4539,15 +4660,13 @@ int main(int argc, char *argv[])
                                   &test7_e, &test7_f };
         enum { NUM_THREADS = sizeof funcPtrs / sizeof funcPtrs[0] };
 
-        bslmt::ThreadUtil::Handle handles[NUM_THREADS];
+        bslmt::ThreadGroup tg(&testAllocator);
 
         for (int i = 0; i < NUM_THREADS; ++i) {
-            ASSERT(0 == bslmt::ThreadUtil::create(&handles[i], funcPtrs[i]));
+            ASSERT(0 == tg.addThread(funcPtrs[i]));
         }
 
-        for (int i = 0; i < NUM_THREADS; ++i) {
-            ASSERT(0 == bslmt::ThreadUtil::join(handles[i]));
-        }
+        tg.joinAll();
       } break;
       case 6: {
         // -----------------------------------------------------------------
@@ -4609,15 +4728,13 @@ int main(int argc, char *argv[])
         const Func funcPtrs[] = { &test6_a, &test6_b, &test6_c };
         enum { NUM_THREADS = sizeof funcPtrs / sizeof funcPtrs[0] };
 
-        bslmt::ThreadUtil::Handle handles[NUM_THREADS];
+        bslmt::ThreadGroup tg(&testAllocator);
 
         for (int i = 0; i < NUM_THREADS; ++i) {
-            ASSERT(0 == bslmt::ThreadUtil::create(&handles[i], funcPtrs[i]));
+            ASSERT(0 == tg.addThread(funcPtrs[i]));
         }
 
-        for (int i = 0; i < NUM_THREADS; ++i) {
-            ASSERT(0 == bslmt::ThreadUtil::join(handles[i]));
-        }
+        tg.joinAll();
       } break;
       case 5: {
         // -----------------------------------------------------------------
@@ -4652,17 +4769,19 @@ int main(int argc, char *argv[])
         //   sleeping enough time before starting the scheduler), cancel
         //   c2 before it's callback is dispatched and verify the result.
         //
-        //   Schedule a clock (whose callback executes for T5 time)
-        //   starting at T.  Let its first execution be started (by
-        //   sleeping for T2 time), cancel it without wait argument,
-        //   verify that its execution has not yet completed, make sure
-        //   that it is cancelled after this execution.
+        //   Schedule a clock starting at T and an event at 3T.  Wait for the
+        //   first execution of the clock to start, cancel it with 'wait'
+        //   argument equal to false while it is running, and wait for the
+        //   event to start.  Verify that the clock was only executed once (not
+        //   a second time at 2T).
         //
-        //   Schedule a clock (whose callback executes for T5 time)
-        //   starting at T.  Let its first execution be started (by
-        //   sleeping for T2 time), cancel it with wait argument, verify
-        //   that its execution has completed, make sure that it is
-        //   cancelled after this execution.
+        //   Schedule a clock starting at T.  Wait for the first execution of
+        //   the clock to start, and cancel it with 'wait' argument equal to
+        //   true while it is running.  Because this will block the main
+        //   thread, another thread is used to unblock the clock callback after
+        //   the clock's cancellation has completed.  Verify that the clock has
+        //   been executed once, and schedule an event at 3T.  Wait for the
+        //   event to start, and verify that the clock was not executed again.
         //
         // Testing:
         //   int cancelClock(Handle handle, bool wait=false);
@@ -4673,6 +4792,9 @@ int main(int argc, char *argv[])
                           << "=====================" << endl;
 
         using namespace TIMER_EVENT_SCHEDULER_TEST_CASE_5;
+
+        if (veryVerbose) cout << "\t...schedule at T2/cancel at T/verify"
+                              << " successfully cancelled." << endl;
         {
             // Schedule a clock starting at T2, cancel it at time T and verify
             // that it has been successfully cancelled.
@@ -4681,10 +4803,11 @@ int main(int argc, char *argv[])
             const bsls::TimeInterval T2(2 * DECI_SEC);
             const int T3 = 3 * DECI_SEC_IN_MICRO_SEC;
 
+            TestClass1 testObj;
+
             bslma::TestAllocator ta(veryVeryVerbose);
             Obj x(&ta);
             x.start();
-            TestClass1 testObj;
 
             bsls::TimeInterval now = bsls::SystemTime::nowRealtimeClock();
             Handle h = x.startClock(
@@ -4699,23 +4822,27 @@ int main(int argc, char *argv[])
                 myMicroSleep(T3, 0);
                 ASSERT(0 == testObj.numExecuted());
             }
+            x.stop();
         }
 
+        if (veryVerbose) cout << "\t...schedule 2 clocks simultaneously"
+                              << " pending." << endl;
         {
             // Schedule two clocks c1 and c2 starting at T and T2.  Let both be
             // simultaneously put onto the pending list (this is done by
             // sleeping enough time before starting the scheduler), cancel c2
-            // before it's callback is dispatched and verify the result.
+            // before its callback is dispatched and verify the result.
 
             bsls::TimeInterval T(1 * DECI_SEC);
             const bsls::TimeInterval T2(2 * DECI_SEC);
             const int T3 = 3 * DECI_SEC_IN_MICRO_SEC;
             const int T10 = 10 * DECI_SEC_IN_MICRO_SEC;
             const int T20 = 20 * DECI_SEC_IN_MICRO_SEC;
-            bslma::TestAllocator ta(veryVeryVerbose);
-            Obj x(&ta);
             TestClass1 testObj1(T10);
             TestClass1 testObj2;
+
+            bslma::TestAllocator ta(veryVeryVerbose);
+            Obj x(&ta);
 
             double start = dnow();
             (void)x.startClock(
@@ -4735,73 +4862,101 @@ int main(int argc, char *argv[])
                 ASSERTV(testObj2.numExecuted(),
                         0 == testObj2.numExecuted());
             }
+            x.stop();
         }
 
+        if (veryVerbose) cout << "\t...clock starting at T/event at 3T"
+                              << endl;
         {
-            // Schedule a clock (whose callback executes for T5 time) starting
-            // at T.  Let its first execution be started (by sleeping for T2
-            // time), cancel it without wait argument, verify that its
-            // execution has not yet completed, make sure that it is cancelled
-            // after this execution.
+            // Schedule a clock starting at T and an event at 3T.  Wait for the
+            // first execution of the clock to start, cancel it with 'wait'
+            // argument equal to false while it is running, and wait for the
+            // event to start.  Verify that the clock was only executed once
+            // (not a second time at 3T).
 
-            const int mT = DECI_SEC_IN_MICRO_SEC / 10;  // 10ms
-            bsls::TimeInterval T(1 * DECI_SEC);
-            const int T2 = 2 * DECI_SEC_IN_MICRO_SEC;
-            const int T5 = 5 * DECI_SEC_IN_MICRO_SEC;
+            bsls::TimeInterval T(0.01);  // 10ms
+            bsls::TimeInterval T2(0.02);
+            bsls::TimeInterval T3(0.03);
+
+            bslmt::Barrier startBarrier1(2);
+            bslmt::Barrier finishBarrier1(2);
+            TestClass2     testObj1(&startBarrier1, &finishBarrier1);
+            bslmt::Barrier startBarrier2(2);
+            TestClass2     testObj2(&startBarrier2, 0);
+
             bslma::TestAllocator ta(veryVeryVerbose);
-            Obj x(&ta);
-            x.start();
+            Obj                  x(&ta);
 
-            TestClass1 testObj(T5);
-
-            double start = dnow();
             Handle h = x.startClock(
-                      T,
-                      bdlf::MemFnUtil::memFn(&TestClass1::callback, &testObj));
-
-            myMicroSleep(T2, 0);
+                     T,
+                     bdlf::MemFnUtil::memFn(&TestClass2::callback, &testObj1));
+            bsls::TimeInterval now = bsls::SystemTime::nowRealtimeClock();
+            (void)x.scheduleEvent(now + T3,
+                                  bdlf::MemFnUtil::memFn(&TestClass2::callback,
+                                                         &testObj2));
+            x.start();
+            startBarrier1.wait();
             ASSERT(0 == x.cancelClock(h));
-            if (dnow() - start < 0.59) {
-                ASSERT(0 == testObj.numExecuted());
-                myMicroSleep(T5, 0);
-                makeSureTestObjectIsExecuted(testObj, mT, 100);
-                ASSERT(1 == testObj.numExecuted());
-            }
+            finishBarrier1.wait();
+            int numExecuted = testObj1.numExecuted();
+            ASSERTV(numExecuted, 1 == numExecuted);
+            startBarrier2.wait();
+            numExecuted = testObj1.numExecuted();
+            ASSERTV(numExecuted, 1 == numExecuted);
+            x.stop();
         }
 
+        if (veryVerbose) cout << "\t...schedule using different threads."
+                              << endl;
         {
-            // Schedule a clock (whose callback executes for T5 time) starting
-            // at T.  Let its first execution be started (by sleeping for T2
-            // time), cancel it with wait argument, verify that its execution
-            // has completed, make sure that it is cancelled after this
-            // execution.
+            // Schedule a clock starting at T.  Wait for the first execution of
+            // the clock to start, and cancel it with 'wait' argument equal to
+            // true while it is running.  Because this will block the main
+            // thread, another thread is used to unblock the clock callback
+            // after the clock's cancellation has completed.  Verify that the
+            // clock has been executed once, and schedule an event at 3T.  Wait
+            // for the event to start, and verify that the clock was not
+            // executed again.  (Note that we have to be careful not to
+            // schedule the event until after the 'cancelClock' call returns.
+            // Otherwise, a deadlock can occur.)
 
-            const int mT = DECI_SEC_IN_MICRO_SEC / 10;  // 10ms
-            bsls::TimeInterval T(1 * DECI_SEC);
-            const int T2 = 2 * DECI_SEC_IN_MICRO_SEC;
-            const int T5 = 5 * DECI_SEC_IN_MICRO_SEC;
+            bsls::TimeInterval T(0.01);  // 10ms
+            bsls::TimeInterval T2(0.02);
+            bsls::TimeInterval T3(0.03);
+
+            bslmt::Barrier startBarrier1(3);
+            bslmt::Barrier finishBarrier1(2);
+            TestClass2     testObj1(&startBarrier1, &finishBarrier1);
+            bslmt::Barrier startBarrier2(2);
+            TestClass2     testObj2(&startBarrier2, 0);
+
             bslma::TestAllocator ta(veryVeryVerbose);
-            Obj x(&ta);
-            x.start();
+            Obj                  x(&ta);
 
-            TestClass1 testObj(T5);
+            bslmt::ThreadUtil::Handle unblockThreadHandle;
+            ASSERT(0 == bslmt::ThreadUtil::createWithAllocator(
+                                &unblockThreadHandle,
+                                Unblock(&x, &startBarrier1, &finishBarrier1),
+                                &ta));
 
-            double start = dnow();
             Handle h = x.startClock(
-                      T,
-                      bdlf::MemFnUtil::memFn(&TestClass1::callback, &testObj));
-
-            myMicroSleep(T2, 0);
-            int wait = 1;
+                     T,
+                     bdlf::MemFnUtil::memFn(&TestClass2::callback, &testObj1));
+            x.start();
+            startBarrier1.wait();
+            const int wait = 1;
             ASSERT(0 == x.cancelClock(h, wait));
-            int numEx = testObj.numExecuted();
-            if (dnow() - start < 0.59) {
-                ASSERTV(testObj.numExecuted(), 1 == numEx);
-            }
-            myMicroSleep(T5, 0);
-            makeSureTestObjectIsExecuted(testObj, mT, 100);
-            ASSERTV(numEx, testObj.numExecuted(),
-                    numEx == testObj.numExecuted());
+            int numExecuted = testObj1.numExecuted();
+            ASSERTV(numExecuted, 1 == numExecuted);
+            bsls::TimeInterval now = bsls::SystemTime::nowRealtimeClock();
+            (void)x.scheduleEvent(now + T3,
+                                  bdlf::MemFnUtil::memFn(&TestClass2::callback,
+                                                         &testObj2));
+            startBarrier2.wait();
+            numExecuted = testObj1.numExecuted();
+            ASSERTV(numExecuted, 1 == numExecuted);
+            x.stop();
+            bslmt::ThreadUtil::join(unblockThreadHandle);
         }
       } break;
       case 4: {
@@ -4861,11 +5016,12 @@ int main(int argc, char *argv[])
           const bsls::TimeInterval T2(2 * DECI_SEC);
           const bsls::TimeInterval T3(3 * DECI_SEC);
 
-          bslma::TestAllocator ta(veryVeryVerbose);
-          Obj x(&ta); x.start();
           TestClass1 testObj1;
           TestClass1 testObj2;
           TestClass1 testObj3;
+
+          bslma::TestAllocator ta(veryVeryVerbose);
+          Obj x(&ta); x.start();
 
           bsls::TimeInterval now = bsls::SystemTime::nowRealtimeClock();
           Handle h1 = x.scheduleEvent(
@@ -4990,12 +5146,13 @@ int main(int argc, char *argv[])
           int ii;
           enum { MAX_LOOP = 4 };
           for (ii = 0; ii <= MAX_LOOP; ++ii) {
-              Obj x(&ta);
-
               TestClass1 testObj0;
               TestClass1 testObj1(T10);
               TestClass1 testObj2;
               TestClass1 testObj3;
+
+              Obj x(&ta);
+
               bsls::TimeInterval now = bsls::SystemTime::nowRealtimeClock();
               x.scheduleEvent(now - (T + T2),
                               bdlf::MemFnUtil::memFn(&TestClass1::callback,
@@ -5123,15 +5280,13 @@ int main(int argc, char *argv[])
                                   &test3_e, &test3_f, &test3_g };
         enum { NUM_THREADS = sizeof funcPtrs / sizeof funcPtrs[0] };
 
-        bslmt::ThreadUtil::Handle handles[NUM_THREADS];
+        bslmt::ThreadGroup tg(&testAllocator);
 
         for (int i = 0; i < NUM_THREADS; ++i) {
-            ASSERT(0 == bslmt::ThreadUtil::create(&handles[i], funcPtrs[i]));
+            ASSERT(0 == tg.addThread(funcPtrs[i]));
         }
 
-        for (int i = 0; i < NUM_THREADS; ++i) {
-            ASSERT(0 == bslmt::ThreadUtil::join(handles[i]));
-        }
+        tg.joinAll();
       } break;
       case 2: {
         // --------------------------------------------------------------------
@@ -5413,15 +5568,13 @@ int main(int argc, char *argv[])
                                   &test1_i, &test1_j, &test1_k };
         enum { NUM_THREADS = sizeof funcPtrs / sizeof funcPtrs[0] };
 
-        bslmt::ThreadUtil::Handle handles[NUM_THREADS];
+        bslmt::ThreadGroup tg(&testAllocator);
 
         for (int i = 0; i < NUM_THREADS; ++i) {
-            ASSERT(0 == bslmt::ThreadUtil::create(&handles[i], funcPtrs[i]));
+            ASSERT(0 == tg.addThread(funcPtrs[i]));
         }
 
-        for (int i = 0; i < NUM_THREADS; ++i) {
-            ASSERT(0 == bslmt::ThreadUtil::join(handles[i]));
-        }
+        tg.joinAll();
       } break;
       case -1: {
         // --------------------------------------------------------------------
@@ -5454,10 +5607,10 @@ int main(int argc, char *argv[])
                     "\ntime backwards)."
                     "\n";
 
+            TestClass1 testObj;
+
             Obj x(bsls::SystemClockType::e_REALTIME);
             x.start();
-
-            TestClass1 testObj;
 
             bsls::TimeInterval currentTime =
                      bsls::SystemTime::now(bsls::SystemClockType::e_REALTIME);
@@ -5521,6 +5674,9 @@ int main(int argc, char *argv[])
         testStatus = -1;
       }
     }
+
+    ASSERT(0 == globalAllocator.numAllocations());
+    ASSERT(0 == defaultAllocator.numAllocations());
 
     if (testStatus > 0) {
         cerr << "Error, non-zero test status = " << testStatus << "." << endl;

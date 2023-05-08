@@ -163,11 +163,12 @@ BSLMF_ASSERT(bsl::is_trivially_default_constructible<Obj>::value);
 //                                  TYPEDEFS
 // ----------------------------------------------------------------------------
 
+BSLMF_ASSERT((bsl::is_same<bool,           Obj::result_type>::value));
 BSLMF_ASSERT((bsl::is_same<bsl::string_view,
                                            Obj::first_argument_type>::value));
 BSLMF_ASSERT((bsl::is_same<bsl::string_view,
                                            Obj::second_argument_type>::value));
-BSLMF_ASSERT((bsl::is_same<bool,           Obj::result_type>::value));
+BSLMF_ASSERT((bsl::is_same<void,           Obj::is_transparent>::value));
 
 // ============================================================================
 //                                 EMPTY TYPE
@@ -257,7 +258,8 @@ int main(int argc, char *argv[])
 // Now, we create an object of type 'bdlb::CaselessStringViewEqualTo' to do the
 // comparisons:
 //..
-    const bdlb::CaselessStringViewEqualTo equals;
+    bdlb::CaselessStringViewEqualTo        eq;
+    const bdlb::CaselessStringViewEqualTo& equals = eq;
 //..
 // Finally, we observe that 'a' matches 'b', but neither matches 'c':
 //..
@@ -337,7 +339,12 @@ int main(int argc, char *argv[])
         };
         const int NUM_DATA = sizeof DATA / sizeof *DATA;
 
-        const Obj  equals;
+        // XLC version 16.1 (on AIX) complains about creating a const object
+        // that does not have an "initializer or user-defined default
+        // constructor".  To work around that, we create a non-const object,
+        // and a const reference to that object, and use the reference.
+        Obj        eq;
+        const Obj& equals = eq;
         u::RandGen generator;
 
         if (verbose) cout << "Comparing two strings with varying case\n";
@@ -501,6 +508,13 @@ int main(int argc, char *argv[])
         ASSERT(!equals(B, a));
         ASSERT(!equals(b, A));
         ASSERT(!equals(B, A));
+
+        ASSERT( equals(a, "A"));
+        ASSERT(!equals(a, "B"));
+
+        ASSERT( equals(a, bsl::string(A)));
+        ASSERT(!equals(a, bsl::string(B)));
+
       } break;
       default: {
         cerr << "WARNING: CASE `" << test << "' NOT FOUND." << endl;

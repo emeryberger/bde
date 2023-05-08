@@ -21,11 +21,14 @@ s_baltst_generatetestsequence
 s_baltst_generatetesttaggedvalue
 s_baltst_mychoice
 s_baltst_myenumeration
+s_baltst_myenumerationwithfallback
 s_baltst_mysequence
 s_baltst_mysequencewithanonymouschoice
 s_baltst_mysequencewitharray
 s_baltst_mysequencewithattributes
 s_baltst_mysequencewithchoice
+s_baltst_mysequencewithchoicearray
+s_baltst_mysequencewithchoices
 s_baltst_mysequencewithdecimalattribute
 s_baltst_mysequencewithdoubleattribute
 s_baltst_mysequencewithnillable
@@ -44,6 +47,9 @@ s_baltst_request
 s_baltst_response
 s_baltst_sequencewithanonymity
 s_baltst_simplerequest
+s_baltst_sqrt
+s_baltst_sqrtf
+s_baltst_test
 s_baltst_testarrayutil
 s_baltst_testattribute
 s_baltst_testchoice
@@ -55,6 +61,7 @@ s_baltst_testdynamictypeutil
 s_baltst_testenumeration
 s_baltst_testenumerationutil
 s_baltst_testenumerator
+s_baltst_testnilvalue
 s_baltst_testnullablevalueutil
 s_baltst_testplaceholder
 s_baltst_testselection
@@ -62,9 +69,6 @@ s_baltst_testsequence
 s_baltst_testsequenceutil
 s_baltst_testtaggedvalue
 s_baltst_testtaggedvalueutil
-s_baltst_sqrt
-s_baltst_sqrtf
-s_baltst_test
 s_baltst_timingrequest
 s_baltst_topchoice
 s_baltst_unsignedsequence

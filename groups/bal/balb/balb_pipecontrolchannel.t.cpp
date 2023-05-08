@@ -16,6 +16,7 @@
 
 #include <bslmt_barrier.h>
 #include <bslmt_condition.h>
+#include <bslmt_latch.h>
 #include <bslmt_mutex.h>
 #include <bslmt_threadgroup.h>
 #include <bslmt_threadutil.h>
@@ -32,6 +33,7 @@
 #include <bsls_log.h>
 #include <bsls_platform.h>
 #include <bsls_timeinterval.h>
+#include <bsls_types.h>
 
 #include <bsl_algorithm.h>
 #include <bsl_cstdlib.h>
@@ -40,10 +42,25 @@
 #include <bsl_fstream.h>
 #include <bsl_iostream.h>
 
-#ifdef BSLS_PLATFORM_OS_UNIX
+#ifdef BSLS_PLATFORM_OS_WINDOWS
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <bdlde_charconvertutf16.h>
+
+#include <windows.h>
+#include <winerror.h>
+#else
+#include <bdlde_utf8util.h>
+
 #include <bsl_c_signal.h>
 
+#include <errno.h>
 #include <fcntl.h>
+#include <poll.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -79,6 +96,9 @@ using namespace bsl;  // automatically added by script
 //
 // ACCESSORS
 // [ 1] const bsl::string& pipeName() const;
+//
+// [ 1] bslma::Allocator *allocator() const;
+
 // ----------------------------------------------------------------------------
 // [ 1] BREATHING TEST
 // [ 2] TESTING CONCERN: THE COMPONENT MAY BE RESTARTED
@@ -87,6 +107,14 @@ using namespace bsl;  // automatically added by script
 // [ 5] TESTING CONCERN: DATA SENT BY A CLIENT IS READ FROM THE PIPE
 // [ 6] TESTING CONCERN: CONCURRENT WRITES
 // [ 7] TESTING USAGE EXAMPLE
+// [ 8] TESTING CRASH RECOVERY
+// [ 9] TESTING PIPE-IN-USE SAFETY
+// [10] EINTR HANDLING
+// [11] CONCERN: 'shutdown' does not deadlock on Windows.
+// [12] int start(const bsl::string&, const bslmt::ThreadAttributes&);
+// [13] EAGAIN HANDLING
+// [14] TESTING CONCERN: STOP DOES NOT DEADLOCK WHEN WRITE END STILL OPEN
+// [15] TESTING CONCERN: MESSAGE BOUNDARIES ARE STRICTLY NEWLINES
 
 // ============================================================================
 //                     STANDARD BDE ASSERT TEST FUNCTION
@@ -183,69 +211,84 @@ void noopHandler (int)
 
 namespace {
 
+///Usage
+///-----
+// This section illustrates intended use of this component.
+//
+///Example 1: Controlling a Simple Server
+/// - - - - - - - - - - - - - - - - - - -
+// This example illustrates how to construct a simple server that records
+// messages sent on a pipe control channel until "EXIT" is received, at which
+// point the channel is closed and the server stops.
+//
+// First, let's define the implementation of our server.
+//..
                             // ===================
                             // class ControlServer
                             // ===================
 
-class ControlServer {
+    class ControlServer {
 
-    // DATA
-    balb::PipeControlChannel d_channel;
-    bsl::vector<bsl::string> d_messages;
+        // DATA
+        balb::PipeControlChannel d_channel;
+        bsl::vector<bsl::string> d_messages;
 
-    // PRIVATE MANIPULATORS
-    void onMessage(const bslstl::StringRef& message)
-    {
-        if ("EXIT" != message) {
-            d_messages.push_back(message);
+        // PRIVATE MANIPULATORS
+        void onMessage(const bslstl::StringRef& message)
+        {
+            if ("EXIT" != message) {
+                d_messages.push_back(message);
+            }
+            else {
+                shutdown();
+            }
         }
-        else {
-            shutdown();
+
+      private:
+        // NOT IMPLEMENTED
+        ControlServer(const ControlServer&);             // = delete
+        ControlServer& operator=(const ControlServer&);  // = delete
+
+      public:
+        // CREATORS
+        explicit ControlServer(bslma::Allocator *basicAllocator = 0)
+        : d_channel(bdlf::BindUtil::bind(&ControlServer::onMessage,
+                                         this,
+                                         bdlf::PlaceHolders::_1),
+                    basicAllocator)
+        , d_messages(basicAllocator)
+        {}
+
+        // MANIPULATORS
+        int start(const bslstl::StringRef& pipeName)
+        {
+            return d_channel.start(pipeName);
         }
-    }
 
-  private:
-    // NOT IMPLEMENTED
-    ControlServer(const ControlServer&);             // = deleted
-    ControlServer& operator=(const ControlServer&);  // = deleted
+        void shutdown()
+        {
+            d_channel.shutdown();
+        }
 
-  public:
-    // CREATORS
-    explicit ControlServer(bslma::Allocator *basicAllocator = 0)
-    : d_channel(bdlf::BindUtil::bind(&ControlServer::onMessage,
-                                     this,
-                                     bdlf::PlaceHolders::_1),
-                basicAllocator)
-    , d_messages(basicAllocator)
-    {}
+        void stop()
+        {
+            d_channel.stop();
+        }
 
-    // MANIPULATORS
-    int start(const bslstl::StringRef &pipeName)
-    {
-        return d_channel.start(pipeName);
-    }
+        // ACCESSORS
+        bsl::size_t numMessages() const
+        {
+            return d_messages.size();
+        }
 
-    void shutdown()
-    {
-        d_channel.shutdown();
-    }
+        const bsl::string& message(int index) const
+        {
+            return d_messages[index];
+        }
+    };
+//..
 
-    void stop()
-    {
-        d_channel.stop();
-    }
-
-    // ACCESSORS
-    bsl::size_t numMessages() const
-    {
-        return d_messages.size();
-    }
-
-    const bsl::string& message(int index) const
-    {
-        return d_messages[index];
-    }
-};
+// ----------------------------------------------------------------------------
 
 static void threadSend(const bsl::string& pipeName,
                        const bsl::string& message,
@@ -263,12 +306,28 @@ void noop(const bslstl::StringRef&)
 void verifyPayload(const bsl::string&        expected,
                    const bslstl::StringRef&  found,
                    bslmt::Barrier           *barrier)
-{
     // Verify that the specified 'found' payload has the same value as the
     // specified 'expected' payload.
-
+{
     ASSERT(expected == found);
     barrier->wait();
+}
+
+void verifyPayloadCountDown(const bsl::string&        expected,
+                            const bslstl::StringRef&  found,
+                            bslmt::Latch             *latch)
+    // Verify that the specified 'found' payload has the same value as the
+    // specified 'expected' payload and decrements the specified 'latch' by 1
+    // if its count is nonzero.
+{
+    ASSERT(expected == found);
+
+    // Always invoked from the PipeControlChannel's processing thread.
+    // Therefore it should be safe to make decisions based on currentCount()
+    // without a lock.
+    if (latch->currentCount() > 0) {
+        latch->countDown(1);
+    }
 }
 
 void loadData(bsl::string *result, int length)
@@ -305,6 +364,236 @@ void loadData(bsl::string *result, int length)
     } while (capacity > 0);
 }
 
+#ifdef BSLS_PLATFORM_OS_UNIX
+class IllegalReader {
+    // For use in the EAGAIN HANDLING test (test case 13)
+    //
+    // This class is a mechanism for reading a single message from a named
+    // pipe and is used by test case 13 to trigger a time-of-check to
+    // time-of-use race in 'balb::PipeControlChannel'.
+
+    // DATA
+    bslmt::ThreadUtil::Handle  d_thread;
+    const size_t               d_messageLength;
+    char                       d_buffer[256];
+    bslmt::Barrier            *d_barrier_p;
+
+    int d_readFd;
+
+    int d_controlReadFd;
+    int d_controlWriteFd;
+
+    // PRIVATE MANIPULATORS
+    bool createControlPipe()
+    {
+        int       tmpFd[2];
+        const int rc = pipe(tmpFd);
+        if (0 != rc) {
+            printf("Failed to open control pipe.\n");
+            return false;                                             // RETURN
+        }
+
+        fcntl(tmpFd[0], F_SETFL, fcntl(tmpFd[0], F_GETFL) | O_NONBLOCK);
+        fcntl(tmpFd[1], F_SETFL, fcntl(tmpFd[1], F_GETFL) | O_NONBLOCK);
+
+        d_controlReadFd = tmpFd[0];
+        d_controlWriteFd = tmpFd[1];
+
+        return true;
+    }
+
+    void readNamedPipe()
+        // Wait for data to become available on either 'd_readFd' or
+        // 'd_controlFd'. If data becomes available on 'd_readFd', attempt to
+        // read 'd_messageLength + 1' bytes from it.
+    {
+        pollfd fds[2];
+        bsl::memset(fds, 0, sizeof(fds));
+        fds[0].fd = d_readFd;
+        fds[0].events = POLLIN | POLLHUP;
+        fds[1].fd = d_controlReadFd;
+        fds[1].events = POLLIN | POLLHUP;
+
+        d_barrier_p->wait();
+        int rc = poll(fds, 2, -1);
+
+        int savedErrno = errno;
+
+        if (0 >= rc) {
+            if (EINTR == savedErrno) {
+                // EINTR polling pipe
+                return;                                               // RETURN
+            }
+            // failed to poll
+            return;                                                   // RETURN
+        }
+
+        if (fds[1].revents) {
+            // Polled from the control pipe, return.
+            return;                                                   // RETURN
+        }
+
+        if ((fds[0].revents & POLLERR) || (fds[0].revents & POLLNVAL)) {
+            // Polled POLERROR or POLLINVAL from file
+            return;                                                   // RETURN
+        }
+
+        if (fds[0].revents & POLLIN) {
+            bsls::Types::Int64 bytesRead = read(d_readFd,
+                                                d_buffer,
+                                                d_messageLength + 1);
+            savedErrno                   = errno;
+
+            (void)bytesRead;
+        }
+        return;
+    }
+
+  public:
+    // CREATORS
+    explicit IllegalReader(bslmt::Barrier *barrier, int messageLength)
+    : d_thread(0)
+    , d_messageLength(messageLength)
+    , d_barrier_p(barrier)
+    , d_readFd(-1)
+    , d_controlReadFd(-1)
+    , d_controlWriteFd(-1)
+    {
+        ASSERT(d_barrier_p);
+        ASSERT(d_messageLength < sizeof(d_buffer));
+    }
+
+    // MANIPULATORS
+    bool start(const bsl::string& pipeName)
+        // Start a thread that reads from the specified 'pipeName'.
+        // Stops reading after receiving a message or when 'stop' is called.
+    {
+        if (!bdls::FilesystemUtil::exists(pipeName)) {
+            return false;                                             // RETURN
+        }
+
+#if defined(BSLS_PLATFORM_OS_LINUX) || defined(BSLS_PLATFORM_OS_SOLARIS)
+        d_readFd = open(pipeName.c_str(),
+                                      O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+#else
+        d_readFd = open(pipeName.c_str(), O_RDONLY | O_NONBLOCK);
+#endif
+
+        if (-1 == d_readFd) {
+            int savedErrno = errno;
+            printf("Unable to open pipe '%s' for reading. errno = %d (%s)",
+                   pipeName.c_str(), savedErrno,
+                   bsl::strerror(savedErrno));
+
+            return false;                                             // RETURN
+        }
+
+        if (!createControlPipe()) return false;                       // RETURN
+
+        const int rc = bslmt::ThreadUtil::create(
+               &d_thread,
+               bslmt::ThreadAttributes(),
+               bdlf::BindUtil::bind(&IllegalReader::readNamedPipe, this));
+        if (rc != 0) {
+            // Could not create processing thread.
+            return false;                                             // RETURN
+        }
+
+        return true;
+    }
+
+    void stop()
+        // Stop the reading thread and close any open pipes.
+    {
+        if (-1 != d_controlWriteFd) {
+            (void) write(d_controlWriteFd, "\n", 1);
+        }
+
+        if (bslmt::ThreadUtil::invalidHandle() != d_thread) {
+            bslmt::ThreadUtil::join(d_thread);
+            d_thread = bslmt::ThreadUtil::invalidHandle();
+        }
+
+        if (-1 != d_readFd) close(d_readFd);
+        if (-1 != d_controlReadFd) close(d_controlReadFd);
+        if (-1 != d_controlWriteFd) close(d_controlWriteFd);
+    }
+};
+#endif
+
+void testCase14(const string& pipeName);
+    // Start a 'ControlServer' on the specified UTF-8 'pipeName', open a handle
+    // to the named pipe, write the message "EXIT\n" to it to ask it to shut
+    // down the 'PipeControlChannel', and then stop the server *before* closing
+    // the handle.  This used to hang on Windows (see {DRQS 170252895}).
+
+#ifdef BSLS_PLATFORM_OS_WINDOWS
+void testCase14(const string& pipeName)
+{
+    ControlServer server;
+
+    const int rc = server.start(pipeName);
+    if (0 != rc) {
+        ASSERT(!"Failed to start pipe control channel");
+        return;                                                       // RETURN
+    }
+
+    wstring wPipeName;
+    bdlde::CharConvertUtf16::utf8ToUtf16(&wPipeName, pipeName);
+
+    HANDLE pipe;
+    do {
+        WaitNamedPipeW(wPipeName.data(), NMPWAIT_WAIT_FOREVER);
+        pipe = CreateFileW(wPipeName.data(), GENERIC_WRITE, 0, NULL,
+                           OPEN_EXISTING, 0, NULL);
+    } while (INVALID_HANDLE_VALUE == pipe);
+
+    DWORD mode = PIPE_READMODE_BYTE;
+    ASSERT(0 != SetNamedPipeHandleState(pipe, &mode, NULL, NULL));
+
+    DWORD dummy;
+    if (!WriteFile(pipe, "EXIT\n", 5, &dummy, 0)) {
+        ASSERT(!"Failed to send EXIT message");
+        return;                                                       // RETURN
+    }
+
+    if (veryVerbose) {
+        cout << "Stopping control server..." << endl;
+    }
+
+    server.stop();
+    CloseHandle(pipe);
+}
+#else  // UNIX implementation
+void testCase14(const string& pipeName)
+{
+    ControlServer server;
+
+    const int rc = server.start(pipeName);
+    if (0 != rc) {
+        ASSERT(!"Failed to start pipe control channel");
+        return;                                                       // RETURN
+    }
+
+    const int pipe = open(pipeName.c_str(), O_WRONLY);
+    if (pipe < 0) {
+        ASSERT(!"Failed to open the pipe for writing");
+        return;                                                       // RETURN
+    }
+
+    if (write(pipe, "EXIT\n", 5) <= static_cast<ssize_t>(0)) {
+        ASSERT(!"Failed to send EXIT message");
+        return;                                                       // RETURN
+    }
+
+    if (veryVerbose) {
+        cout << "Stopping control server..." << endl;
+    }
+
+    server.stop();
+    close(pipe);
+}
+#endif
 }  // close unnamed namespace
 
 extern "C"
@@ -408,6 +697,199 @@ int main(int argc, char *argv[])
 #endif
 
     switch (test) { case 0:
+      case 15: {
+        // --------------------------------------------------------------------
+        // TESTING LINE BUFFERING
+        //
+        // Concerns:
+        //: 1 If multiple newlines are written to the pipe, then several
+        //:   separate messages are dispatched to the callback, one per
+        //:   newline.
+        //:
+        //: 2 As an exception to C-1, empty messages (i.e., newlines that are
+        //:   not preceded by any non-newline character) are not dispatched.
+        //:
+        //: 3 If a string is written to the pipe that contains no newline, it
+        //:   is not treated as a complete message, and is buffered until a
+        //:   newline is written.
+        //:
+        //: 4 After the callback has called 'shutdown', it is not invoked
+        //:   again, even if data is left in the 'PipeControlChannel' buffer.
+        //
+        // Plan:
+        //: 1 Start a 'PipeControlChannel'.
+        //:
+        //: 2 Using 'bdls::PipeUtil::send', write a string that contains no
+        //:   newline characters.
+        //:
+        //: 3 Using 'bdls::PipeUtil::send', write a string that contains
+        //:   multiple newline characters, including two in a row.
+        //:
+        //: 4 Shut down and stop the 'PipeControlChannel' by sending a message
+        //:   that starts with "EXIT\n" but also contains another line.
+        //:
+        //: 5 Verify that each nonempty maximal contiguous sequence of
+        //:   non-newline characters preceded by a newline has been dispatched
+        //:   to the callback as one message, but nothing following the string
+        //:   "EXIT\n".  (C-1..4)
+        //
+        // Testing:
+        //   TESTING CONCERN: MESSAGE BOUNDARIES ARE STRICTLY NEWLINES
+        // --------------------------------------------------------------------
+
+        if (verbose) {
+            cout << "TESTING LINE BUFFERING" "\n"
+                    "======================" "\n";
+        }
+
+        int rc;
+
+        ControlServer server;
+
+        rc = server.start(pipeName);
+        if (0 != rc) {
+            cout << "ERROR: Failed to start pipe control channel" << endl;
+        }
+
+        rc = bdls::PipeUtil::send(pipeName, "Hello");
+        ASSERT(0 == rc);
+        rc = bdls::PipeUtil::send(pipeName, ",\nworld\n\n!\n");
+        ASSERT(0 == rc);
+        rc = bdls::PipeUtil::send(pipeName, "EXIT\nSome garbage\n");
+        ASSERT(0 == rc);
+        // The server shuts down once it processes the "EXIT" control message.
+        server.stop();  // block until shutdown
+
+        // Finally, let's ensure the server received all messages sent, where
+        // a message is considered to end on a newline.  Note that
+        // 'ControlServer' does not store the "EXIT" message.
+        ASSERT(3 == server.numMessages());
+        ASSERT(bsl::string("Hello,") == server.message(0));
+        ASSERT(bsl::string("world")  == server.message(1));
+        ASSERT(bsl::string("!")      == server.message(2));
+      } break;
+      case 14: {
+        // --------------------------------------------------------------------
+        // 'stop' DOES NOT DEADLOCK WHEN WRITE END STILL OPEN
+        //
+        // Concerns:
+        //: 1 The 'stop' method closes the channel and returns after 'shutdown'
+        //:   has been called, even if the write end of the pipe has not been
+        //:   closed yet.  {DRQS 170252895}
+        //
+        // Plan:
+        //: 1 Call the function 'testCase13' to open a channel, open the named
+        //:   pipe for writing, write a message to it, and then call 'stop'
+        //:   without first closing the write end.  Note that 'shutdown' will
+        //:   be called when 'ControlServer::onMessage' gets called back.
+        //:   (C-1)
+        //
+        // Testing:
+        //   TESTING CONCERN: STOP DOES NOT DEADLOCK WHEN WRITE END STILL OPEN
+        // --------------------------------------------------------------------
+        if (verbose) {
+            cout << "'stop' DOES NOT DEADLOCK WHEN WRITE END STILL OPEN\n"
+                    "==================================================\n";
+        }
+        testCase14(pipeName);
+      } break;
+      case 13: {
+        // --------------------------------------------------------------------
+        // EAGAIN HANDLING
+        //
+        // Concerns:
+        //: 1 'readNamedPipe' should not exit if it gets an EAGAIN error while
+        //    reading.  Instead, it should continue with the reading loop and
+        //    be able to read data once any contention for the pipe has been
+        //    resolved.
+        //
+        // Plan:
+        //: 1 Create 'balb::PipeControlChannel'.
+        //: 2 Independently try to read from the same pipe.
+        //: 3 Write to the pipe repeatedly.  For each write either the 2nd
+        //    reader from (P-2) or the 'balb::PipeControlChannel' may receive
+        //    the message with the other receiving an EAGAIN error.  If the
+        //    'balb::PipeControlChannel' receives the EAGAIN it will not exit.
+        //    If the 2nd reader from (P-2) receives the message it will exit
+        //    allowing the 'balb::PipeControlChannel' to read subsequent
+        //    messages indicating that it validates concern (C-1).
+        //
+        // Testing:
+        //   EAGAIN HANDLING
+        // --------------------------------------------------------------------
+#if defined(BSLS_PLATFORM_OS_WINDOWS) || defined(BSLS_PLATFORM_OS_CYGWIN)
+        if (verbose) {
+            cout << "Skipping case 13 on Windows and Cygwin..." << endl;
+        }
+#else
+        if (verbose) {
+            cout << "EAGAIN HANDLING" << "\n"
+                 << "===============" << "\n";
+        }
+
+        bslma::TestAllocator ta(veryVeryVeryVerbose);
+        {
+            FUtil::remove(pipeName.c_str());
+
+            const int DATA[] = {2, 3, 5, 7, 11, 13, 17, 19, 23, 29};
+
+            const int NUM_DATA = sizeof DATA / sizeof *DATA;
+
+            for (int iteration = 0; iteration < NUM_DATA; ++iteration) {
+                const int messageLength = DATA[iteration];
+                const int numMessages   = 1000;
+
+                if (veryVerbose) { T_ P_(iteration) P(messageLength) }
+
+                bsl::string message;
+                loadData(&message, messageLength);
+
+                bslmt::Latch latch(numMessages - 1);
+
+                balb::PipeControlChannel channel(
+                                  bdlf::BindUtil::bind(&verifyPayloadCountDown,
+                                                       message,
+                                                       bdlf::PlaceHolders::_1,
+                                                       &latch),
+                                  &ta);
+                // start the channel
+                const int rc = channel.start(pipeName);
+                ASSERT(0 == rc);
+                if (rc != 0) {
+                    break;                                             // BREAK
+                }
+
+                bslmt::ThreadGroup threadGroup;
+
+                // start the other reader
+                bslmt::Barrier irBarrier(2);
+                IllegalReader  illegalReader(&irBarrier, messageLength);
+                ASSERT(illegalReader.start(pipeName));
+                irBarrier.wait();
+
+                // send 'numMessages' messages, one should be lost to
+                // 'illegalReader' and the others should go through.
+                threadGroup.addThreads(
+                                    bdlf::BindUtil::bind(&threadSend,
+                                                         bsl::string(pipeName),
+                                                         message + "\n",
+                                                         numMessages),
+                                    1);
+
+                latch.wait();
+
+                threadGroup.joinAll();
+
+                illegalReader.stop();
+
+                channel.shutdown();
+                channel.stop();
+            }
+        }
+        ASSERT(0 < ta.numAllocations());
+        ASSERT(0 == ta.numBytesInUse());
+#endif
+      } break;
       case 12: {
         // --------------------------------------------------------------------
         // TESTING START, THREAD ATTRIBUTES PASSING
@@ -434,7 +916,6 @@ int main(int argc, char *argv[])
             cout << "TESTING START, THREAD ATTRIBUTES PASSING\n"
                     "========================================\n";
         }
-
 
 #if   defined(BSLS_PLATFORM_OS_LINUX)
         // If no threadname is specified, the thread name is up to the first 15
@@ -622,7 +1103,7 @@ int main(int argc, char *argv[])
         //: is undefined behavior.
         //
         // Testing:
-        //   shutdown
+        //   CONCERN: 'shutdown' does not deadlock on Windows.
         // --------------------------------------------------------------------
 
         if (verbose) {
@@ -711,14 +1192,20 @@ int main(int argc, char *argv[])
 #endif
       } break;
       case 10: {
+        // --------------------------------------------------------------------
+        // EINTR TEST
+        //
+        // Testing:
+        //   EINTR HANDLING
+        // --------------------------------------------------------------------
 #if defined(BSLS_PLATFORM_OS_WINDOWS) || defined(BSLS_PLATFORM_OS_CYGWIN)
         if (verbose) {
             cout << "Skipping case 10 on Windows and Cygwin..." << endl;
         }
 #else
         if (verbose) {
-            cout << "EINTR test" << endl
-                 << "==========" << endl;
+            cout << "EINTR TEST" "\n"
+                    "==========" "\n";
         }
 
         char buffer[512];
@@ -838,6 +1325,8 @@ int main(int argc, char *argv[])
         // Concern: That if a process opens a PipeControlChannel, another one
         // cannot open the same pipe or interfere with its operation.
         //
+        // Testing:
+        //  TESTING PIPE-IN-USE SAFETY
         //---------------------------------------------------------------------
 
 #if defined(BSLS_PLATFORM_OS_WINDOWS) || defined(BSLS_PLATFORM_OS_CYGWIN)
@@ -925,6 +1414,9 @@ int main(int argc, char *argv[])
         // Concern: That if a process opens a PipeControlChannel and
         // subsequently crashes, another process can then open the same named
         // pipe.
+        //
+        // Testing:
+        //   TESTING CRASH RECOVERY
         //---------------------------------------------------------------------
 
 #if defined(BSLS_PLATFORM_OS_WINDOWS) || defined(BSLS_PLATFORM_OS_CYGWIN)
@@ -1001,20 +1493,25 @@ int main(int argc, char *argv[])
         }
 #else
         if (verbose) {
-            cout << "Usage Example" << endl
-                 << "=============" << endl;
+            cout << "TESTING USAGE EXAMPLE" "\n"
+                    "=====================" "\n";
         }
 
 // Now, construct and run the server using a canonical name for the pipe:
 //..
-#if 0 // 'pipeName' in test driver (but not most situations) must contain pid.
+#if 0 // 'pipeName' in test driver (but not most situations) must contain pid
+      // and test case number.  See definiton of 'pipeName' under 'main'.
     bsl::string pipeName;
-    bdls::PipeUtil::makeCanonicalName(&pipeName, "ctrl.pcctest");
+    int         rc = bdls::PipeUtil::makeCanonicalName(&pipeName,
+                                                       "ctrl.pcctest");
+    ASSERT(0 == rc);
+#else
+    int rc;
 #endif
 
     ControlServer server;
 
-    int rc = server.start(pipeName);
+    rc = server.start(pipeName);
     if (0 != rc) {
         cout << "ERROR: Failed to start pipe control channel" << endl;
     }
@@ -1337,15 +1834,19 @@ int main(int argc, char *argv[])
         //   BREATHING TEST
         // --------------------------------------------------------------------
         if (verbose) {
-            cout << "Breathing Test" << endl
-                 << "==============" << endl;
+            cout << "BREATHING TEST" "\n"
+                    "==============" "\n";
         }
 
         bslma::TestAllocator ta(veryVeryVeryVerbose);
         {
             FUtil::remove(pipeName);
 
-            balb::PipeControlChannel channel(&noop, &ta);
+            balb::PipeControlChannel  channel(&noop, &ta);
+            balb::PipeControlChannel& Channel = channel;
+
+            ASSERT(&ta == Channel.allocator());
+
             int rc = channel.start(pipeName);
             ASSERT(0 == rc);
 

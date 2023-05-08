@@ -48,6 +48,21 @@ BSLS_IDENT("$Id: $")
 // providing a C++11 standard-compatible adapter for a 'bslma::Allocator'
 // object.
 //
+///'VALUE' and 'CONTAINER::value_type'
+///- - - - - - - - - - - - - - - - - -
+// When the 'CONTAINER' template parameter is omitted the 'VALUE' template
+// parameter specifies the 'value_type' of 'bsl::vector', the default container
+// type.  The 'VALUE' template has no other role.
+//
+// For C++17 and later, the behavior is undefined unless:
+//..
+//  true == bsl::is_same<VALUE, typename CONTAINER::value_type>::value
+//..
+// Prior to C++17, 'CONTAINER::value_type' determines the contained value type
+// and 'VALUE' is simply ignored.  The resulting code may work with instances
+// of 'VALUE' (e.g., 'VALUE' is convertible to 'CONTAINER::value_type') or not
+// (compiler errors).
+//
 ///Operations
 ///----------
 // The C++11 standard [23.6.4] declares any container type supporting
@@ -322,8 +337,10 @@ BSLS_IDENT("$Id: $")
 #include <bslma_stdallocator.h>
 #include <bslma_usesbslmaallocator.h>
 
+#include <bslmf_assert.h>
 #include <bslmf_enableif.h>
 #include <bslmf_isconvertible.h>
+#include <bslmf_issame.h>
 #include <bslmf_movableref.h>
 #include <bslmf_nestedtraitdeclaration.h>
 #include <bslmf_usesallocator.h>
@@ -331,6 +348,7 @@ BSLS_IDENT("$Id: $")
 
 #include <bsls_compilerfeatures.h>
 #include <bsls_keyword.h>
+#include <bsls_libraryfeatures.h>
 #include <bsls_util.h>     // 'forward<T>(V)'
 
 #include <algorithm>
@@ -362,6 +380,11 @@ class priority_queue {
     // compared by a comparator of the template parameter type, 'COMPARATOR'.
     // The container object held by a 'priority_queue' class object is
     // referenced as 'c' in the following documentation.
+
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP17_BASELINE_LIBRARY
+    // STATIC CHECK: Type mismatch is UB per C++17
+    BSLMF_ASSERT((is_same<VALUE, typename CONTAINER::value_type>::value));
+#endif
 
   private:
     // PRIVATE TYPES
@@ -583,8 +606,9 @@ class priority_queue {
         // behavior is undefined if there is currently no elements in this
         // object.
 
-    void swap(priority_queue& other)
-                                    BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(false);
+    void swap(priority_queue& other) BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(
+                                 bsl::is_nothrow_swappable<CONTAINER>::value &&
+                                 bsl::is_nothrow_swappable<COMPARATOR>::value);
         // Efficiently exchange the value of this object with the value of the
         // specified 'other' object.  In effect, performs 'using bsl::swap;
         // swap(c, other.c);'.
@@ -919,7 +943,9 @@ void priority_queue<VALUE, CONTAINER, COMPARATOR>::pop()
 template <class VALUE, class CONTAINER, class COMPARATOR>
 inline
 void priority_queue<VALUE, CONTAINER, COMPARATOR>::swap(priority_queue& other)
-                                     BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(false)
+    BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(
+                                 bsl::is_nothrow_swappable<CONTAINER>::value &&
+                                 bsl::is_nothrow_swappable<COMPARATOR>::value)
 {
     BloombergLP::bslalg::SwapUtil::swap(&c, &other.c);
     BloombergLP::bslalg::SwapUtil::swap(&comp, &other.comp);

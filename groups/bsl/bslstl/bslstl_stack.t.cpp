@@ -20,6 +20,7 @@
 #include <bsls_asserttest.h>
 #include <bsls_bsltestutil.h>
 #include <bsls_compilerfeatures.h>
+#include <bsls_libraryfeatures.h>
 #include <bsls_nameof.h>
 #include <bsls_platform.h>
 
@@ -136,7 +137,7 @@ using namespace bsl;
 // [ 4] Primary Accessors
 //
 // FREE FUNCTIONS
-// [12] inequality comparisons: '<', '>', '<=', '>='
+// [12] inequality comparisons: '<', '>', '<=', '>=', '<=>'
 // [ 6] equality comparisons: '==', '!='
 // [ 5] operator<< (N/A)
 // ----------------------------------------------------------------------------
@@ -1943,6 +1944,35 @@ bool operator==(const MovableVector<VALUE, ALLOCATOR>& lhs,
     return lhs.d_vector == rhs.d_vector;
 }
 
+                            // =======================
+                            // class NothrowSwapVector
+                            // =======================
+
+template <class VALUE>
+class NothrowSwapVector : public bsl::vector<VALUE, bsl::allocator<VALUE> > {
+    // 'vector' with non-throwing 'swap'
+
+    // TYPES
+    typedef bsl::vector<VALUE, bsl::allocator<VALUE> > base;
+        // Base class alias.
+  public:
+    // MANIPULATORS
+    void swap(NothrowSwapVector& other) BSLS_KEYWORD_NOEXCEPT
+        // Exchange the value of this object with that of the specified 'other'
+        // object.
+    {
+        base::swap(other);
+    }
+
+    // FREE FUNCTIONS
+    friend void swap(NothrowSwapVector& a,
+                     NothrowSwapVector& b) BSLS_KEYWORD_NOEXCEPT
+        // Exchange the values of the specified 'a' and 'b' objects.
+    {
+        a.swap(b);
+    }
+};
+
                             // ==========================
                             // class StatefulStlAllocator
                             // ==========================
@@ -2495,7 +2525,10 @@ void TestDriver<CONTAINER>::testCase19()
         Obj c;
         Obj s;
 
-        ASSERT(false == BSLS_KEYWORD_NOEXCEPT_OPERATOR(c.swap(s)));
+#if BSLS_KEYWORD_NOEXCEPT_AVAILABLE
+        ASSERT(bsl::is_nothrow_swappable<CONTAINER>::value ==
+               BSLS_KEYWORD_NOEXCEPT_OPERATOR(c.swap(s)));
+#endif
     }
 
     // page 905
@@ -3630,6 +3663,18 @@ void TestDriver<CONTAINER>::testCase12()
                 ASSERTV(cont, SPECX, SPECY, LE == (Y >= X));
                 ASSERTV(cont, SPECX, SPECY, GT == (Y <  X));
                 ASSERTV(cont, SPECX, SPECY, GE == (Y <= X));
+
+#if defined BSLS_COMPILERFEATURES_SUPPORT_THREE_WAY_COMPARISON \
+ && defined BSLS_LIBRARYFEATURES_HAS_CPP20_CONCEPTS
+                if constexpr (bsl::three_way_comparable<CONTAINER>) {
+                    ASSERTV(cont, SPECX, SPECY, EQ == (Y <=> X == 0));
+                    ASSERTV(cont, SPECX, SPECY, NE == (Y <=> X != 0));
+                    ASSERTV(cont, SPECX, SPECY, LT == (Y <=> X >  0));
+                    ASSERTV(cont, SPECX, SPECY, LE == (Y <=> X >= 0));
+                    ASSERTV(cont, SPECX, SPECY, GT == (Y <=> X <  0));
+                    ASSERTV(cont, SPECX, SPECY, GE == (Y <=> X <= 0));
+                }
+#endif
 
                 ASSERTV(cont, SPECX, SPECY, LT == !GE);
                 ASSERTV(cont, SPECX, SPECY, GT == !LE);
@@ -6639,7 +6684,15 @@ int main(int argc, char *argv[])
         if (verbose) printf("\n" "'noexcept' SPECIFICATION" "\n"
                                  "------------------------" "\n");
 
+#if BSLS_KEYWORD_NOEXCEPT_AVAILABLE
+        ASSERT(!bsl::is_nothrow_swappable<bsl::vector<int> >::value);
         TestDriver<bsl::vector<int> >::testCase19();
+
+#ifndef BSLMF_ISNOTHROWSWAPPABLE_ALWAYS_FALSE
+        ASSERT(bsl::is_nothrow_swappable<NothrowSwapVector<int> >::value);
+        TestDriver<NothrowSwapVector<int> >::testCase19();
+#endif
+#endif
 
       } break;
       case 18: {
@@ -6944,6 +6997,8 @@ int main(int argc, char *argv[])
 
         BSLMF_ASSERT((bsl::is_same<IStack, IDStack>::value));
 
+#ifndef BSLS_LIBRARYFEATURES_HAS_CPP17_BASELINE_LIBRARY
+
         // Verify that if a container is specified, the first template
         // argument is ignored.
 
@@ -6960,6 +7015,7 @@ int main(int argc, char *argv[])
         ASSERT(2 == VIVS.size());
         ASSERT(!VIVS.empty());
         vivs.pop();             ASSERT(4 == VIVS.top());
+#endif
       }  break;
       case 12: {
         // --------------------------------------------------------------------

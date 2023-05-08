@@ -298,7 +298,7 @@ void aSsErT(bool condition, const char *message, int line)
 
 #if defined(BSLS_LIBRARYFEATURES_HAS_CPP17_BOOL_CONSTANT)
 # define DECLARE_BOOL_CONSTANT(NAME, EXPRESSION)                              \
-    BSLS_KEYWORD_CONSTEXPR_MEMBER bsl::bool_constant<EXPRESSION> NAME{}
+    const BSLS_KEYWORD_CONSTEXPR bsl::bool_constant<EXPRESSION> NAME{}
     // This leading branch is the preferred version for C++17, but the feature
     // test macro is (currently) for documentation purposes only, and never
     // defined.  This is the ideal (simplest) form for such declarations:
@@ -1276,6 +1276,122 @@ class TestNonConstHashFunctor {
     }
 };
 
+                            // ===================
+                            // struct ThrowingHash
+                            // ===================
+
+template <class TYPE>
+struct ThrowingHash : public bsl::hash<TYPE> {
+    // This dummy class implements the minimal interface that meets the
+    // requirements for a hasher that can throw exceptions from the move
+    // assignment operator and from the 'swap' method/free function.
+
+  public:
+    // CREATORS
+    ThrowingHash()
+        // Create a 'ThrowingHash' object.
+    {
+    }
+
+    ThrowingHash(const ThrowingHash&)
+        // Create a 'ThrowingHash' object.
+    {
+    }
+
+    ThrowingHash(bslmf::MovableRef<ThrowingHash>)
+                                     BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(false)
+        // Create a 'ThrowingHash' object.
+    {
+    }
+
+    // MANIPULATORS
+    ThrowingHash &operator=(const ThrowingHash&)
+        // Return a reference, providing modifiable access to this object.
+    {
+        return *this;
+    }
+
+    ThrowingHash&
+    operator=(BloombergLP::bslmf::MovableRef<ThrowingHash>)
+                                     BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(false)
+        // Return a reference, providing modifiable access to this object.
+    {
+        return *this;
+    }
+
+    void swap(ThrowingHash&) BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(false)
+        // Do nothing.
+    {
+    }
+};
+
+// FREE FUNCTIONS
+template <class TYPE>
+void swap(ThrowingHash<TYPE>&,
+          ThrowingHash<TYPE>&) BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(false)
+    // Do nothing.
+{
+}
+
+                     // =================================
+                     // class ThrowingAssignmentPredicate
+                     // =================================
+
+template <class TYPE>
+struct ThrowingAssignmentPredicate : public bsl::equal_to<TYPE> {
+    // This dummy class implements the minimal interface that meets the
+    // requirements for a predicate that can throw exceptions from the move
+    // assignment operator and from the 'swap' method/free function.
+
+  public:
+    // CREATORS
+    ThrowingAssignmentPredicate()
+        // Create a 'ThrowingAssignmentPredicate' object.
+    {
+    }
+
+    ThrowingAssignmentPredicate(const ThrowingAssignmentPredicate&)
+        // Create a 'ThrowingAssignmentPredicate' object.
+    {
+    }
+
+    ThrowingAssignmentPredicate(bslmf::MovableRef<ThrowingAssignmentPredicate>)
+                                     BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(false)
+        // Create a 'ThrowingAssignmentPredicate' object.
+    {
+    }
+
+    // MANIPULATORS
+    ThrowingAssignmentPredicate &operator=(const ThrowingAssignmentPredicate&)
+        // Return a reference, providing modifiable access to this object.
+    {
+        return *this;
+    }
+
+    ThrowingAssignmentPredicate&
+    operator=(BloombergLP::bslmf::MovableRef<ThrowingAssignmentPredicate>)
+                                     BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(false)
+        // Return a reference, providing modifiable access to this object.
+    {
+        return *this;
+    }
+
+    void swap(ThrowingAssignmentPredicate&)
+                                     BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(false)
+        // Do nothing.
+    {
+    }
+};
+
+// FREE FUNCTIONS
+template <class TYPE>
+void swap(ThrowingAssignmentPredicate<TYPE>&,
+          ThrowingAssignmentPredicate<TYPE>&)
+                                     BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(false)
+    // Do nothing.
+{
+}
+
                             // ====================
                             // class CompareProctor
                             // ====================
@@ -1450,6 +1566,20 @@ void testTransparentComparator(Container& container,
     ASSERT(container.end()                  == NON_EXISTING_F);
     ASSERT(nonExistingKey.conversionCount() == expectedConversionCount);
 
+    // Testing 'contains'.
+
+    const bool EXISTING_CONTAINS = container.contains(existingKey);
+    if (!isTransparent) {
+        ++expectedConversionCount;
+    }
+
+    ASSERT(true == EXISTING_CONTAINS);
+    ASSERT(existingKey.conversionCount() == expectedConversionCount);
+
+    const bool NON_EXISTING_CONTAINS = container.contains(nonExistingKey);
+    ASSERT(false == NON_EXISTING_CONTAINS);
+    ASSERT(nonExistingKey.conversionCount() == expectedConversionCount);
+
     // Testing 'count'.
 
     const Count EXPECTED_C = initKeyValue ? initKeyValue : 1;
@@ -1594,6 +1724,8 @@ class TestDriver {
     typedef bslmf::MovableRefUtil              MoveUtil;
     typedef bsltf::MoveState                   MoveState;
     typedef TestMovableTypeUtil<Iter, KEY>     TstMoveUtil;
+
+    typedef typename ALLOC::template rebind<KEY>::other KeyAllocator;
 
     enum { k_TYPE_ALLOC = bslma::UsesBslmaAllocator<KEY>::value };
 
@@ -1876,7 +2008,7 @@ int TestDriver<KEY, HASH, EQUAL, ALLOC>::ggg(Obj        *object,
     enum { SUCCESS = -1 };
 
     bslma::TestAllocator scratch;
-    bsl::allocator<KEY>  xscratch(&scratch);
+    KeyAllocator         xscratch(&scratch);
 
     for (int i = 0; spec[i]; ++i) {
         if ('A' <= spec[i] && spec[i] <= 'Z') {
@@ -2534,7 +2666,14 @@ void TestDriver<KEY, HASH, EQUAL, ALLOC>::testCase35()
         Obj mX;  const Obj& X = mX;    (void) X;
         Obj mY;                        (void) mY;
 
-        ASSERT(false
+        bool expected = false;
+
+#ifdef BSLS_COMPILERFEATURES_SUPPORT_TRAITS_HEADER
+        expected = bsl::allocator_traits<ALLOC> ::is_always_equal::value
+                && std::is_nothrow_move_assignable<HASH>::value
+                && std::is_nothrow_move_assignable<EQUAL>::value;
+#endif
+        ASSERT(expected
             == BSLS_KEYWORD_NOEXCEPT_OPERATOR(mX =
                                              bslmf::MovableRefUtil::move(mY)));
 
@@ -2605,8 +2744,15 @@ void TestDriver<KEY, HASH, EQUAL, ALLOC>::testCase35()
         Obj x;    (void) x;
         Obj y;    (void) y;
 
-        ASSERT(false
-           == BSLS_KEYWORD_NOEXCEPT_OPERATOR(x.swap(y)));
+        bool expected = false;
+
+#if BSLS_KEYWORD_NOEXCEPT_AVAILABLE
+        expected = bsl::allocator_traits<ALLOC>::is_always_equal::value &&
+                   bsl::is_nothrow_swappable<HASH>::value &&
+                   bsl::is_nothrow_swappable<EQUAL>::value;
+#endif
+
+        ASSERT(expected == BSLS_KEYWORD_NOEXCEPT_OPERATOR(x.swap(y)));
 
         ASSERT(BSLS_KEYWORD_NOEXCEPT_AVAILABLE
             == BSLS_KEYWORD_NOEXCEPT_OPERATOR(x.clear()));
@@ -2657,7 +2803,9 @@ void TestDriver<KEY, HASH, EQUAL, ALLOC>::testCase35()
         Obj mX;    (void) mX;
         Obj mY;    (void) mY;
 
-        ASSERT(false == BSLS_KEYWORD_NOEXCEPT_OPERATOR(swap(mX, mY)));
+        bool expected = BSLS_KEYWORD_NOEXCEPT_OPERATOR(mX.swap(mY));
+
+        ASSERT(expected == BSLS_KEYWORD_NOEXCEPT_OPERATOR(swap(mX, mY)));
     }
 
 }
@@ -2717,13 +2865,13 @@ void TestDriver<KEY, HASH, EQUAL, ALLOC>::testCase34_outOfLine()
         enum { NUM_DATA = sizeof DATA / sizeof *DATA };
 
         bslma::TestAllocator        oa("object", veryVeryVeryVerbose);
-        bsl::allocator<KEY>         xoa(&oa);
+        KeyAllocator                xoa(&oa);
         bslma::TestAllocatorMonitor dam(&da);
         for (int ti = 0; ti < NUM_DATA; ++ti) {
             ASSERT(0 == oa.numBytesInUse());
 
             bslma::TestAllocator scratch("scratch", veryVeryVeryVerbose);
-            bsl::allocator<KEY>  xscratch(&scratch);
+            KeyAllocator         xscratch(&scratch);
             Obj                  mY(xscratch);
             const Obj&           Y = gg(&mY, DATA[ti].d_result);
 
@@ -2769,14 +2917,14 @@ void TestDriver<KEY, HASH, EQUAL, ALLOC>::testCase34_outOfLine()
         enum { NUM_DATA = sizeof DATA / sizeof *DATA };
 
         bslma::TestAllocator        oa("object", veryVeryVeryVerbose);
-        bsl::allocator<KEY>         xoa(&oa);
+        KeyAllocator                xoa(&oa);
         bslma::TestAllocatorMonitor dam(&da);
 
         for (int ti = 0; ti < NUM_DATA; ++ti) {
             ASSERT(0 == oa.numBytesInUse());
 
             bslma::TestAllocator scratch("scratch", veryVeryVeryVerbose);
-            bsl::allocator<KEY>  xscratch(&scratch);
+            KeyAllocator         xscratch(&scratch);
             Obj                  mY(xscratch);
             const Obj&           Y = gg(&mY, DATA[ti].d_result);
 
@@ -2822,14 +2970,14 @@ void TestDriver<KEY, HASH, EQUAL, ALLOC>::testCase34_outOfLine()
         enum { NUM_DATA = sizeof DATA / sizeof *DATA };
 
         bslma::TestAllocator        oa("object", veryVeryVeryVerbose);
-        bsl::allocator<KEY>         xoa(&oa);
+        KeyAllocator                xoa(&oa);
         bslma::TestAllocatorMonitor dam(&da);
 
         for (int ti = 0; ti < NUM_DATA; ++ti) {
             ASSERT(0 == oa.numBytesInUse());
 
             bslma::TestAllocator scratch("scratch", veryVeryVeryVerbose);
-            bsl::allocator<KEY>  xscratch(&scratch);
+            KeyAllocator         xscratch(&scratch);
             Obj                  mY(xscratch);
             const Obj&           Y = gg(&mY, DATA[ti].d_result);
 
@@ -2875,14 +3023,14 @@ void TestDriver<KEY, HASH, EQUAL, ALLOC>::testCase34_outOfLine()
         enum { NUM_DATA = sizeof DATA / sizeof *DATA };
 
         bslma::TestAllocator        oa("object", veryVeryVeryVerbose);
-        bsl::allocator<KEY>         xoa(&oa);
+        KeyAllocator                xoa(&oa);
         bslma::TestAllocatorMonitor dam(&da);
 
         for (int ti = 0; ti < NUM_DATA; ++ti) {
             ASSERT(0 == oa.numBytesInUse());
 
             bslma::TestAllocator scratch("scratch", veryVeryVeryVerbose);
-            bsl::allocator<KEY>  xscratch(&scratch);
+            KeyAllocator         xscratch(&scratch);
             Obj                  mY(xscratch);
             const Obj&           Y = gg(&mY, DATA[ti].d_result);
 
@@ -2936,7 +3084,7 @@ void TestDriver<KEY, HASH, EQUAL, ALLOC>::testCase34_outOfLine()
         enum { NUM_DATA = sizeof DATA / sizeof *DATA };
 
         bslma::TestAllocator        oa("object", veryVeryVeryVerbose);
-        bsl::allocator<KEY>         xoa(&oa);
+        KeyAllocator                xoa(&oa);
         bslma::TestAllocatorMonitor dam(&da);
 
         for (int ti = 0; ti < NUM_DATA; ++ti) {
@@ -2944,7 +3092,7 @@ void TestDriver<KEY, HASH, EQUAL, ALLOC>::testCase34_outOfLine()
             ASSERT(0 == oa.numBytesInUse());
 
             bslma::TestAllocator scratch("scratch", veryVeryVeryVerbose);
-            bsl::allocator<KEY>  xscratch(&scratch);
+            KeyAllocator         xscratch(&scratch);
             Obj                  mY(xscratch);
             const Obj&           Y = gg(&mY, DATA[ti].d_result);
 
@@ -2990,7 +3138,7 @@ void TestDriver<KEY, HASH, EQUAL, ALLOC>::testCase34_outOfLine()
         enum { NUM_DATA = sizeof DATA / sizeof *DATA };
 
         bslma::TestAllocator        oa("object", veryVeryVeryVerbose);
-        bsl::allocator<KEY>         xoa(&oa);
+        KeyAllocator                xoa(&oa);
         bslma::TestAllocatorMonitor dam(&da);
 
         for (int ti = 0; ti < NUM_DATA; ++ti) {
@@ -2998,7 +3146,7 @@ void TestDriver<KEY, HASH, EQUAL, ALLOC>::testCase34_outOfLine()
             ASSERT(0 == oa.numBytesInUse());
 
             bslma::TestAllocator scratch("scratch", veryVeryVeryVerbose);
-            bsl::allocator<KEY>  xscratch(&scratch);
+            KeyAllocator         xscratch(&scratch);
             Obj                  mY(xscratch);
             const Obj&           Y = gg(&mY, DATA[ti].d_result);
 
@@ -3682,7 +3830,7 @@ void TestDriver<KEY, HASH, EQUAL, ALLOC>::testCase33()
                 const char CONFIG = cfg;
 
                 bslma::TestAllocator oa("object", veryVeryVeryVerbose);
-                bsl::allocator<KEY>  xoa(&oa);
+                KeyAllocator         xoa(&oa);
                 Obj                  mX(xoa);
                 const Obj&           X = mX;
 
@@ -3756,7 +3904,7 @@ void TestDriver<KEY, HASH, EQUAL, ALLOC>::testCase33()
                 const char CONFIG = cfg;
 
                 bslma::TestAllocator oa("object", veryVeryVeryVerbose);
-                bsl::allocator<KEY>  xoa(&oa);
+                KeyAllocator         xoa(&oa);
                 Obj                  mX(xoa);
                 const Obj&           X = mX;
 
@@ -3797,7 +3945,7 @@ void TestDriver<KEY, HASH, EQUAL, ALLOC>::testCase33()
 
                     bslma::TestAllocator scratch("scratch",
                                                  veryVeryVeryVerbose);
-                    bsl::allocator<KEY>  xscratch(&scratch);
+                    KeyAllocator         xscratch(&scratch);
                     Iter                 RESULT;
 
                     BSLMA_TESTALLOCATOR_EXCEPTION_TEST_BEGIN(oa) {
@@ -3894,7 +4042,7 @@ void TestDriver<KEY, HASH, EQUAL, ALLOC>::testCase32()
             if (veryVerbose) { T_ T_ P_(LINE) P_(SPEC) P(LENGTH); }
 
             bslma::TestAllocator oa("object", veryVeryVeryVerbose);
-            bsl::allocator<KEY>  xoa(&oa);
+            KeyAllocator         xoa(&oa);
             Obj                  mX(xoa);
             const Obj&           X = mX;
 
@@ -3934,7 +4082,7 @@ void TestDriver<KEY, HASH, EQUAL, ALLOC>::testCase32()
             if (veryVerbose) { T_ T_ P_(LINE) P_(SPEC) P(LENGTH); }
 
             bslma::TestAllocator oa("object", veryVeryVeryVerbose);
-            bsl::allocator<KEY>  xoa(&oa);
+            KeyAllocator         xoa(&oa);
             Obj                  mX(xoa);
             const Obj&           X = mX;
 
@@ -3950,7 +4098,7 @@ void TestDriver<KEY, HASH, EQUAL, ALLOC>::testCase32()
                 if (veryVeryVerbose) { T_ T_ P(EXPECTED); }
 
                 bslma::TestAllocator scratch("scratch", veryVeryVeryVerbose);
-                bsl::allocator<KEY>  xscratch(&scratch);
+                KeyAllocator         xscratch(&scratch);
 
                 BSLMA_TESTALLOCATOR_EXCEPTION_TEST_BEGIN(oa) {
                     ExceptionProctor<Obj, ALLOC> proctor(&X, L_, xscratch);
@@ -4061,7 +4209,7 @@ void TestDriver<KEY, HASH, EQUAL, ALLOC>::testCase31()
                 for (char cfg2 = 'a'; cfg2 <= 'b'; ++cfg2) {
 
                     bslma::TestAllocator oa("object", veryVeryVeryVerbose);
-                    bsl::allocator<KEY>  xoa(&oa);
+                    KeyAllocator         xoa(&oa);
                     Obj                  mX(xoa);
                     const Obj&           X = mX;
 
@@ -4081,7 +4229,7 @@ void TestDriver<KEY, HASH, EQUAL, ALLOC>::testCase31()
                       } break;
                     }
                     bslma::TestAllocator& sa = *valAllocator;
-                    bsl::allocator<KEY>   xsa(&sa);
+                    KeyAllocator          xsa(&sa);
 
                     for (size_t tj = 0; tj < LENGTH; ++tj) {
                         const bool   IS_UNIQ = UNIQUE[tj] == 'Y';
@@ -4177,7 +4325,7 @@ void TestDriver<KEY, HASH, EQUAL, ALLOC>::testCase31()
                 for (char cfg2 = 'a'; cfg2 <= 'b'; ++cfg2) {
 
                     bslma::TestAllocator oa("object", veryVeryVeryVerbose);
-                    bsl::allocator<KEY>  xoa(&oa);
+                    KeyAllocator         xoa(&oa);
                     Obj                  mX(xoa);
                     const Obj&           X = mX;
 
@@ -4197,7 +4345,7 @@ void TestDriver<KEY, HASH, EQUAL, ALLOC>::testCase31()
                       } break;
                     }
                     bslma::TestAllocator& sa = *valAllocator;
-                    bsl::allocator<KEY>   xsa(&sa);
+                    KeyAllocator          xsa(&sa);
 
                     for (size_t tj = 0; tj < LENGTH; ++tj) {
                         const bool   IS_UNIQ = UNIQUE[tj] == 'Y';
@@ -4236,7 +4384,7 @@ void TestDriver<KEY, HASH, EQUAL, ALLOC>::testCase31()
 
                         bslma::TestAllocator scratch("scratch",
                                                      veryVeryVeryVerbose);
-                        bsl::allocator<KEY>  xscratch(&scratch);
+                        KeyAllocator         xscratch(&scratch);
 
                         Iter RESULT;
                         BSLMA_TESTALLOCATOR_EXCEPTION_TEST_BEGIN(oa) {
@@ -4369,7 +4517,7 @@ void TestDriver<KEY, HASH, EQUAL, ALLOC>::testCase30()
                 const char CONFIG = cfg;  // how we specify the allocator
 
                 bslma::TestAllocator oa("object", veryVeryVeryVerbose);
-                bsl::allocator<KEY>  xoa(&oa);
+                KeyAllocator         xoa(&oa);
                 Obj                  mX(xoa);
                 const Obj&           X = mX;
 
@@ -4389,7 +4537,7 @@ void TestDriver<KEY, HASH, EQUAL, ALLOC>::testCase30()
                   } break;
                 }
                 bslma::TestAllocator& sa = *valAllocator;
-                bsl::allocator<KEY>   xsa(&sa);
+                KeyAllocator          xsa(&sa);
 
                 for (size_t tj = 0; tj < LENGTH; ++tj) {
                     const bool   IS_UNIQ = UNIQUE[tj] == 'Y';
@@ -4463,7 +4611,7 @@ void TestDriver<KEY, HASH, EQUAL, ALLOC>::testCase30()
                 const char CONFIG = cfg;  // how we specify the allocator
 
                 bslma::TestAllocator oa("object", veryVeryVeryVerbose);
-                bsl::allocator<KEY>  xoa(&oa);
+                KeyAllocator         xoa(&oa);
                 Obj                  mX(xoa);
                 const Obj&           X = mX;
 
@@ -4505,7 +4653,7 @@ void TestDriver<KEY, HASH, EQUAL, ALLOC>::testCase30()
 
                     bslma::TestAllocator scratch("scratch",
                                                  veryVeryVeryVerbose);
-                    bsl::allocator<KEY>  xscratch(&scratch);
+                    KeyAllocator         xscratch(&scratch);
 
                     Iter RESULT;
 
@@ -4860,7 +5008,7 @@ void TestDriver<KEY, HASH, EQUAL, ALLOC>::testCase29()
             }
 
             bslma::TestAllocator scratch("scratch", veryVeryVeryVerbose);
-            bsl::allocator<KEY>  xscratch(&scratch);
+            KeyAllocator         xscratch(&scratch);
 
             Obj  mZZ(xscratch); const Obj&  ZZ = gg(&mZZ, SPEC1);
 
@@ -4898,8 +5046,8 @@ void TestDriver<KEY, HASH, EQUAL, ALLOC>::testCase29()
                     bslma::TestAllocator fa("footprint", veryVeryVeryVerbose);
                     bslma::TestAllocator za("different", veryVeryVeryVerbose);
                     bslma::TestAllocator oa("object",    veryVeryVeryVerbose);
-                    bsl::allocator<KEY>  xza(&za);
-                    bsl::allocator<KEY>  xoa(&oa);
+                    KeyAllocator         xza(&za);
+                    KeyAllocator         xoa(&oa);
 
                     Obj        *objPtr = new (fa) Obj(xoa);
                     Obj&        mX = *objPtr;
@@ -4925,7 +5073,7 @@ void TestDriver<KEY, HASH, EQUAL, ALLOC>::testCase29()
                     Obj&                  mZ = *srcPtr;
                     const Obj&            Z = mZ;
                     bslma::TestAllocator& sa = *srcAllocatorPtr;
-                    bsl::allocator<KEY>   xsa(&sa);
+                    KeyAllocator          xsa(&sa);
 
                     if (veryVerbose) { T_ T_ P_(LINE2) P(Z) }
                     if (veryVerbose) { T_ T_ P_(LINE2) P(X) }
@@ -5037,10 +5185,10 @@ void TestDriver<KEY, HASH, EQUAL, ALLOC>::testCase29()
             // self-assignment
 
             bslma::TestAllocator oa("object", veryVeryVeryVerbose);
-            bsl::allocator<KEY>  xoa(&oa);
+            KeyAllocator         xoa(&oa);
             {
                 bslma::TestAllocator scratch("scratch", veryVeryVeryVerbose);
-                bsl::allocator<KEY>  xscratch(&scratch);
+                KeyAllocator         xscratch(&scratch);
 
                 Obj        mX(xoa);
                 const Obj& X  = gg(&mX,  SPEC1);
@@ -5090,7 +5238,7 @@ void TestDriver<KEY, HASH, EQUAL, ALLOC>::testCase29()
             }
 
             bslma::TestAllocator scratch("scratch", veryVeryVeryVerbose);
-            bsl::allocator<KEY>  xscratch(&scratch);
+            KeyAllocator         xscratch(&scratch);
 
             Obj  mZZ(xscratch); const Obj&  ZZ = gg(&mZZ, SPEC1);
 
@@ -5113,7 +5261,7 @@ void TestDriver<KEY, HASH, EQUAL, ALLOC>::testCase29()
 
                     bslma::TestAllocator za("different", veryVeryVeryVerbose);
                     bslma::TestAllocator oa("object",    veryVeryVeryVerbose);
-                    bsl::allocator<KEY>  xoa(&oa);
+                    KeyAllocator         xoa(&oa);
 
                     BSLMA_TESTALLOCATOR_EXCEPTION_TEST_BEGIN(oa) {
                         if (veryVeryVerbose) { T_ T_ Q(ExceptionTestBody) }
@@ -5135,7 +5283,7 @@ void TestDriver<KEY, HASH, EQUAL, ALLOC>::testCase29()
                           } return;                                   // RETURN
                         }
                         bslma::TestAllocator& sa = *srcAllocatorPtr;
-                        bsl::allocator<KEY>   xsa(&sa);
+                        KeyAllocator          xsa(&sa);
 
                         Obj mZ(xsa); const Obj& Z = gg(&mZ, SPEC1);
 
@@ -5321,7 +5469,7 @@ void TestDriver<KEY, HASH, EQUAL, ALLOC>::testCase28()
             // Create control object ZZ with the scratch allocator.
 
             bslma::TestAllocator scratch("scratch", veryVeryVeryVerbose);
-            bsl::allocator<KEY>  xscratch(&scratch);
+            KeyAllocator         xscratch(&scratch);
             Obj                  mZZ(xscratch);
             const Obj&           ZZ = gg(&mZZ, SPEC);
 
@@ -5338,8 +5486,8 @@ void TestDriver<KEY, HASH, EQUAL, ALLOC>::testCase28()
                 bslma::TestAllocator da("default",   veryVeryVeryVerbose);
                 bslma::TestAllocator sa("supplied",  veryVeryVeryVerbose);
                 bslma::TestAllocator za("different", veryVeryVeryVerbose);
-                bsl::allocator<KEY>  xsa(&sa);
-                bsl::allocator<KEY>  xza(&za);
+                KeyAllocator         xsa(&sa);
+                KeyAllocator         xza(&za);
 
                 bslma::DefaultAllocatorGuard dag(&da);
 
@@ -5394,7 +5542,7 @@ void TestDriver<KEY, HASH, EQUAL, ALLOC>::testCase28()
 
                 bslma::TestAllocator& oa  = *objAllocatorPtr;
                 bslma::TestAllocator& noa = *othAllocatorPtr;
-                bsl::allocator<KEY>   xoa(&oa);
+                KeyAllocator          xoa(&oa);
 
                 Obj& mX = *objPtr;      const Obj& X = mX;
 
@@ -5478,7 +5626,7 @@ void TestDriver<KEY, HASH, EQUAL, ALLOC>::testCase28()
             const size_t      LENGTH = strlen(SPEC);
 
             bslma::TestAllocator scratch("scratch", veryVeryVeryVerbose);
-            bsl::allocator<KEY>  xscratch(&scratch);
+            KeyAllocator         xscratch(&scratch);
             Obj                  mZZ(xscratch);
             const Obj&           ZZ = gg(&mZZ, SPEC);
 
@@ -5489,8 +5637,8 @@ void TestDriver<KEY, HASH, EQUAL, ALLOC>::testCase28()
 
             bslma::TestAllocator oa("object",      veryVeryVeryVerbose);
             bslma::TestAllocator za("different",   veryVeryVeryVerbose);
-            bsl::allocator<KEY>  xoa(&oa);
-            bsl::allocator<KEY>  xza(&za);
+            KeyAllocator         xoa(&oa);
+            KeyAllocator         xza(&za);
 
             const bsls::Types::Int64 BB = oa.numBlocksTotal();
             const bsls::Types::Int64 B  = oa.numBlocksInUse();
@@ -6651,7 +6799,7 @@ void TestDriver<KEY, HASH, EQUAL, ALLOC>::testCase18()
 
             for (size_t tj = 0; tj < LENGTH; ++tj) {
                 bslma::TestAllocator oa("object", veryVeryVerbose);
-                bsl::allocator<KEY>  xoa(&oa);
+                KeyAllocator         xoa(&oa);
 
                 Obj mX(xoa);    const Obj& X = gg(&mX, SPEC);
                 Obj mY(X, xoa); const Obj& Y = mY;
@@ -6720,7 +6868,7 @@ void TestDriver<KEY, HASH, EQUAL, ALLOC>::testCase18()
 
             for (size_t tj = 0; tj < LENGTH; ++tj) {
                 bslma::TestAllocator oa("object", veryVeryVerbose);
-                bsl::allocator<KEY>  xoa(&oa);
+                KeyAllocator         xoa(&oa);
 
                 Obj mX(xoa);    const Obj& X = gg(&mX, SPEC);
                 Obj mY(X, xoa); const Obj& Y = mY;
@@ -6875,7 +7023,7 @@ void TestDriver<KEY, HASH, EQUAL, ALLOC>::testCase17()
 
             bslma::TestAllocator da("default",   veryVeryVeryVerbose);
             bslma::TestAllocator oa("object", veryVeryVerbose);
-            bsl::allocator<KEY>  xoa(&oa);
+            KeyAllocator         xoa(&oa);
 
             bslma::DefaultAllocatorGuard dag(&da);
 
@@ -6976,7 +7124,7 @@ void TestDriver<KEY, HASH, EQUAL, ALLOC>::testCase16()
                 const char CONFIG = cfg;
 
                 bslma::TestAllocator oa("object", veryVeryVeryVerbose);
-                bsl::allocator<KEY>  xoa(&oa);
+                KeyAllocator         xoa(&oa);
                 Obj                  mX(xoa);
                 const Obj&           X = mX;
 
@@ -7048,7 +7196,7 @@ void TestDriver<KEY, HASH, EQUAL, ALLOC>::testCase16()
                 const char CONFIG = cfg;
 
                 bslma::TestAllocator oa("object", veryVeryVeryVerbose);
-                bsl::allocator<KEY>  xoa(&oa);
+                KeyAllocator         xoa(&oa);
                 Obj                  mX(xoa);
                 const Obj&           X = mX;
 
@@ -7089,7 +7237,7 @@ void TestDriver<KEY, HASH, EQUAL, ALLOC>::testCase16()
 
                     bslma::TestAllocator scratch("scratch",
                                                  veryVeryVeryVerbose);
-                    bsl::allocator<KEY>  xscratch(&scratch);
+                    KeyAllocator         xscratch(&scratch);
                     Iter                 RESULT;
 
                     BSLMA_TESTALLOCATOR_EXCEPTION_TEST_BEGIN(oa) {
@@ -7194,7 +7342,7 @@ void TestDriver<KEY, HASH, EQUAL, ALLOC>::testCase15()
             ASSERTV(LINE, LENGTH == strlen(UNIQUE));
 
             bslma::TestAllocator oa("object", veryVeryVeryVerbose);
-            bsl::allocator<KEY>  xoa(&oa);
+            KeyAllocator         xoa(&oa);
             Obj                  mX(xoa);
             const Obj&           X = mX;
 
@@ -7243,7 +7391,7 @@ void TestDriver<KEY, HASH, EQUAL, ALLOC>::testCase15()
             if (veryVerbose) { T_ T_ P_(LINE) P_(SPEC) P_(UNIQUE) P(LENGTH); }
 
             bslma::TestAllocator oa("object", veryVeryVeryVerbose);
-            bsl::allocator<KEY>  xoa(&oa);
+            KeyAllocator         xoa(&oa);
             Obj                  mX(xoa);
             const Obj&           X = mX;
 
@@ -7259,7 +7407,7 @@ void TestDriver<KEY, HASH, EQUAL, ALLOC>::testCase15()
                 if (veryVeryVerbose) { T_ T_ P(EXPECTED); }
 
                 bslma::TestAllocator scratch("scratch", veryVeryVeryVerbose);
-                bsl::allocator<KEY>  xscratch(&scratch);
+                KeyAllocator         xscratch(&scratch);
                 Iter                 RESULT;
 
                 BSLMA_TESTALLOCATOR_EXCEPTION_TEST_BEGIN(oa) {
@@ -7371,29 +7519,32 @@ template <class KEY, class HASH, class EQUAL, class ALLOC>
 void TestDriver<KEY, HASH, EQUAL, ALLOC>::testCase13()
 {
     // ------------------------------------------------------------------------
-    // TESTING FIND, EQUAL_RANGE, COUNT
+    // TESTING FIND, CONTAINS, EQUAL_RANGE, COUNT
     //
     // Concern:
     //: 1 If the key being searched exists in the container, 'find' returns the
-    //:   iterator referring the existing element.
+    //:   iterator referring the existing element and 'contains' returns
+    //:   'true'.
     //:
     //: 2 If the key being searched does not exists in the container, 'find'
-    //:   returns the 'end' iterator.
+    //:   returns the 'end' iterator and 'contains' returns 'false'.
     //:
     //: 3 'equal_range(key)' returns all elements equivalent to 'key'.
     //:
-    //: 2 'count' returns the number of elements with the same value as defined
+    //: 4 'count' returns the number of elements with the same value as defined
     //:   by the comparator.
     //:
-    //: 3 Both the 'const' and non-'const' versions returns the same value.
+    //: 5 Both the 'const' and non-'const' versions returns the same value.
     //:
-    //: 4 No memory is allocated, from either the object allocator nor from
+    //: 6 No memory is allocated, from either the object allocator nor from
     //:   the default allocator.
     //
     // Plan:
     //:  TDB
     //
     // Testing:
+    //   bool contains(const key_type& key);
+    //   bool contains(const LOOKUP_KEY& key);
     //   size_type count(const key_type& key) const;
     //   bsl::pair<iterator, iterator> equal_range(const key_type& key);
     //   bsl::pair<const_iter, const_iter> equal_range(const key_type&) const;
@@ -7416,6 +7567,11 @@ void TestDriver<KEY, HASH, EQUAL, ALLOC>::testCase13()
     {
         typedef Iter (Obj::*MP)(const KEY&) const;
         MP mp = &Obj::find;
+        (void) mp;
+    }
+    {
+        typedef bool (Obj::*MP)(const KEY&) const;
+        MP mp = &Obj::contains;
         (void) mp;
     }
     {
@@ -7466,6 +7622,9 @@ void TestDriver<KEY, HASH, EQUAL, ALLOC>::testCase13()
             } BSLMA_TESTALLOCATOR_EXCEPTION_TEST_END
             ASSERT(it == X.find(key));
             ASSERT(1 == numPasses);
+
+            const bool expectContains = (mX.end() != it);
+            ASSERT(expectContains == mX.contains(key));
 
             const size_t expectedCount = numCharInstances(SPEC, c);
 
@@ -7584,14 +7743,14 @@ void TestDriver<KEY, HASH, EQUAL, ALLOC>::testCase12()
                 const char CONFIG = cfg;
 
                 bslma::TestAllocator scratch("scratch", veryVeryVeryVerbose);
-                bsl::allocator<KEY>  xscratch(&scratch);
+                KeyAllocator         xscratch(&scratch);
 
                 bsltf::TestValuesArray<KEY> tv(SPEC, xscratch);
 
                 bslma::TestAllocator fa("footprint", veryVeryVeryVerbose);
                 bslma::TestAllocator sa("supplied",  veryVeryVeryVerbose);
                 bslma::TestAllocator da("default",   veryVeryVeryVerbose);
-                bsl::allocator<KEY>  xsa(&sa);
+                KeyAllocator         xsa(&sa);
 
                 bslma::DefaultAllocatorGuard dag(&da);
 
@@ -8339,7 +8498,54 @@ int main(int argc, char *argv[])
         if (verbose) printf("'noexcept' SPECIFICATION\n"
                             "========================\n");
 
+        typedef bsltf::StdStatefulAllocator
+                           <int,    // TYPE
+                            false,  // PROPAGATE_ON_CONTAINER_COPY_CONSTRUCTION
+                            false,  // PROPAGATE_ON_CONTAINER_COPY_ASSIGNMENT
+                            false,  // PROPAGATE_ON_CONTAINER_SWAP
+                            false,  // PROPAGATE_ON_CONTAINER_MOVE_ASSIGNMENT
+                            false   // IS_ALWAYS_EQUAL
+                           > AFA;   // AllFalseAllocator
+
+        typedef bsltf::StdStatefulAllocator
+                           <int,    // TYPE
+                            false,  // PROPAGATE_ON_CONTAINER_COPY_CONSTRUCTION
+                            false,  // PROPAGATE_ON_CONTAINER_COPY_ASSIGNMENT
+                            false,  // PROPAGATE_ON_CONTAINER_SWAP
+                            false,  // PROPAGATE_ON_CONTAINER_MOVE_ASSIGNMENT
+                            true    // IS_ALWAYS_EQUAL
+                           > AEA;   // AlwaysEqualAllocator
+
+        typedef TestHashFunctor<int>             NTH;  // NonThrowingHash
+        typedef ThrowingHash<int>                TH;   // ThrowingHash
+        typedef TestEqualityComparator<int>      NTP;  // NonThrowingPredicate
+        typedef ThrowingAssignmentPredicate<int> TP;   // ThrowingPredicate
+
         TestDriver<int>::testCase35();
+
+#ifdef BSLS_COMPILERFEATURES_SUPPORT_TRAITS_HEADER
+        ASSERT( std::is_nothrow_move_assignable<NTH >::value);
+        ASSERT(!std::is_nothrow_move_assignable< TH >::value);
+        ASSERT( std::is_nothrow_move_assignable<NTP>::value);
+        ASSERT(!std::is_nothrow_move_assignable< TP>::value);
+#endif
+#if BSLS_KEYWORD_NOEXCEPT_AVAILABLE
+#ifndef BSLMF_ISNOTHROWSWAPPABLE_ALWAYS_FALSE
+        ASSERT( bsl::is_nothrow_swappable<NTH >::value);
+        ASSERT( bsl::is_nothrow_swappable<NTP>::value);
+#endif
+        ASSERT(!bsl::is_nothrow_swappable< TH >::value);
+        ASSERT(!bsl::is_nothrow_swappable< TP>::value);
+#endif
+
+        TestDriver<int, TH,  TP,  AFA>::testCase35();
+        TestDriver<int, TH,  TP,  AEA>::testCase35();
+        TestDriver<int, TH,  NTP, AFA>::testCase35();
+        TestDriver<int, TH,  NTP, AEA>::testCase35();
+        TestDriver<int, NTH, TP,  AFA>::testCase35();
+        TestDriver<int, NTH, TP,  AEA>::testCase35();
+        TestDriver<int, NTH, NTP, AFA>::testCase35();
+        TestDriver<int, NTH, NTP, AEA>::testCase35();
 
       } break;
       case 34: {
@@ -8676,11 +8882,12 @@ int main(int argc, char *argv[])
       } break;
       case 13: {
         // --------------------------------------------------------------------
-        // TESTING 'find', 'equal_range' AND 'count'
+        // TESTING 'find', 'contains', 'equal_range' AND 'count'
         // --------------------------------------------------------------------
 
-        if (verbose) printf("TESTING 'find', 'equal_range' AND 'count'\n"
-                            "=========================================\n");
+        if (verbose)
+            printf("TESTING 'find', 'contains', 'equal_range' AND 'count'\n"
+                   "=====================================================\n");
 
         RUN_EACH_TYPE(TestDriver,
                       testCase13,

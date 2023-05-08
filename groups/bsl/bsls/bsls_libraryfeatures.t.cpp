@@ -5,88 +5,118 @@
 #include <bsls_buildtarget.h>
 #include <bsls_compilerfeatures.h>
 #include <bsls_keyword.h>
+#include <bsls_platform.h>
 
 #include <stddef.h>  // for 'size_t'
-#include <stdio.h>   // for 'printf'
+#include <stdio.h>   // for 'printf', 'puts'
 #include <stdlib.h>  // for 'atoi'
 
-#if defined(BSLS_LIBRARYFEATURES_HAS_CPP11_BASELINE_LIBRARY)
-    // Verify assumption that the BASELINE C++11 library includes all of the
-    // new library headers not covered by a more specific macro.  Note that we
-    // actively #include each header to check for errors, though this could
-    // switch to using '__has_include(<header>)' now that we no longer mess
-    // with standard include files with intercept headers.
-# include <array>
-# include <atomic>
-# include <chrono>
-# include <codecvt>
-# include <condition_variable>
-# include <forward_list>
-# include <future>
-//include <initializer_list>
-//                       BSLS_COMPILERFEATURES_SUPPORT_GENERALIZED_INITIALIZERS
-# include <mutex>
-# include <random>
-# include <regex>
-# include <scoped_allocator>
-# include <system_error>
-# include <thread>
-//include <tuple>               // BSLS_LIBRARYFEATURES_HAS_CPP11_TUPLE
-//include <type_traits>         // BSLS_COMPILERFEATURES_SUPPORT_TRAITS_HEADER
-# include <typeindex>
-# include <unordered_map>
-# include <unordered_set>
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP17_INT_CHARCONV
+    #include <string.h>  // for 'strchr'
 #endif
 
-#if defined(BSLS_LIBRARYFEATURES_HAS_CPP14_BASELINE_LIBRARY)
-    // Verify assumption that the BASELINE C++14 library includes all of the
-    // new library headers not covered by a more specific macro.
-# include <shared_mutex>
+// Verify assumption that the BASELINE C++11 library includes all of the new
+// library headers not covered by a more specific macro.  Note that we actively
+// #include each header to check for errors, though this could switch to using
+// '__has_include(<header>)' now that we no longer mess with standard include
+// files with intercept headers.
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP11_BASELINE_LIBRARY
+    #include <array>
+    #include <atomic>
+    #include <chrono>
+    #include <codecvt>
+    #include <condition_variable>
+    #include <forward_list>
+    #include <future>
+//  #include <initializer_list>
+                      // BSLS_COMPILERFEATURES_SUPPORT_GENERALIZED_INITIALIZERS
+    #include <mutex>
+    #include <random>
+    #include <regex>
+    #include <scoped_allocator>
+    #include <system_error>
+    #include <thread>
+//  #include <tuple>             // BSLS_LIBRARYFEATURES_HAS_CPP11_TUPLE
+//  #include <type_traits>       // BSLS_COMPILERFEATURES_SUPPORT_TRAITS_HEADER
+    #include <typeindex>
+    #include <unordered_map>
+    #include <unordered_set>
 #endif
 
-#if defined(BSLS_LIBRARYFEATURES_HAS_CPP17_ALIGNED_ALLOC)
-    // Verify assumption that <cstdlib> is includeable.
-# include <cstdlib>
+// Verify assumption that the BASELINE C++14 library includes all of the new
+// library headers not covered by a more specific macro.
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP14_BASELINE_LIBRARY
+    #include <shared_mutex>
 #endif
 
-#if defined(BSLS_LIBRARYFEATURES_HAS_CPP17_BASELINE_LIBRARY)
-    // Verify assumption that the BASELINE C++17 library includes all of the
-    // new library headers not covered by a more specific macro.
-# include <any>
-//include <charconv>        // LIBRARYFEATURES_HAS_CPP17_CHARCONV
-//include <execution>       // LIBRARYFEATURES_HAS_CPP17_PARALLEL_ALGORITHMS
-//include <filesystem>      // LIBRARYFEATURES_HAS_CPP17_FILESYSTEM
-//include <memory_resource> // LIBRARYFEATURES_HAS_CPP17_PMR
-# include <optional>
-# include <string_view>
-# include <variant>
+// Verify assumption that <cstdlib> can be included.
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP17_ALIGNED_ALLOC
+    #include <cstdlib>
 #endif
 
+// Verify assumption that the BASELINE C++17 library includes all of the new
+// library headers not covered by a more specific macro.
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP17_BASELINE_LIBRARY
+    #include <any>
+//  #include <charconv>        // LIBRARYFEATURES_HAS_CPP17_CHARCONV
+//  #include <execution>       // LIBRARYFEATURES_HAS_CPP17_PARALLEL_ALGORITHMS
+//  #include <filesystem>      // LIBRARYFEATURES_HAS_CPP17_FILESYSTEM
+//  #include <memory_resource> // LIBRARYFEATURES_HAS_CPP17_PMR
+    #include <optional>
+    #include <string_view>
+    #include <variant>
+#endif
+
+// Verify assumption that <charconv> can be included.
 #if defined(BSLS_LIBRARYFEATURES_HAS_CPP17_INT_CHARCONV)                      \
- || defined(BSLS_LIBRARYFEATURES_HAS_CPP17_FLOAT_FROM_CHARS_CHARCONV)         \
  || defined(BSLS_LIBRARYFEATURES_HAS_CPP17_CHARCONV)
-    // Verify assumption that <charconv> is includeable.
-# include <charconv>
+    #include <charconv>
 #endif
 
-#if defined(BSLS_LIBRARYFEATURES_HAS_CPP17_PARALLEL_ALGORITHMS)
-    // Verify assumption that <execution> is includeable.
-# include <execution>
+// Verify assumption that <execution> can be included.
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP17_PARALLEL_ALGORITHMS
+    #include <execution>
 #endif
 
-#if defined(BSLS_LIBRARYFEATURES_HAS_CPP17_FILESYSTEM)
-    // Verify assumption that <filesystem> is includeable.
-# include <filesystem>
+// Verify assumption that <filesystem> can be included.
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP17_FILESYSTEM
+    #include <filesystem>
 #endif
 
-#if defined(BSLS_LIBRARYFEATURES_HAS_CPP17_PMR)
-    // Verify assumption that <memory_resource> is includeable.
-# include <memory_resource>
+// Verify assumption that <memory_resource> can be included.
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP17_PMR
+    #include <memory_resource>
 #endif
 
-#if defined(BSLS_LIBRARYFEATURES_HAS_CPP17_TIMESPEC_GET)
-    // Verify assumption that <ctime> is includeable.
-# include <ctime>
+// Verify assumption that <ctime> can be included.
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP17_TIMESPEC_GET
+    #include <ctime>
+#endif
+
+// Verify assumption that the BASELINE C++20 library includes all of the new
+// library headers not covered by a more specific macro.
+
+// Verify assumption that <concepts> can be included.
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP20_RANGES
+    #include <concepts>
+#endif
+
+// Verify assumption that <ranges> can be included.
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP20_RANGES
+    #include <ranges>
+#endif
+
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP20_BASELINE_LIBRARY
+    #include <barrier>
+    #include <latch>
+    #include <semaphore>
+    #include <span>
+    #include <stop_token>
+#endif
+
+// Verify assumption that <version> can be included.
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP20_VERSION
+    #include <version>
 #endif
 
 // ============================================================================
@@ -171,6 +201,18 @@
 // [13] BSLS_LIBRARYFEATURES_HAS_CPP17_SEARCH_OVERLOAD
 // [13] BSLS_LIBRARYFEATURES_HAS_CPP17_SEARCH_FUNCTORS
 // [15] BSLS_LIBRARYFEATURES_HAS_CPP17_TIMESPEC_GET
+// [18] BSLS_LIBRARYFEATURES_HAS_CPP17_INT_CHARCONV
+// [18] BSLS_LIBRARYFEATURES_HAS_CPP17_CHARCONV
+// [17] BSLS_LIBRARYFEATURES_HAS_CPP20_BASELINE_LIBRARY
+// [19] BSLS_LIBRARYFEATURES_HAS_CPP20_VERSION
+// [19] BSLS_LIBRARYFEATURES_HAS_CPP20_CONCEPTS
+// [19] BSLS_LIBRARYFEATURES_HAS_CPP20_RANGES
+// [19] BSLS_LIBRARYFEATURES_HAS_CPP20_ATOMIC_LOCK_FREE_TYPE_ALIASES
+// [19] BSLS_LIBRARYFEATURES_HAS_CPP20_ATOMIC_WAIT_FREE_FUNCTIONS
+// [19] BSLS_LIBRARYFEATURES_HAS_CPP20_ATOMIC_FLAG_TEST_FREE_FUNCTIONS
+// [19] BSLS_LIBRARYFEATURES_HAS_CPP20_MAKE_UNIQUE_FOR_OVERWRITE
+// [19] BSLS_LIBRARYFEATURES_HAS_CPP20_CALENDAR
+// [19] BSLS_LIBRARYFEATURES_HAS_CPP20_CHAR8_MB_CONV
 // [10] BSLS_LIBRARYFEATURES_STDCPP_GNU
 // [10] BSLS_LIBRARYFEATURES_STDCPP_IBM
 // [  ] BSLS_LIBRARYFEATURES_STDCPP_INTELLISENSE
@@ -181,7 +223,7 @@
 // [ 7] int std::isblank(int);
 // [ 7] bool std::isblank(char, const std::locale&);
 // ----------------------------------------------------------------------------
-// [17] USAGE EXAMPLE
+// [20] USAGE EXAMPLE
 // [-1] BSLS_LIBRARYFEATURES_HAS_CPP17_BOOL_CONSTANT: obsolescent: not defined
 // ----------------------------------------------------------------------------
 
@@ -235,90 +277,216 @@ void aSsErT(bool condition, const char *message, int line)
 //                  GLOBAL TYPEDEFS/CONSTANTS FOR TESTING
 // ----------------------------------------------------------------------------
 
-                     // Global constants for testing invariants
+                // Global constants for testing invariants
 
-static const bool u_BSLS_COMPILERFEATURES_SUPPORT_VARIADIC_TEMPLATES_defined =
-#if         defined(BSLS_COMPILERFEATURES_SUPPORT_VARIADIC_TEMPLATES)
-                                                                          true;
-#else
-                                                                         false;
-#endif
-
-static const bool u_BSLS_COMPILERFEATURES_SUPPORT_ALIAS_TEMPLATES_defined =
-#if         defined(BSLS_COMPILERFEATURES_SUPPORT_ALIAS_TEMPLATES)
+static const
+bool   BSLS_COMPILERFEATURES_SUPPORT_VARIADIC_TEMPLATES_defined =
+#ifdef BSLS_COMPILERFEATURES_SUPPORT_VARIADIC_TEMPLATES
                                                                           true;
 #else
                                                                          false;
 #endif
 
-static const bool u_BSLS_COMPILERFEATURES_SUPPORT_RVALUE_REFERENCES_defined =
-#if         defined(BSLS_COMPILERFEATURES_SUPPORT_RVALUE_REFERENCES)
+static const
+bool   BSLS_COMPILERFEATURES_SUPPORT_ALIAS_TEMPLATES_defined =
+#ifdef BSLS_COMPILERFEATURES_SUPPORT_ALIAS_TEMPLATES
                                                                           true;
 #else
                                                                          false;
 #endif
 
-static const bool u_BSLS_LIBRARYFEATURES_HAS_CPP17_BOOL_CONSTANT_defined =
-#if         defined(BSLS_LIBRARYFEATURES_HAS_CPP17_BOOL_CONSTANT)
+static const
+bool   BSLS_COMPILERFEATURES_SUPPORT_RVALUE_REFERENCES_defined =
+#ifdef BSLS_COMPILERFEATURES_SUPPORT_RVALUE_REFERENCES
                                                                           true;
 #else
                                                                          false;
 #endif
 
-static const bool u_BSLS_LIBRARYFEATURES_HAS_CPP11_RANGE_FUNCTIONS =
-#if         defined(BSLS_LIBRARYFEATURES_HAS_CPP11_RANGE_FUNCTIONS)
+static const
+bool   BSLS_LIBRARYFEATURES_HAS_CPP17_BOOL_CONSTANT_defined =
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP17_BOOL_CONSTANT
                                                                           true;
 #else
                                                                          false;
 #endif
 
-static const bool u_BSLS_LIBRARYFEATURES_HAS_CPP14_INTEGER_SEQUENCE_defined =
-#if         defined(BSLS_LIBRARYFEATURES_HAS_CPP14_INTEGER_SEQUENCE)
+static const
+bool   BSLS_LIBRARYFEATURES_HAS_CPP11_RANGE_FUNCTIONS_defined =
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP11_RANGE_FUNCTIONS
                                                                           true;
 #else
                                                                          false;
 #endif
 
-static const bool u_BSLS_LIBRARYFEATURES_HAS_CPP17_ALIGNED_ALLOC_defined =
-#if         defined(BSLS_LIBRARYFEATURES_HAS_CPP17_ALIGNED_ALLOC)
-                                                                          true;
-#else
-                                                                         false;
-#endif
-static const bool u_BSLS_LIBRARYFEATURES_HAS_CPP17_BASELINE_LIBRARY_defined =
-#if         defined(BSLS_LIBRARYFEATURES_HAS_CPP17_BASELINE_LIBRARY)
+static const
+bool   BSLS_LIBRARYFEATURES_HAS_CPP14_INTEGER_SEQUENCE_defined =
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP14_INTEGER_SEQUENCE
                                                                           true;
 #else
                                                                          false;
 #endif
 
-static const bool u_BSLS_LIBRARYFEATURES_HAS_CPP17_SEARCH_OVERLOAD_defined =
-#if         defined(BSLS_LIBRARYFEATURES_HAS_CPP17_SEARCH_OVERLOAD)
+static const
+bool   BSLS_LIBRARYFEATURES_HAS_CPP17_ALIGNED_ALLOC_defined =
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP17_ALIGNED_ALLOC
+                                                                          true;
+#else
+                                                                         false;
+#endif
+static const
+bool   BSLS_LIBRARYFEATURES_HAS_CPP17_BASELINE_LIBRARY_defined =
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP17_BASELINE_LIBRARY
                                                                           true;
 #else
                                                                          false;
 #endif
 
-static const bool u_BSLS_LIBRARYFEATURES_HAS_CPP17_SEARCH_FUNCTORS_defined =
-#if         defined(BSLS_LIBRARYFEATURES_HAS_CPP17_SEARCH_FUNCTORS)
+static const
+bool   BSLS_LIBRARYFEATURES_HAS_CPP17_SEARCH_OVERLOAD_defined =
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP17_SEARCH_OVERLOAD
                                                                           true;
 #else
                                                                          false;
 #endif
 
-static const bool u_BSLS_LIBRARYFEATURES_HAS_CPP17_RANGE_FUNCTIONS_defined =
-#if         defined(BSLS_LIBRARYFEATURES_HAS_CPP17_RANGE_FUNCTIONS)
+static const
+bool   BSLS_LIBRARYFEATURES_HAS_CPP17_SEARCH_FUNCTORS_defined =
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP17_SEARCH_FUNCTORS
                                                                           true;
 #else
                                                                          false;
 #endif
 
-static const bool u_BSLS_LIBRARYFEATURES_HAS_CPP17_TIMESPEC_GET_defined =
-#if         defined(BSLS_LIBRARYFEATURES_HAS_CPP17_TIMESPEC_GET)
+static const
+bool   BSLS_LIBRARYFEATURES_HAS_CPP17_RANGE_FUNCTIONS_defined =
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP17_RANGE_FUNCTIONS
                                                                           true;
 #else
                                                                          false;
 #endif
+
+static const
+bool   BSLS_LIBRARYFEATURES_HAS_CPP17_TIMESPEC_GET_defined =
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP17_TIMESPEC_GET
+                                                                          true;
+#else
+                                                                         false;
+#endif
+
+static const
+bool   BSLS_LIBRARYFEATURES_HAS_CPP17_INT_CHARCONV_defined =
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP17_INT_CHARCONV
+                                                                          true;
+#else
+                                                                         false;
+#endif
+
+static const
+bool   BSLS_LIBRARYFEATURES_HAS_CPP17_CHARCONV_defined =
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP17_CHARCONV
+                                                                          true;
+#else
+                                                                         false;
+#endif
+
+static const
+bool   BSLS_LIBRARYFEATURES_HAS_CPP20_BASELINE_LIBRARY_defined =
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP20_BASELINE_LIBRARY
+                                                                          true;
+#else
+                                                                         false;
+#endif
+
+static const
+bool   BSLS_LIBRARYFEATURES_HAS_CPP20_VERSION_defined =
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP20_VERSION
+                                                                          true;
+#else
+                                                                         false;
+#endif
+
+static const
+bool   BSLS_LIBRARYFEATURES_HAS_CPP20_CONCEPTS_defined =
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP20_CONCEPTS
+                                                                          true;
+#else
+                                                                         false;
+#endif
+
+static const
+bool   BSLS_LIBRARYFEATURES_HAS_CPP20_RANGES_defined =
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP20_RANGES
+                                                                          true;
+#else
+                                                                         false;
+#endif
+
+static const
+bool   BSLS_LIBRARYFEATURES_HAS_CPP20_ATOMIC_LOCK_FREE_TYPE_ALIASES_defined =
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP20_ATOMIC_LOCK_FREE_TYPE_ALIASES
+                                                                          true;
+#else
+                                                                         false;
+#endif
+
+static const
+bool   BSLS_LIBRARYFEATURES_HAS_CPP20_ATOMIC_WAIT_FREE_FUNCTIONS_defined =
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP20_ATOMIC_WAIT_FREE_FUNCTIONS
+                                                                          true;
+#else
+                                                                         false;
+#endif
+
+static const
+bool   BSLS_LIBRARYFEATURES_HAS_CPP20_ATOMIC_FLAG_TEST_FREE_FUNCTIONS_defined =
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP20_ATOMIC_FLAG_TEST_FREE_FUNCTIONS
+                                                                          true;
+#else
+                                                                         false;
+#endif
+
+static const
+bool   BSLS_LIBRARYFEATURES_HAS_CPP20_MAKE_UNIQUE_FOR_OVERWRITE_defined =
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP20_MAKE_UNIQUE_FOR_OVERWRITE
+                                                                          true;
+#else
+                                                                         false;
+#endif
+
+static const
+bool   BSLS_LIBRARYFEATURES_HAS_CPP20_CALENDAR_defined =
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP20_CALENDAR
+                                                                          true;
+#else
+                                                                         false;
+#endif
+
+static const
+bool   BSLS_LIBRARYFEATURES_HAS_CPP20_CHAR8_MB_CONV_defined =
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP20_CHAR8_MB_CONV
+                                                                          true;
+#else
+                                                                         false;
+#endif
+
+                        // case 19
+
+#include <vector> // for 'ranges'
+namespace case19 {
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP20_CONCEPTS
+template <class TYPE>
+requires std::equality_comparable<TYPE>
+constexpr bool equal(const TYPE& lhs, const TYPE& rhs)
+    // Return 'true' if the specified 'lhs' and 'rhs' are equal.  This function
+    // is used to conform concepts availability.
+{
+    return lhs == rhs;
+}
+#endif
+
+}  // close namespace case19
+
                     // case 13
 
 #include <algorithm> // for 'search'
@@ -332,7 +500,8 @@ struct SearcherNull {
                                                     const char* last) const;
         // Return 'std::pair<last, last>' ("needle not found")
         // irrespective of the contents of '[first, last)'.  Note that the
-        // (default) constructor does not allow the specifiction of a "needle".
+        // (default) constructor does not allow the specification of a
+        // "needle".
 };
 
 std::pair<const char *, const char*>
@@ -429,16 +598,16 @@ typename CONTAINER::iterator end(CONTAINER & c)
 
         // Function defined in '<utility>'
         int X(0);
-        int Y = std::exchange(X, 1);    (void) Y;
+        int Y = std::exchange(X, 1);    (void)Y;
 
         { // UDLs for <complex>
             using namespace std::complex_literals;
             std::complex<double>      zi = 2i;
-            (void) zi;
+            (void)zi;
             std::complex<long double> zl = 2il;
-            (void) zl;
+            (void)zl;
             std::complex<float>       zf = 2if;
-            (void) zf;
+            (void)zf;
         }
 
         { // UDLs for <chrono>
@@ -458,18 +627,18 @@ typename CONTAINER::iterator end(CONTAINER & c)
 
         { // Functions defined in '<type_traits>'
             bool b = std::is_null_pointer<int *>::value;
-            (void) b;
+            (void)b;
 
             class Foo final {};
             bool b2 = std::is_final<Foo>::value;
-            (void) b2;
+            (void)b2;
         }
     }
 #endif
 
-static
-const bool u_BSLS_LIBRARYFEATURES_HAS_CPP14_BASELINE_LIBRARY_defined =
-#if  defined(BSLS_LIBRARYFEATURES_HAS_CPP14_BASELINE_LIBRARY)
+static const
+bool   BSLS_LIBRARYFEATURES_HAS_CPP14_BASELINE_LIBRARY_defined =
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP14_BASELINE_LIBRARY
                                                                          true;
 #else
                                                                          false;
@@ -500,9 +669,9 @@ const bool u_BSLS_LIBRARYFEATURES_HAS_CPP14_BASELINE_LIBRARY_defined =
     }
 #endif
 
-static const bool
-    u_BSLS_LIBRARYFEATURES_HAS_CPP17_PRECISE_BITWIDTH_ATOMICS_defined =
-#if         defined(BSLS_LIBRARYFEATURES_HAS_CPP17_PRECISE_BITWIDTH_ATOMICS)
+static const
+bool   BSLS_LIBRARYFEATURES_HAS_CPP17_PRECISE_BITWIDTH_ATOMICS_defined =
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP17_PRECISE_BITWIDTH_ATOMICS
                                                                         true;
 #else
                                                                         false;
@@ -510,17 +679,17 @@ static const bool
 
                     // case 7
 
-#if defined(BSLS_LIBRARYFEATURES_HAS_CPP11_BASELINE_LIBRARY)
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP11_BASELINE_LIBRARY
      #include <cctype>
 #endif
 
-#if defined(BSLS_LIBRARYFEATURES_HAS_CPP11_MISCELLANEOUS_UTILITIES)
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP11_MISCELLANEOUS_UTILITIES
      #include <locale>
 #endif
 
-static const bool
-    u_BSLS_LIBRARYFEATURES_HAS_CPP11_MISCELLANEOUS_UTILITIES_defined =
-#if defined(BSLS_LIBRARYFEATURES_HAS_CPP11_MISCELLANEOUS_UTILITIES)
+static const
+bool   BSLS_LIBRARYFEATURES_HAS_CPP11_MISCELLANEOUS_UTILITIES_defined =
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP11_MISCELLANEOUS_UTILITIES
                                                                           true;
 #else
                                                                          false;
@@ -529,28 +698,30 @@ static const bool
 
                     // case 6
 
-#if defined(BSLS_LIBRARYFEATURES_HAS_C99_LIBRARY)
+#ifdef BSLS_LIBRARYFEATURES_HAS_C99_LIBRARY
      #include <cstdlib>
      #include <cctype>
      #include <cmath>
 #endif
 
-#if defined(BSLS_LIBRARYFEATURES_HAS_C99_SNPRINTF)
+#ifdef BSLS_LIBRARYFEATURES_HAS_C99_SNPRINTF
      #include <cstdio>
 #endif
 
-static const bool u_BSLS_LIBRARYFEATURES_HAS_C99_LIBRARY_defined =
-#if         defined(BSLS_LIBRARYFEATURES_HAS_C99_LIBRARY)
-                                                                  true;
+static const
+bool   BSLS_LIBRARYFEATURES_HAS_C99_LIBRARY_defined =
+#ifdef BSLS_LIBRARYFEATURES_HAS_C99_LIBRARY
+                                                                          true;
 #else
-                                                                  false;
+                                                                         false;
 #endif
 
-static const bool u_BSLS_LIBRARYFEATURES_HAS_C99_SNPRINTF_defined =
-#if         defined(BSLS_LIBRARYFEATURES_HAS_C99_SNPRINTF)
-                                                                  true;
+static const
+bool   BSLS_LIBRARYFEATURES_HAS_C99_SNPRINTF_defined =
+#ifdef BSLS_LIBRARYFEATURES_HAS_C99_SNPRINTF
+                                                                          true;
 #else
-                                                                  false;
+                                                                         false;
 #endif
 
                     // case 5
@@ -562,13 +733,15 @@ static const bool u_BSLS_LIBRARYFEATURES_HAS_C99_SNPRINTF_defined =
     std::unique_ptr<int> up;
 #endif
 
-static const bool u_BSLS_LIBRARYFEATURES_HAS_CPP11_UNIQUE_PTR_defined =
-#if         defined(BSLS_LIBRARYFEATURES_HAS_CPP11_UNIQUE_PTR)
-                                                                  true;
+static const
+bool   BSLS_LIBRARYFEATURES_HAS_CPP11_UNIQUE_PTR_defined =
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP11_UNIQUE_PTR
+                                                                          true;
 #else
-                                                                  false;
+                                                                         false;
 #endif
-                    // case 4
+
+                        // case 4
 
 #if defined(BSLS_LIBRARYFEATURES_HAS_CPP11_TUPLE) || \
     defined(BSLS_LIBRARYFEATURES_HAS_CPP11_TUPLE_FORCE)
@@ -583,11 +756,12 @@ static const bool u_BSLS_LIBRARYFEATURES_HAS_CPP11_UNIQUE_PTR_defined =
 
 #endif
 
-static const bool u_BSLS_LIBRARYFEATURES_HAS_CPP11_TUPLE_defined =
-#if         defined(BSLS_LIBRARYFEATURES_HAS_CPP11_TUPLE)
-                                                       true;
+static const
+bool   BSLS_LIBRARYFEATURES_HAS_CPP11_TUPLE_defined =
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP11_TUPLE
+                                                                          true;
 #else
-                                                       false;
+                                                                         false;
 #endif
 
                     // case 3
@@ -614,10 +788,9 @@ static const bool u_BSLS_LIBRARYFEATURES_HAS_CPP11_TUPLE_defined =
 
 #endif
 
-static const bool
-            u_BSLS_LIBRARYFEATURES_HAS_CPP11_PAIR_PIECEWISE_CONSTRUCTOR_defined
-                                                                              =
-#if   defined(BSLS_LIBRARYFEATURES_HAS_CPP11_PAIR_PIECEWISE_CONSTRUCTOR)
+static const
+bool   BSLS_LIBRARYFEATURES_HAS_CPP11_PAIR_PIECEWISE_CONSTRUCTOR_defined =
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP11_PAIR_PIECEWISE_CONSTRUCTOR
                                                                           true;
 #else
                                                                          false;
@@ -748,9 +921,7 @@ static const bool
         (void)std::is_heap      (inputFirst, inputLast);
         (void)std::is_heap_until(inputFirst, inputLast);
 
-        (void)std::is_partitioned (inputFirst,
-                                          inputLast,
-                                          unaryPredicate);
+        (void)std::is_partitioned (inputFirst, inputLast, unaryPredicate);
         (void)std::is_permutation (inputFirst, inputLast, inputFirst);
         (void)std::is_sorted      (inputFirst, inputLast);
         (void)std::is_sorted_until(inputFirst, inputLast);
@@ -773,9 +944,7 @@ static const bool
                             output2First,
                             unaryPredicate);
 
-        (void)std::partition_point(inputFirst,
-                                   inputLast,
-                                   unaryPredicate);
+        (void)std::partition_point(inputFirst, inputLast, unaryPredicate);
 
         SimpleUniformRandomNumberGenerator surng;
         std::shuffle(outputFirst,
@@ -788,7 +957,7 @@ static const bool
 
         // test <ios> C++11 functions
         const std::error_category& errorCategory = std::iostream_category();
-        (void) errorCategory;
+        (void)errorCategory;
 
         (void)std::make_error_code(std::io_errc::stream);
         (void)std::make_error_condition(std::io_errc::stream);
@@ -808,28 +977,37 @@ static const bool
     }
 #endif
 
-static const bool u_BSLS_LIBRARYFEATURES_HAS_CPP11_BASELINE_LIBRARY_defined =
-#if         defined(BSLS_LIBRARYFEATURES_HAS_CPP11_BASELINE_LIBRARY)
-                                                                        true;
+static const
+bool   BSLS_LIBRARYFEATURES_HAS_CPP11_BASELINE_LIBRARY_defined =
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP11_BASELINE_LIBRARY
+                                                                          true;
 #else
-                                                                        false;
+                                                                         false;
 #endif
 
                     // case 1
 
-#if defined(BSLS_LIBRARYFEATURES_HAS_CPP98_AUTO_PTR) ||\
+#if defined(BSLS_LIBRARYFEATURES_HAS_CPP98_AUTO_PTR) || \
     defined(BSLS_LIBRARYFEATURES_HAS_CPP98_AUTO_PTR_FORCE)
 
+#ifdef BSLS_PLATFORM_HAS_PRAGMA_GCC_DIAGNOSTIC
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
     #include <memory>
     std::auto_ptr<int> ap;
+#ifdef BSLS_PLATFORM_HAS_PRAGMA_GCC_DIAGNOSTIC
+#pragma GCC diagnostic pop
+#endif
 
 #endif
 
-static const bool u_BSLS_LIBRARYFEATURES_HAS_CPP98_AUTO_PTR_defined =
-#if         defined(BSLS_LIBRARYFEATURES_HAS_CPP98_AUTO_PTR)
-                                                                true;
+static const
+bool   BSLS_LIBRARYFEATURES_HAS_CPP98_AUTO_PTR_defined =
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP98_AUTO_PTR
+                                                                          true;
 #else
-                                                                false;
+                                                                         false;
 #endif
 
 using namespace BloombergLP;
@@ -1140,15 +1318,6 @@ static void printFlags()
     printf("UNDEFINED\n");
 #endif
 
-    printf("\n  BSLS_LIBRARYFEATURES_HAS_CPP17_FLOAT_FROM_CHARS_CHARCONV: ");
-#ifdef BSLS_LIBRARYFEATURES_HAS_CPP17_FLOAT_FROM_CHARS_CHARCONV
-    printf(
-          "%s\n",
-          STRINGIFY(BSLS_LIBRARYFEATURES_HAS_CPP17_FLOAT_FROM_CHARS_CHARCONV));
-#else
-    printf("UNDEFINED\n");
-#endif
-
     printf("\n  BSLS_LIBRARYFEATURES_HAS_CPP17_CHARCONV: ");
 #ifdef BSLS_LIBRARYFEATURES_HAS_CPP17_CHARCONV
     printf("%s\n", STRINGIFY(BSLS_LIBRARYFEATURES_HAS_CPP17_CHARCONV) );
@@ -1174,6 +1343,35 @@ static void printFlags()
     printf("\n  BSLS_LIBRARYFEATURES_HAS_CPP17_PMR: ");
 #ifdef BSLS_LIBRARYFEATURES_HAS_CPP17_PMR
     printf("%s\n", STRINGIFY(BSLS_LIBRARYFEATURES_HAS_CPP17_PMR) );
+#else
+    printf("UNDEFINED\n");
+#endif
+
+    printf("\n  BSLS_LIBRARYFEATURES_HAS_CPP20_BASELINE_LIBRARY: ");
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP20_BASELINE_LIBRARY
+    printf("%s\n",
+                  STRINGIFY(BSLS_LIBRARYFEATURES_HAS_CPP20_BASELINE_LIBRARY) );
+#else
+    printf("UNDEFINED\n");
+#endif
+
+    printf("\n  BSLS_LIBRARYFEATURES_HAS_CPP20_VERSION: ");
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP20_VERSION
+    printf("%s\n", STRINGIFY(BSLS_LIBRARYFEATURES_HAS_CPP20_VERSION) );
+#else
+    printf("UNDEFINED\n");
+#endif
+
+    printf("\n  BSLS_LIBRARYFEATURES_HAS_CPP20_CONCEPTS: ");
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP20_CONCEPTS
+    printf("%s\n", STRINGIFY(BSLS_LIBRARYFEATURES_HAS_CPP20_CONCEPTS) );
+#else
+    printf("UNDEFINED\n");
+#endif
+
+    printf("\n  BSLS_LIBRARYFEATURES_HAS_CPP20_RANGES: ");
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP20_RANGES
+    printf("%s\n", STRINGIFY(BSLS_LIBRARYFEATURES_HAS_CPP20_RANGES) );
 #else
     printf("UNDEFINED\n");
 #endif
@@ -1401,8 +1599,8 @@ int main(int argc, char *argv[])
     bool         veryVerbose = argc > 3;
     bool     veryVeryVerbose = argc > 4;
 
-    (void)        veryVerbose;  // unused variable warning
-    (void)    veryVeryVerbose;  // unused variable warning
+    (void)       veryVerbose;  // unused variable warning
+    (void)   veryVeryVerbose;  // unused variable warning
 
     setbuf(stdout, NULL);    // Use unbuffered output
 
@@ -1413,7 +1611,7 @@ int main(int argc, char *argv[])
     }
 
     switch (test) { case 0:
-      case 17: {
+      case 20: {
         // --------------------------------------------------------------------
         // USAGE EXAMPLE
         //   Extracted from component header file.
@@ -1431,12 +1629,465 @@ int main(int argc, char *argv[])
         //   USAGE EXAMPLE
         // --------------------------------------------------------------------
 
-        if (verbose) printf("USAGE EXAMPLE\n"
-                            "=============\n");
+        if (verbose) puts("\nUSAGE EXAMPLE"
+                          "\n=============");
+      } break;
+      case 19: {
+        // --------------------------------------------------------------------
+        // 'BSLS_LIBRARYFEATURES_HAS_CPP20_*' MISCELLANY
+        //
+        // Concerns:
+        //: 1 'BSLS_LIBRARYFEATURES_HAS_CPP20_VERSION' is defined only when the
+        //:   native standard library provides it.
+        //:
+        //: 2 'BSLS_LIBRARYFEATURES_HAS_CPP20_CONCEPTS' is defined only when
+        //:   the native standard library provides it.
+        //:
+        //: 3 'BSLS_LIBRARYFEATURES_HAS_CPP20_RANGES' is defined only when the
+        //:   native standard library provides it.
+        //:
+        //: 4 'BSLS_LIBRARYFEATURES_HAS_CPP20_ATOMIC_LOCK_FREE_TYPE_ALIASES' is
+        //:   defined only when the native standard library provides it.
+        //:
+        //: 5 'BSLS_LIBRARYFEATURES_HAS_CPP20_ATOMIC_WAIT_FREE_FUNCTIONS' is
+        //:   defined only when the native standard library provides it.
+        //:
+        //: 6 'BSLS_LIBRARYFEATURES_HAS_CPP20_ATOMIC_FLAG_TEST_FREE_FUNCTIONS'
+        //:   is defined only when the native standard library provides it.
+        //:
+        //: 7 'BSLS_LIBRARYFEATURES_HAS_CPP20_MAKE_UNIQUE_FOR_OVERWRITE' is
+        //:   defined only when the native standard library provides it.
+        //:
+        //: 8 'BSLS_LIBRARYFEATURES_HAS_CPP20_CALENDAR' is defined only when
+        //:   the native standard library provides it.
+        //:
+        //: 9 'BSLS_LIBRARYFEATURES_HAS_CPP20_CHAR8_MB_CONV' is defined only
+        //:   when the native standard library provides it.
+        //
+        // Plan:
+        //: 1 When these macros are defined include the appropriate headers and
+        //:   use the expected calls.
+        //
+        // Testing:
+        //   BSLS_LIBRARYFEATURES_HAS_CPP20_VERSION
+        //   BSLS_LIBRARYFEATURES_HAS_CPP20_CONCEPTS
+        //   BSLS_LIBRARYFEATURES_HAS_CPP20_RANGES
+        //   BSLS_LIBRARYFEATURES_HAS_CPP20_ATOMIC_LOCK_FREE_TYPE_ALIASES
+        //   BSLS_LIBRARYFEATURES_HAS_CPP20_ATOMIC_WAIT_FREE_FUNCTIONS
+        //   BSLS_LIBRARYFEATURES_HAS_CPP20_ATOMIC_FLAG_TEST_FREE_FUNCTIONS
+        //   BSLS_LIBRARYFEATURES_HAS_CPP20_MAKE_UNIQUE_FOR_OVERWRITE
+        //   BSLS_LIBRARYFEATURES_HAS_CPP20_CALENDAR
+        //   BSLS_LIBRARYFEATURES_HAS_CPP20_CHAR8_MB_CONV
+        // --------------------------------------------------------------------
+
+        if (verbose) puts("\n'BSLS_LIBRARYFEATURES_HAS_CPP20_*' MISCELLANY"
+                          "\n=============================================");
+
+        if (verbose) {
+#define PMD(macro_name) P(macro_name##_defined)
+    // Print Macro Defined
+
+            PMD(BSLS_LIBRARYFEATURES_HAS_CPP20_VERSION);
+            PMD(BSLS_LIBRARYFEATURES_HAS_CPP20_CONCEPTS);
+            PMD(BSLS_LIBRARYFEATURES_HAS_CPP20_RANGES);
+            PMD(BSLS_LIBRARYFEATURES_HAS_CPP20_ATOMIC_LOCK_FREE_TYPE_ALIASES);
+            PMD(BSLS_LIBRARYFEATURES_HAS_CPP20_ATOMIC_WAIT_FREE_FUNCTIONS);
+           PMD(BSLS_LIBRARYFEATURES_HAS_CPP20_ATOMIC_FLAG_TEST_FREE_FUNCTIONS);
+            PMD(BSLS_LIBRARYFEATURES_HAS_CPP20_MAKE_UNIQUE_FOR_OVERWRITE);
+            PMD(BSLS_LIBRARYFEATURES_HAS_CPP20_CALENDAR);
+            PMD(BSLS_LIBRARYFEATURES_HAS_CPP20_CHAR8_MB_CONV);
+#undef PMD
+        }
+
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP20_CONCEPTS
+        ASSERT( case19::equal(2,2));
+        ASSERT(!case19::equal(1,2));
+#endif
+
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP20_RANGES
+        {
+            std::vector<int> v = {1,2,3,4,5};
+
+            (void)std::ranges::data(v);
+            std::ranges::take_view   tv(v, 3);
+            std::ranges::owning_view ov(std::move(v));
+        }
+#endif
+
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP20_ATOMIC_LOCK_FREE_TYPE_ALIASES
+        {
+            (void)std::atomic_signed_lock_free{};
+            (void)std::atomic_unsigned_lock_free{};
+        }
+#endif
+
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP20_ATOMIC_WAIT_FREE_FUNCTIONS
+        (void)[](std::atomic_flag *ptr) {
+            std::atomic_flag_wait(ptr, true);
+            std::atomic_flag_wait_explicit(ptr,
+                                           true,
+                                           std::memory_order::relaxed);
+            std::atomic_flag_notify_one(ptr);
+            std::atomic_flag_notify_all(ptr);
+        };
+#endif
+
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP20_ATOMIC_FLAG_TEST_FREE_FUNCTIONS
+        (void)[](std::atomic_flag *ptr) {
+            (void)std::atomic_flag_test(ptr);
+            (void)std::atomic_flag_test_explicit(ptr,
+                                                  std::memory_order::relaxed);
+        };
+#endif
+
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP20_MAKE_UNIQUE_FOR_OVERWRITE
+        (void)std::make_unique_for_overwrite<int>();
+        (void)std::make_unique_for_overwrite<int[]>(4);
+#endif
+
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP20_CALENDAR
+        (void)std::chrono::day{1};
+        (void)std::chrono::month{1};
+        (void)std::chrono::year{2000};
+
+        using namespace std::chrono_literals;
+        using std::chrono::May;
+        (void)(1d/May/2000y);
+#endif
+
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP20_CHAR8_MB_CONV
+        (void)[](char8_t *out, std::mbstate_t *st) {
+            (void)std::mbrtoc8(out, "", 0U, st);
+        };
+        (void)[](char *out, std::mbstate_t *st) {
+            (void)std::c8rtomb(out, {}, st);
+        };
+#endif
+      } break;
+      case 18: {
+        // --------------------------------------------------------------------
+        // CHARCONV RELATED MACROS
+        //
+        // Concerns:
+        //: 1 If 'BSLS_LIBRARYFEATURES_HAS_CPP17_CHARCONV' is defined
+        //:   'BSLS_LIBRARYFEATURES_HAS_CPP17_INT_CHARCONV' is also defined as
+        //:   they represent levels of support.
+        //:
+        //: 3 When 'BSLS_LIBRARYFEATURES_HAS_CPP17_INT_CHARCONV' is defined
+        //:   both 'std::to_chars' and 'std::from_chars' overloads exist for
+        //:   all signed and unsigned standard integer types and 'char', as
+        //:   well as the 'std::to_chars_result' and 'std::from_chars_result'
+        //:   types are defined.
+        //:
+        //: 4 When 'BSLS_LIBRARYFEATURES_HAS_CPP17_CHARCONV' is defined the
+        //:   'std::chars_format' type, as well as 'std::from_chars' and
+        //:   'std::to_chars' overloads exists for all 3 standard floating
+        //:   point types ('float', 'double', 'long double').
+        //
+        // Plan:
+        //: 1 Macro dependency tests (C-1) use the 'u_*_defined' variables.
+        //: 2 Presence of functions is tested by defining calling lambdas.
+        //: 3 Presence of result types is tested by declarations.
+        //: 4 'std::chars_format' is used as argument in the float lambdas.
+        //
+        // Testing:
+        //   BSLS_LIBRARYFEATURES_HAS_CPP17_INT_CHARCONV
+        //   BSLS_LIBRARYFEATURES_HAS_CPP17_CHARCONV
+        // --------------------------------------------------------------------
+
+        if (verbose) puts("\nCHARCONV RELATED MACROS"
+                          "\n=======================");
+
+        if (verbose) {
+            P(BSLS_LIBRARYFEATURES_HAS_CPP17_INT_CHARCONV_defined);
+            P(BSLS_LIBRARYFEATURES_HAS_CPP17_CHARCONV_defined);
+        }
+
+        // C-1
+        ASSERT(!BSLS_LIBRARYFEATURES_HAS_CPP17_CHARCONV_defined ||
+               BSLS_LIBRARYFEATURES_HAS_CPP17_INT_CHARCONV_defined);
+
+        // C-2
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP17_INT_CHARCONV
+        // 'std::to_chars' for singed/unsigned integers plus 'char'
+        {
+            char *FIRST = nullptr;
+            char *LAST  = nullptr;
+
+            std::to_chars_result r1, r2;
+
+            (void)[FIRST, LAST, &r1, &r2](char v) {
+                r1 = std::to_chars(FIRST, LAST, v, 16);
+                r2 = std::to_chars(FIRST, LAST, v);
+            };
+
+            (void)[FIRST, LAST, &r1, &r2](signed char v) {
+                r1 = std::to_chars(FIRST, LAST, v, 16);
+                r2 = std::to_chars(FIRST, LAST, v);
+            };
+
+            (void)[FIRST, LAST, &r1, &r2](unsigned char v) {
+                r1 = std::to_chars(FIRST, LAST, v, 16);
+                r2 = std::to_chars(FIRST, LAST, v);
+            };
+
+            (void)[FIRST, LAST, &r1, &r2](signed short v) {
+                r1 = std::to_chars(FIRST, LAST, v, 16);
+                r2 = std::to_chars(FIRST, LAST, v);
+            };
+
+            (void)[FIRST, LAST, &r1, &r2](unsigned short v) {
+                r1 = std::to_chars(FIRST, LAST, v, 16);
+                r2 = std::to_chars(FIRST, LAST, v);
+            };
+
+            (void)[FIRST, LAST, &r1, &r2](signed int v) {
+                r1 = std::to_chars(FIRST, LAST, v, 16);
+                r2 = std::to_chars(FIRST, LAST, v);
+            };
+
+            (void)[FIRST, LAST, &r1, &r2](unsigned int v) {
+                r1 = std::to_chars(FIRST, LAST, v, 16);
+                r2 = std::to_chars(FIRST, LAST, v);
+            };
+
+            (void)[FIRST, LAST, &r1, &r2](signed long v) {
+                r1 = std::to_chars(FIRST, LAST, v, 16);
+                r2 = std::to_chars(FIRST, LAST, v);
+            };
+
+            (void)[FIRST, LAST, &r1, &r2](unsigned long v) {
+                r1 = std::to_chars(FIRST, LAST, v, 16);
+                r2 = std::to_chars(FIRST, LAST, v);
+            };
+
+            (void)[FIRST, LAST, &r1, &r2](signed long long v) {
+                r1 = std::to_chars(FIRST, LAST, v, 16);
+                r2 = std::to_chars(FIRST, LAST, v);
+            };
+
+            (void)[FIRST, LAST, &r1, &r2](unsigned long long v) {
+                r1 = std::to_chars(FIRST, LAST, v, 16);
+                r2 = std::to_chars(FIRST, LAST, v);
+            };
+        }
+
+        // 'std::from_chars' for singed/unsigned integers plus 'char'
+        {
+            const char *FIRST = nullptr;
+            const char *LAST  = nullptr;
+
+            std::from_chars_result r1, r2;
+
+            (void)[FIRST, LAST, &r1, &r2](char v) {
+                r1 = std::from_chars(FIRST, LAST, v, 16);
+                r2 = std::from_chars(FIRST, LAST, v);
+                return v;
+            };
+
+            (void)[FIRST, LAST, &r1, &r2](signed char v) {
+                r1 = std::from_chars(FIRST, LAST, v, 16);
+                r2 = std::from_chars(FIRST, LAST, v);
+                return v;
+            };
+
+            (void)[FIRST, LAST, &r1, &r2](unsigned char v) {
+                r1 = std::from_chars(FIRST, LAST, v, 16);
+                r2 = std::from_chars(FIRST, LAST, v);
+                return v;
+            };
+
+            (void)[FIRST, LAST, &r1, &r2](signed short v) {
+                r1 = std::from_chars(FIRST, LAST, v, 16);
+                r2 = std::from_chars(FIRST, LAST, v);
+                return v;
+            };
+
+            (void)[FIRST, LAST, &r1, &r2](unsigned short v) {
+                r1 = std::from_chars(FIRST, LAST, v, 16);
+                r2 = std::from_chars(FIRST, LAST, v);
+                return v;
+            };
+
+            (void)[FIRST, LAST, &r1, &r2](signed int v) {
+                r1 = std::from_chars(FIRST, LAST, v, 16);
+                r2 = std::from_chars(FIRST, LAST, v);
+                return v;
+            };
+
+            (void)[FIRST, LAST, &r1, &r2](unsigned int v) {
+                r1 = std::from_chars(FIRST, LAST, v, 16);
+                r2 = std::from_chars(FIRST, LAST, v);
+                return v;
+            };
+
+            (void)[FIRST, LAST, &r1, &r2](signed long v) {
+                r1 = std::from_chars(FIRST, LAST, v, 16);
+                r2 = std::from_chars(FIRST, LAST, v);
+                return v;
+            };
+
+            (void)[FIRST, LAST, &r1, &r2](unsigned long v) {
+                r1 = std::from_chars(FIRST, LAST, v, 16);
+                r2 = std::from_chars(FIRST, LAST, v);
+                return v;
+            };
+
+            (void)[FIRST, LAST, &r1, &r2](signed long long v) {
+                r1 = std::from_chars(FIRST, LAST, v, 16);
+                r2 = std::from_chars(FIRST, LAST, v);
+                return v;
+            };
+
+            (void)[FIRST, LAST, &r1, &r2](unsigned long long v) {
+                r1 = std::from_chars(FIRST, LAST, v, 16);
+                r2 = std::from_chars(FIRST, LAST, v);
+                return v;
+            };
+        }
+#endif // BSLS_LIBRARYFEATURES_HAS_CPP17_INT_CHARCONV
+
+        // C-3
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP17_CHARCONV
+        // 'std::to_chars' - for 'float', 'double', and 'long double'
+        {
+            char *FIRST = nullptr;
+            char *LAST  = nullptr;
+
+            (void)[FIRST, LAST](float v) {
+                std::to_chars(FIRST, LAST, v, std::chars_format::hex);
+                std::to_chars(FIRST, LAST, v);
+            };
+
+            (void)[FIRST, LAST](double v) {
+                std::to_chars(FIRST, LAST, v, std::chars_format::hex);
+                std::to_chars(FIRST, LAST, v);
+            };
+
+            (void)[FIRST, LAST](long double v) {
+                std::to_chars(FIRST, LAST, v, std::chars_format::hex);
+                std::to_chars(FIRST, LAST, v);
+            };
+        }
+
+        // 'std::from_chars' - for 'float', 'double', and 'long double'
+        {
+            const char *FIRST = nullptr;
+            const char *LAST  = nullptr;
+
+            (void)[FIRST, LAST](float v) {
+                std::from_chars(FIRST, LAST, v, std::chars_format::hex);
+                std::from_chars(FIRST, LAST, v);
+                return v;
+            };
+
+            (void)[FIRST, LAST](double v) {
+                std::from_chars(FIRST, LAST, v, std::chars_format::hex);
+                std::from_chars(FIRST, LAST, v);
+                return v;
+            };
+
+            (void)[FIRST, LAST](long double v) {
+                std::from_chars(FIRST, LAST, v, std::chars_format::hex);
+                std::from_chars(FIRST, LAST, v);
+                return v;
+            };
+        }
+#endif  // BSLS_LIBRARYFEATURES_HAS_CPP17_CHARCONV
+      } break;
+      case 17: {
+        // --------------------------------------------------------------------
+        // 'BSLS_LIBRARYFEATURES_HAS_CPP20_BASELINE_LIBRARY'
+        //
+        // Concerns:
+        //: 1 'BSLS_LIBRARYFEATURES_HAS_CPP20_BASELINE_LIBRARY' is defined only
+        //:   when the native standard library provides a baseline of C++20
+        //:   library features, including:
+        //:       o 'span'
+        //:       o 'barrier'
+        //:       o 'latch'
+        //:       o 'countingSemaphore'
+        //:       o 'nostopstate'
+        //:       o 'to_array'
+        //
+        // Plan:
+        //: 1 When 'BSLS_LIBRARYFEATURES_HAS_CPP20_BASELINE_LIBRARY' is
+        //:   defined include the appropriate headers and use the expected
+        //:   typenames.
+        //
+        // Testing:
+        //   BSLS_LIBRARYFEATURES_HAS_CPP20_BASELINE_LIBRARY
+        // --------------------------------------------------------------------
+
+        if (verbose)
+            puts("\n'BSLS_LIBRARYFEATURES_HAS_CPP20_BASELINE_LIBRARY'"
+                 "\n=================================================");
+
+        if (verbose) {
+            P(BSLS_LIBRARYFEATURES_HAS_CPP20_BASELINE_LIBRARY_defined)
+        }
+
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP20_BASELINE_LIBRARY
+        {
+            std::span<int> x;
+            (void)x;
+        }
+
+        {
+            std::barrier barrier(1);
+            (void)barrier;
+        }
+
+        {
+            std::latch latch(0);
+            (void)latch;
+        }
+
+        {
+            std::counting_semaphore countingSemaphore(0);
+            std::binary_semaphore binarySemaphore(0);
+
+            (void)countingSemaphore;
+            (void)binarySemaphore;
+        }
+
+        {
+            (void)std::nostopstate;
+        }
+
+        {
+            // String is there since the macro will get replaced by value.
+            ASSERTV("__cpp_lib_to_array >= 201907L check",
+                    __cpp_lib_to_array,
+                    __cpp_lib_to_array >= 201907L);
+
+            if (veryVerbose) printf("... testing to_array(T&[N])\n");
+            {
+                int src[5] = {1, 2, 3, 4, 5};
+                std::array<int, 5> dest = std::to_array(src);
+                for (std::size_t i = 0; i < sizeof(src)/sizeof(*src); ++i) {
+                    ASSERTV(i, src[i], dest[i], src[i] == dest[i]);
+                }
+            }
+
+            if (veryVerbose) printf("... testing to_array(T&&[N])\n");
+            {
+                int src[5] = {1, 2, 3, 4, 5};
+                int check[5] = {1, 2, 3, 4, 5};
+                std::array<int, 5> dest = std::to_array(std::move(src));
+                for (std::size_t i = 0;
+                     i < sizeof(check)/sizeof(*check);
+                     ++i) {
+                    ASSERTV(i, dest[i], check[i], dest[i] == check[i]);
+                }
+            }
+        }
+#endif
+        if (veryVeryVerbose) P(BSLS_PLATFORM_CMP_VERSION);
       } break;
       case 16: {
         // --------------------------------------------------------------------
-        // TESTING 'BSLS_LIBRARYFEATURES_HAS_CPP17_RANGE_FUNCTIONS'
+        // 'BSLS_LIBRARYFEATURES_HAS_CPP17_RANGE_FUNCTIONS'
         //
         // Concerns:
         //: 1 'BSLS_LIBRARYFEATURES_HAS_CPP17_RANGE_FUNCTIONS' is defined only
@@ -1453,25 +2104,24 @@ int main(int argc, char *argv[])
         // --------------------------------------------------------------------
 
         if (verbose)
-          printf("TESTING 'BSLS_LIBRARYFEATURES_HAS_CPP17_RANGE_FUNCTIONS'\n"
-                 "========================================================\n");
+            puts("\n'BSLS_LIBRARYFEATURES_HAS_CPP17_RANGE_FUNCTIONS'"
+                 "\n================================================");
 
         if (verbose) {
-            P(u_BSLS_LIBRARYFEATURES_HAS_CPP17_RANGE_FUNCTIONS_defined)
+            P(BSLS_LIBRARYFEATURES_HAS_CPP17_RANGE_FUNCTIONS_defined);
         }
 
 #ifdef BSLS_LIBRARYFEATURES_HAS_CPP17_RANGE_FUNCTIONS
         std::string s;
-        (void) std::empty(s);
-        (void) std::data(s);
-        (void) std::size(s);
+        (void)std::empty(s);
+        (void)std::data(s);
+        (void)std::size(s);
 #endif
-
         if (veryVeryVerbose) P(BSLS_PLATFORM_CMP_VERSION);
       } break;
       case 15: {
         // --------------------------------------------------------------------
-        // TESTING BSLS_LIBRARYFEATURES_HAS_CPP17_MISCELLANY
+        // 'BSLS_LIBRARYFEATURES_HAS_CPP17_*' MISCELLANY
         //
         // Concerns:
         //: 1 'BSLS_LIBRARYFEATURES_HAS_CPP17_ALIGNED_ALLOC' and
@@ -1488,32 +2138,30 @@ int main(int argc, char *argv[])
         //   BSLS_LIBRARYFEATURES_HAS_CPP17_TIMESPEC_GET
         // --------------------------------------------------------------------
 
-        if (verbose) printf(
-            "TESTING BSLS_LIBRARYFEATURES_HAS_CPP17_MISCELLANY\n"
-            "=================================================\n");
+        if (verbose) puts("\n'BSLS_LIBRARYFEATURES_HAS_CPP17_*' MISCELLANY"
+                          "\n=============================================");
 
         if (verbose) {
-            P(u_BSLS_LIBRARYFEATURES_HAS_CPP17_ALIGNED_ALLOC_defined)
-            P(u_BSLS_LIBRARYFEATURES_HAS_CPP17_TIMESPEC_GET_defined)
+            P(BSLS_LIBRARYFEATURES_HAS_CPP17_ALIGNED_ALLOC_defined);
+            P(BSLS_LIBRARYFEATURES_HAS_CPP17_TIMESPEC_GET_defined);
         }
 
 #ifdef BSLS_LIBRARYFEATURES_HAS_CPP17_ALIGNED_ALLOC
         {
-            int* p = static_cast<int*>(std::aligned_alloc(1024, 1024));
-            std::free(p);
+            std::free(std::aligned_alloc(1024, 1024));
         }
 #endif
 
 #ifdef BSLS_LIBRARYFEATURES_HAS_CPP17_TIMESPEC_GET
         {
             std::timespec ts;
-            std::timespec_get(&ts, TIME_UTC);
+            (void)std::timespec_get(&ts, TIME_UTC);
         }
 #endif
       } break;
       case 14: {
         // --------------------------------------------------------------------
-        // TESTING 'BSLS_LIBRARYFEATURES_HAS_CPP17_BASELINE_LIBRARY'
+        // 'BSLS_LIBRARYFEATURES_HAS_CPP17_BASELINE_LIBRARY'
         //
         // Concerns:
         //: 1 'BSLS_LIBRARYFEATURES_HAS_CPP17_BASELINE_LIBRARY' is defined only
@@ -1529,39 +2177,37 @@ int main(int argc, char *argv[])
         //   BSLS_LIBRARYFEATURES_HAS_CPP17_BASELINE_LIBRARY
         // --------------------------------------------------------------------
 
-        if (verbose) printf(
-            "TESTING 'BSLS_LIBRARYFEATURES_HAS_CPP17_BASELINE_LIBRARY'\n"
-            "=========================================================\n");
+        if (verbose)
+            puts("\n'BSLS_LIBRARYFEATURES_HAS_CPP17_BASELINE_LIBRARY'"
+                 "\n=================================================");
 
         if (verbose) {
-            P(u_BSLS_LIBRARYFEATURES_HAS_CPP17_BASELINE_LIBRARY_defined)
+            P(BSLS_LIBRARYFEATURES_HAS_CPP17_BASELINE_LIBRARY_defined);
         }
 
-#if defined(BSLS_LIBRARYFEATURES_HAS_CPP17_BASELINE_LIBRARY)
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP17_BASELINE_LIBRARY
         {
             std::any x;
-            (void) x;
+            (void)x;
         }
         {
             std::optional<int> x;
-            (void) x;
+            (void)x;
         }
         {
             std::string_view x;
-            (void) x;
+            (void)x;
         }
         {
             std::variant<int> x;
-            (void) x;
+            (void)x;
         }
 #endif
-
         if (veryVeryVerbose) P(BSLS_PLATFORM_CMP_VERSION);
-
       } break;
       case 13: {
         // --------------------------------------------------------------------
-        // TESTING 'BSLS_LIBRARYFEATURES_HAS_CPP17_SEARCH_*' MACROS
+        // 'BSLS_LIBRARYFEATURES_HAS_CPP17_SEARCH_*' MACROS
         //
         // Concerns:
         //: 1 The 'BSLS_LIBRARYFEATURES_HAS_CPP17_SEARCH_OVERLOAD' macro is
@@ -1611,13 +2257,13 @@ int main(int argc, char *argv[])
         //   BSLS_LIBRARYFEATURES_HAS_CPP17_SEARCH_FUNCTORS
         // --------------------------------------------------------------------
 
-        if (verbose) printf(
-                "TESTING 'BSLS_LIBRARYFEATURES_HAS_CPP17_SEARCH_*' MACROS\n"
-                "========================================================\n");
+        if (verbose)
+            puts("\n'BSLS_LIBRARYFEATURES_HAS_CPP17_SEARCH_*' MACROS"
+                 "\n================================================");
 
         if (verbose) {
-                P(u_BSLS_LIBRARYFEATURES_HAS_CPP17_SEARCH_OVERLOAD_defined)
-                P(u_BSLS_LIBRARYFEATURES_HAS_CPP17_SEARCH_FUNCTORS_defined)
+            P(BSLS_LIBRARYFEATURES_HAS_CPP17_SEARCH_OVERLOAD_defined);
+            P(BSLS_LIBRARYFEATURES_HAS_CPP17_SEARCH_FUNCTORS_defined);
         }
 
         case13::SearcherNull searcher;
@@ -1630,7 +2276,7 @@ int main(int argc, char *argv[])
         const char *haystackFirst = haystack;
         const char *haystackLast  = haystack + sizeof haystack - 1;
 
-#if defined(BSLS_LIBRARYFEATURES_HAS_CPP17_SEARCH_OVERLOAD)
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP17_SEARCH_OVERLOAD
 
         const char *result = std::search(haystackFirst,
                                          haystackLast,
@@ -1644,7 +2290,7 @@ int main(int argc, char *argv[])
         ASSERT(haystackLast == result);
 #endif
 
-#if defined(BSLS_LIBRARYFEATURES_HAS_CPP17_SEARCH_FUNCTORS)
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP17_SEARCH_FUNCTORS
         std::default_searcher              dftSearcher(needleFirst,
                                                        needleLast);
         std::boyer_moore_searcher           bmSearcher(needleFirst,
@@ -1652,14 +2298,14 @@ int main(int argc, char *argv[])
         std::boyer_moore_horspool_searcher bmhSearcher(needleFirst,
                                                        needleLast);
 #else
-        (void) needleFirst;
-        (void) needleLast;
+        (void)needleFirst;
+        (void)needleLast;
 #endif
         if (veryVeryVerbose) P(BSLS_PLATFORM_CMP_VERSION);
       } break;
       case 12: {
         // --------------------------------------------------------------------
-        // TESTING 'BSLS_LIBRARYFEATURES_HAS_CPP11_RANGE_FUNCTIONS'
+        // 'BSLS_LIBRARYFEATURES_HAS_CPP11_RANGE_FUNCTIONS'
         //
         // Concerns:
         //: 1 The 'BSLS_LIBRARYFEATURES_HAS_CPP11_RANGE_FUNCTIONS' flag is
@@ -1687,19 +2333,19 @@ int main(int argc, char *argv[])
         //   BSLS_LIBRARYFEATURES_HAS_CPP11_RANGE_FUNCTIONS
         // --------------------------------------------------------------------
 
-        if (verbose) printf(
-                 "TESTING 'BSLS_LIBRARYFEATURES_HAS_CPP11_RANGE_FUNCTIONS'\n"
-                 "========================================================\n");
+        if (verbose)
+            puts("\n'BSLS_LIBRARYFEATURES_HAS_CPP11_RANGE_FUNCTIONS'"
+                 "\n================================================");
 
         if (verbose) {
-         P(u_BSLS_LIBRARYFEATURES_HAS_CPP11_RANGE_FUNCTIONS)
+            P(BSLS_LIBRARYFEATURES_HAS_CPP11_RANGE_FUNCTIONS_defined);
         }
 
         case12::TestType mX = { 12 };
-#if defined(BSLS_LIBRARYFEATURES_HAS_CPP11_RANGE_FUNCTIONS)
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP11_RANGE_FUNCTIONS
         {
-            int *from = std::begin(mX);    (void) from;
-            int *to   = std::end(mX);      (void) to;
+            int *from = std::begin(mX);    (void)from;
+            int *to   = std::end(mX);      (void)to;
         }
 #else
         {
@@ -1709,17 +2355,15 @@ int main(int argc, char *argv[])
             using namespace std;
             using namespace case12;
 
-            int *from = begin(mX);         (void) from;
-            int *to   = end(mX);           (void) to;
+            int *from = begin(mX);         (void)from;
+            int *to   = end(mX);           (void)to;
         }
 #endif
-
         if (veryVeryVerbose) P(BSLS_PLATFORM_CMP_VERSION);
-
       } break;
       case 11: {
         // --------------------------------------------------------------------
-        // TESTING 'BSLS_LIBRARYFEATURES_HAS_CPP14_INTEGER_SEQUENCE'
+        // 'BSLS_LIBRARYFEATURES_HAS_CPP14_INTEGER_SEQUENCE'
         //
         // Concerns:
         //: 1 The 'BSLS_LIBRARYFEATURES_HAS_CPP14_INTEGER_SEQUENCE' flag is
@@ -1741,28 +2385,25 @@ int main(int argc, char *argv[])
         //   BSLS_LIBRARYFEATURES_HAS_CPP14_INTEGER_SEQUENCE
         // --------------------------------------------------------------------
 
-        if (verbose) printf(
-                "TESTING 'BSLS_LIBRARYFEATURES_HAS_CPP14_INTEGER_SEQUENCE'\n"
-                "=========================================================\n");
+        if (verbose)
+            puts("\n'BSLS_LIBRARYFEATURES_HAS_CPP14_INTEGER_SEQUENCE'"
+                 "\n=================================================");
 
         if (verbose) {
-         P(u_BSLS_LIBRARYFEATURES_HAS_CPP14_INTEGER_SEQUENCE_defined)
+            P(BSLS_LIBRARYFEATURES_HAS_CPP14_INTEGER_SEQUENCE_defined);
         }
 
-        if (u_BSLS_LIBRARYFEATURES_HAS_CPP14_INTEGER_SEQUENCE_defined)
+        if (BSLS_LIBRARYFEATURES_HAS_CPP14_INTEGER_SEQUENCE_defined)
         {
-            ASSERT(true ==
-                      u_BSLS_COMPILERFEATURES_SUPPORT_ALIAS_TEMPLATES_defined);
-            ASSERT(true ==
-                   u_BSLS_COMPILERFEATURES_SUPPORT_VARIADIC_TEMPLATES_defined);
+            ASSERT(BSLS_COMPILERFEATURES_SUPPORT_ALIAS_TEMPLATES_defined);
+            ASSERT(BSLS_COMPILERFEATURES_SUPPORT_VARIADIC_TEMPLATES_defined);
         }
 
         if (veryVeryVerbose) P(BSLS_PLATFORM_CMP_VERSION);
-
       } break;
       case 10: {
         // --------------------------------------------------------------------
-        // TESTING STANDARD LIBRARY IMPLEMENTATION DETECTION
+        // STANDARD LIBRARY IMPLEMENTATION DETECTION
         //
         // Concerns:
         //: 1 We detect the expected libraries for the compilers
@@ -1789,13 +2430,12 @@ int main(int argc, char *argv[])
         //  BSLS_LIBRARYFEATURES_STDCPP_STLPORT
         // --------------------------------------------------------------------
 
-        if (verbose) printf(
-             "TESTING STANDARD LIBRARY IMPLEMENTATION DETECTION\n"
-             "=================================================\n");
+        if (verbose) puts("\nSTANDARD LIBRARY IMPLEMENTATION DETECTION"
+                          "\n=========================================");
 
         if (veryVeryVerbose) P(BSLS_PLATFORM_CMP_VERSION);
 
-#if defined(BSLS_LIBRARYFEATURES_STDCPP_GNU)
+#ifdef BSLS_LIBRARYFEATURES_STDCPP_GNU
 #ifdef BSLS_PLATFORM_CMP_GNU
 #elif  BSLS_PLATFORM_CMP_CLANG
 #elif  BSLS_PLATFORM_CMP_SUN && BSLS_PLATFORM_CMP_VERSION >= 0x5130
@@ -1830,11 +2470,10 @@ int main(int argc, char *argv[])
 #else
 #error Unexpected standard library implementation.  Please update test driver.
 #endif
-
       } break;
       case 9: {
         // --------------------------------------------------------------------
-        // TESTING 'BSLS_LIBRARYFEATURES_HAS_CPP14_BASELINE_LIBRARY'
+        // 'BSLS_LIBRARYFEATURES_HAS_CPP14_BASELINE_LIBRARY'
         //
         // Concerns:
         //: 1 The 'BSLS_LIBRARYFEATURES_HAS_CPP11_BASELINE_LIBRARY' flag is
@@ -1864,24 +2503,23 @@ int main(int argc, char *argv[])
         //   BSLS_LIBRARYFEATURES_HAS_CPP14_BASELINE_LIBRARY
         // --------------------------------------------------------------------
 
-        if (verbose) printf(
-             "TESTING 'BSLS_LIBRARYFEATURES_HAS_CPP14_BASELINE_LIBRARY'\n"
-             "=========================================================\n");
+        if (verbose)
+            puts("\n'BSLS_LIBRARYFEATURES_HAS_CPP14_BASELINE_LIBRARY'"
+                 "\n=================================================");
 
-#if defined(BSLS_LIBRARYFEATURES_HAS_CPP14_BASELINE_LIBRARY)
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP14_BASELINE_LIBRARY
         useCpp14Algorithms();
 #endif
 
         if (verbose) {
-            P(u_BSLS_LIBRARYFEATURES_HAS_CPP14_BASELINE_LIBRARY_defined)
+            P(BSLS_LIBRARYFEATURES_HAS_CPP14_BASELINE_LIBRARY_defined);
         }
 
         if (veryVeryVerbose) P(BSLS_PLATFORM_CMP_VERSION);
-
       } break;
       case 8: {
         // --------------------------------------------------------------------
-        // TESTING 'BSLS_LIBRARYFEATURES_HAS_CPP17_PRECISE_BITWIDTH_ATOMICS'
+        // 'BSLS_LIBRARYFEATURES_HAS_CPP17_PRECISE_BITWIDTH_ATOMICS'
         //
         // Concerns:
         //: 1 The 'BSLS_LIBRARYFEATURES_HAS_CPP17_PRECISE_BITWIDTH_ATOMICS'
@@ -1904,25 +2542,22 @@ int main(int argc, char *argv[])
         //   BSLS_LIBRARYFEATURES_HAS_CPP17_PRECISE_BITWIDTH_ATOMICS
         // --------------------------------------------------------------------
 
-        if (verbose) printf(
-        "TESTING 'BSLS_LIBRARYFEATURES_HAS_CPP17_PRECISE_BITWIDTH_ATOMICS'\n"
-        "=================================================================\n");
+        if (verbose)
+           puts("\n'BSLS_LIBRARYFEATURES_HAS_CPP17_PRECISE_BITWIDTH_ATOMICS'"
+                "\n=========================================================");
 
         if (verbose) {
-            P(
-             u_BSLS_LIBRARYFEATURES_HAS_CPP17_PRECISE_BITWIDTH_ATOMICS_defined)
+          P(BSLS_LIBRARYFEATURES_HAS_CPP17_PRECISE_BITWIDTH_ATOMICS_defined);
         }
 
-#if defined(BSLS_LIBRARYFEATURES_HAS_CPP17_PRECISE_BITWIDTH_ATOMICS)
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP17_PRECISE_BITWIDTH_ATOMICS
         useCpp11PreciseBitwidthAtomics();
 #endif
-
         if (veryVeryVerbose) P(BSLS_PLATFORM_CMP_VERSION);
-
       } break;
       case 7: {
         // --------------------------------------------------------------------
-        // TESTING 'isblank'
+        // 'isblank'
         //
         // Concerns:
         //: 1 The one-argument form of 'isblank' is available when
@@ -1944,20 +2579,19 @@ int main(int argc, char *argv[])
         //   bool std::isblank(char, const std::locale&);
         // --------------------------------------------------------------------
 
-        if (verbose) printf("TESTING 'isblank'\n"
-                            "=================\n");
+        if (verbose) puts("\n'isblank'"
+                          "\n=========");
 
         if (verbose) {
-            P(u_BSLS_LIBRARYFEATURES_HAS_CPP11_BASELINE_LIBRARY_defined)
-            P(u_BSLS_LIBRARYFEATURES_HAS_CPP11_MISCELLANEOUS_UTILITIES_defined)
+           P(BSLS_LIBRARYFEATURES_HAS_CPP11_BASELINE_LIBRARY_defined);
+           P(BSLS_LIBRARYFEATURES_HAS_CPP11_MISCELLANEOUS_UTILITIES_defined);
         }
 
 #ifdef BSLS_LIBRARYFEATURES_HAS_CPP11_BASELINE_LIBRARY
         if (verbose) {
             printf("Expecting 'isblank' from <cctype>\n");
         }
-        int (*isblankc)(int) = &std::isblank;
-        (void)isblankc;
+        (void)static_cast<int (*)(int)>(&std::isblank);
 #else
         if (verbose) {
             printf("Not expecting 'isblank' from <cctype>\n");
@@ -1967,9 +2601,7 @@ int main(int argc, char *argv[])
         if (verbose) {
             printf("Expecting 'isblank' from <locale>\n");
         }
-        bool (*isblankl)(char, const std::locale&) =
-            &std::isblank;
-        (void)isblankl;
+        (void)static_cast<bool (*)(char, const std::locale&)>(&std::isblank);
 #else
         if (verbose) {
             printf("Not expecting 'isblank' from <locale>\n");
@@ -1978,7 +2610,7 @@ int main(int argc, char *argv[])
       } break;
       case 6: {
         // --------------------------------------------------------------------
-        // TESTING 'BSLS_LIBRARYFEATURES_HAS_C99_*'
+        // 'BSLS_LIBRARYFEATURES_HAS_C99_*'
         //
         // Concerns:
         //: 1 'BSLS_LIBRARYFEATURES_HAS_C99_LIBRARY' is defined only when the
@@ -2000,18 +2632,16 @@ int main(int argc, char *argv[])
         //   BSLS_LIBRARYFEATURES_HAS_C99_SNPRINTF
         // --------------------------------------------------------------------
 
-        if (verbose) printf(
-                      "TESTING 'BSLS_LIBRARYFEATURES_HAS_C99_*'\n"
-                      "========================================\n");
+        if (verbose) puts("\n'BSLS_LIBRARYFEATURES_HAS_C99_*'"
+                          "\n================================");
 
         if (verbose) {
-            P(u_BSLS_LIBRARYFEATURES_HAS_C99_LIBRARY_defined);
-            P(u_BSLS_LIBRARYFEATURES_HAS_C99_SNPRINTF_defined);
+            P(BSLS_LIBRARYFEATURES_HAS_C99_LIBRARY_defined);
+            P(BSLS_LIBRARYFEATURES_HAS_C99_SNPRINTF_defined);
         }
 
-        if (u_BSLS_LIBRARYFEATURES_HAS_CPP11_UNIQUE_PTR_defined) {
-            ASSERT(true ==
-                    u_BSLS_COMPILERFEATURES_SUPPORT_RVALUE_REFERENCES_defined);
+        if (BSLS_LIBRARYFEATURES_HAS_CPP11_UNIQUE_PTR_defined) {
+            ASSERT(BSLS_COMPILERFEATURES_SUPPORT_RVALUE_REFERENCES_defined);
         }
 
 #ifdef BSLS_LIBRARYFEATURES_HAS_C99_LIBRARY
@@ -2043,13 +2673,11 @@ int main(int argc, char *argv[])
 #ifdef BSLS_LIBRARYFEATURES_HAS_C99_SNPRINTF
         (void)&std::snprintf;
 #endif
-
         if (veryVeryVerbose) P(BSLS_PLATFORM_CMP_VERSION);
-
       } break;
       case 5: {
         // --------------------------------------------------------------------
-        // TESTING 'BSLS_LIBRARYFEATURES_HAS_CPP11_UNIQUE_PTR'
+        // 'BSLS_LIBRARYFEATURES_HAS_CPP11_UNIQUE_PTR'
         //
         // Concerns:
         //: 1 'BSLS_LIBRARYFEATURES_HAS_CPP11_UNIQUE_PTR' is defined only when
@@ -2075,25 +2703,22 @@ int main(int argc, char *argv[])
         //   BSLS_LIBRARYFEATURES_HAS_CPP11_UNIQUE_PTR
         // --------------------------------------------------------------------
 
-        if (verbose) printf(
-                      "TESTING 'BSLS_LIBRARYFEATURES_HAS_CPP11_UNIQUE_PTR'\n"
-                      "===================================================\n");
+        if (verbose) puts("\n'BSLS_LIBRARYFEATURES_HAS_CPP11_UNIQUE_PTR'"
+                          "\n===========================================");
 
         if (verbose) {
-            P(u_BSLS_LIBRARYFEATURES_HAS_CPP11_UNIQUE_PTR_defined);
+            P(BSLS_LIBRARYFEATURES_HAS_CPP11_UNIQUE_PTR_defined);
         }
 
-        if (u_BSLS_LIBRARYFEATURES_HAS_CPP11_UNIQUE_PTR_defined) {
-            ASSERT(true ==
-                    u_BSLS_COMPILERFEATURES_SUPPORT_RVALUE_REFERENCES_defined);
+        if (BSLS_LIBRARYFEATURES_HAS_CPP11_UNIQUE_PTR_defined) {
+            ASSERT(BSLS_COMPILERFEATURES_SUPPORT_RVALUE_REFERENCES_defined);
         }
 
         if (veryVeryVerbose) P(BSLS_PLATFORM_CMP_VERSION);
-
       } break;
       case 4: {
         // --------------------------------------------------------------------
-        // TESTING 'BSLS_LIBRARYFEATURES_HAS_CPP11_TUPLE'
+        // 'BSLS_LIBRARYFEATURES_HAS_CPP11_TUPLE'
         //
         // Concerns:
         //: 1 'BSLS_LIBRARYFEATURES_HAS_CPP11_TUPLE' is defined only when the
@@ -2116,25 +2741,22 @@ int main(int argc, char *argv[])
         //   BSLS_LIBRARYFEATURES_HAS_CPP11_TUPLE
         // --------------------------------------------------------------------
 
-        if (verbose) printf(
-                           "TESTING 'BSLS_LIBRARYFEATURES_HAS_CPP11_TUPLE'\n"
-                           "==============================================\n");
+        if (verbose) puts("\n'BSLS_LIBRARYFEATURES_HAS_CPP11_TUPLE'"
+                          "\n======================================");
 
         if (verbose) {
-            P(u_BSLS_LIBRARYFEATURES_HAS_CPP11_TUPLE_defined);
+            P(BSLS_LIBRARYFEATURES_HAS_CPP11_TUPLE_defined);
         }
 
-        if (u_BSLS_LIBRARYFEATURES_HAS_CPP11_TUPLE_defined) {
-            ASSERT(true ==
-                   u_BSLS_COMPILERFEATURES_SUPPORT_VARIADIC_TEMPLATES_defined);
+        if (BSLS_LIBRARYFEATURES_HAS_CPP11_TUPLE_defined) {
+            ASSERT(BSLS_COMPILERFEATURES_SUPPORT_VARIADIC_TEMPLATES_defined);
         }
 
         if (veryVeryVerbose) P(BSLS_PLATFORM_CMP_VERSION);
-
       } break;
       case 3: {
         // --------------------------------------------------------------------
-        // TESTING 'BSLS_LIBRARYFEATURES_HAS_CPP11_PAIR_PIECEWISE_CONSTRUCTOR'
+        // 'BSLS_LIBRARYFEATURES_HAS_CPP11_PAIR_PIECEWISE_CONSTRUCTOR'
         //
         // Concerns:
         //: 1 The 'BSLS_LIBRARYFEATURES_HAS_CPP11_PAIR_PIECEWISE_CONSTRUCTOR'
@@ -2166,27 +2788,24 @@ int main(int argc, char *argv[])
         //   BSLS_LIBRARYFEATURES_HAS_CPP11_PAIR_PIECEWISE_CONSTRUCTOR
         // --------------------------------------------------------------------
 
-        if (verbose) printf(
-      "TESTING 'BSLS_LIBRARYFEATURES_HAS_CPP11_PAIR_PIECEWISE_CONSTRUCTOR'\n"
-      "===================================================================\n");
+        if (verbose) puts(
+              "\n'BSLS_LIBRARYFEATURES_HAS_CPP11_PAIR_PIECEWISE_CONSTRUCTOR'"
+              "\n===========================================================");
 
         if (verbose) {
-         P(u_BSLS_LIBRARYFEATURES_HAS_CPP11_PAIR_PIECEWISE_CONSTRUCTOR_defined)
+          P(BSLS_LIBRARYFEATURES_HAS_CPP11_PAIR_PIECEWISE_CONSTRUCTOR_defined);
         }
 
-        if(u_BSLS_LIBRARYFEATURES_HAS_CPP11_PAIR_PIECEWISE_CONSTRUCTOR_defined)
-        {
-            ASSERT(true == u_BSLS_LIBRARYFEATURES_HAS_CPP11_TUPLE_defined);
-            ASSERT(true ==
-                   u_BSLS_COMPILERFEATURES_SUPPORT_VARIADIC_TEMPLATES_defined);
+        if (BSLS_LIBRARYFEATURES_HAS_CPP11_PAIR_PIECEWISE_CONSTRUCTOR_defined){
+            ASSERT(BSLS_LIBRARYFEATURES_HAS_CPP11_TUPLE_defined);
+            ASSERT(BSLS_COMPILERFEATURES_SUPPORT_VARIADIC_TEMPLATES_defined);
         }
 
         if (veryVeryVerbose) P(BSLS_PLATFORM_CMP_VERSION);
-
       } break;
       case 2: {
         // --------------------------------------------------------------------
-        // TESTING 'BSLS_LIBRARYFEATURES_HAS_CPP11_BASELINE_LIBRARY'
+        // 'BSLS_LIBRARYFEATURES_HAS_CPP11_BASELINE_LIBRARY'
         //
         // Concerns:
         //: 1 The 'BSLS_LIBRARYFEATURES_HAS_CPP11_BASELINE_LIBRARY' flag is
@@ -2288,15 +2907,15 @@ int main(int argc, char *argv[])
         //   BSLS_LIBRARYFEATURES_HAS_CPP11_BASELINE_LIBRARY
         // --------------------------------------------------------------------
 
-        if (verbose) printf(
-                "TESTING 'BSLS_LIBRARYFEATURES_HAS_CPP11_BASELINE_LIBRARY'\n"
-                "=========================================================\n");
+        if (verbose)
+            puts("\n'BSLS_LIBRARYFEATURES_HAS_CPP11_BASELINE_LIBRARY'"
+                 "\n=================================================");
 
         if (verbose) {
-            P(u_BSLS_LIBRARYFEATURES_HAS_CPP11_BASELINE_LIBRARY_defined)
+            P(BSLS_LIBRARYFEATURES_HAS_CPP11_BASELINE_LIBRARY_defined);
         }
 
-#if defined(BSLS_LIBRARYFEATURES_HAS_CPP11_BASELINE_LIBRARY)
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP11_BASELINE_LIBRARY
         testSimpleUniformRandomNumberGenerator();
         useCpp11Algorithms();
         useTypeIndex();
@@ -2309,13 +2928,11 @@ int main(int argc, char *argv[])
             (void)X;
         }
 #endif
-
         if (veryVeryVerbose) P(BSLS_PLATFORM_CMP_VERSION);
-
       } break;
       case 1: {
         // --------------------------------------------------------------------
-        // TESTING 'BSLS_LIBRARYFEATURES_HAS_CPP98_AUTO_PTR'
+        // 'BSLS_LIBRARYFEATURES_HAS_CPP98_AUTO_PTR'
         //
         // Concerns:
         //: 1 The 'BSLS_LIBRARYFEATURES_HAS_CPP98_AUTO_PTR' flag is defined
@@ -2331,34 +2948,38 @@ int main(int argc, char *argv[])
         //:   constructs 'std::auto_ptr' object for 'int'.
         //:
         //: 2 Confirm the value of the conditionally compiled global variable
-        //:   'u_BSLS_LIBRARYFEATURES_HAS_CPP98_AUTO_PTR_defined' is 'true'.
+        //:   'BSLS_LIBRARYFEATURES_HAS_CPP98_AUTO_PTR_defined' is 'true'.
         //
         // Testing:
         //   BSLS_LIBRARYFEATURES_HAS_CPP98_AUTO_PTR
         // --------------------------------------------------------------------
 
-        if (verbose) printf(
-                        "TESTING 'BSLS_LIBRARYFEATURES_HAS_CPP98_AUTO_PTR'\n"
-                        "=================================================\n");
+        if (verbose) puts("\n'BSLS_LIBRARYFEATURES_HAS_CPP98_AUTO_PTR'"
+                          "\n=========================================");
 
         if (verbose) {
-            P(u_BSLS_LIBRARYFEATURES_HAS_CPP98_AUTO_PTR_defined)
+            P(BSLS_LIBRARYFEATURES_HAS_CPP98_AUTO_PTR_defined);
         }
 
-#if defined(BSLS_LIBRARYFEATURES_HAS_CPP98_AUTO_PTR)
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP98_AUTO_PTR
+    #ifdef BSLS_PLATFORM_HAS_PRAGMA_GCC_DIAGNOSTIC
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+    #endif
         std::auto_ptr<int> x(new int);
         *x = 42;
         std::auto_ptr<int> y = x;
         ASSERT(!x.get());
         ASSERT(42 == *y);
+    #ifdef BSLS_PLATFORM_HAS_PRAGMA_GCC_DIAGNOSTIC
+        #pragma GCC diagnostic pop
+    #endif
 #endif
-
         if (veryVeryVerbose) P(BSLS_PLATFORM_CMP_VERSION);
-
       } break;
       case -1: {
         // --------------------------------------------------------------------
-        // TESTING 'BSLS_LIBRARYFEATURES_HAS_CPP17_BOOL_CONSTANT'
+        // 'BSLS_LIBRARYFEATURES_HAS_CPP17_BOOL_CONSTANT'
         //
         // Concerns:
         //: 1 The 'BSLS_LIBRARYFEATURES_HAS_CPP17_BOOL_CONSTANT' must never be
@@ -2366,7 +2987,7 @@ int main(int argc, char *argv[])
         //
         // Plan:
         //: 1 Confirm the value of the conditionally compiled global variable
-        //:   'u_BSLS_LIBRARYFEATURES_HAS_CPP17_BOOL_CONSTANT_defined' is
+        //:   'BSLS_LIBRARYFEATURES_HAS_CPP17_BOOL_CONSTANT_defined' is
         //:   'false'.
         //
         // Testing:
@@ -2374,23 +2995,20 @@ int main(int argc, char *argv[])
         //   defined
         // --------------------------------------------------------------------
 
-        if (verbose) printf(
-                   "TESTING 'BSLS_LIBRARYFEATURES_HAS_CPP17_BOOL_CONSTANT'\n"
-                   "======================================================\n");
+        if (verbose) puts("\n'BSLS_LIBRARYFEATURES_HAS_CPP17_BOOL_CONSTANT'"
+                          "\n==============================================");
 
         if (verbose) {
-            P(u_BSLS_LIBRARYFEATURES_HAS_CPP17_BOOL_CONSTANT_defined);
+            P(BSLS_LIBRARYFEATURES_HAS_CPP17_BOOL_CONSTANT_defined);
         }
 
-#if defined(BSLS_LIBRARYFEATURES_HAS_CPP17_BOOL_CONSTANT)
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP17_BOOL_CONSTANT
         ASSERT(true == std::bool_constant<true>());
 #endif
 
-        ASSERT(false ==
-                       u_BSLS_LIBRARYFEATURES_HAS_CPP17_BOOL_CONSTANT_defined);
+        ASSERT(!BSLS_LIBRARYFEATURES_HAS_CPP17_BOOL_CONSTANT_defined);
 
         if (veryVeryVerbose) P(BSLS_PLATFORM_CMP_VERSION);
-
       } break;
       default: {
         fprintf(stderr, "WARNING: CASE `%d' NOT FOUND.\n", test);
@@ -2405,7 +3023,7 @@ int main(int argc, char *argv[])
 }
 
 // ----------------------------------------------------------------------------
-// Copyright 201 Bloomberg Finance L.P.
+// Copyright 2017 Bloomberg Finance L.P.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.

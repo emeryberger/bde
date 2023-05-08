@@ -1394,7 +1394,8 @@ class TestDriver {
         // Test iterators.
 
     static void testCase13();
-        // Test 'find', 'count', 'upper_bound', 'lower_bound', 'equal_range'.
+        // Test 'find', 'contains', 'count', 'upper_bound', 'lower_bound',
+        // 'equal_range'.
 
     static void testCase12();
         // Test range constructors.
@@ -2260,13 +2261,36 @@ void TestDriver<KEY, VALUE, COMP, ALLOC>::testCase26()
     bool (*operatorEq)(const Obj&, const Obj&) = operator==;
     (void)operatorEq;
 
+#ifdef BSLS_COMPILERFEATURES_SUPPORT_THREE_WAY_COMPARISON
+    (void) [](const Obj& lhs, const Obj& rhs) -> bool {
+        return lhs != rhs;
+    };
+#else
     // template <class Key, class T, class Compare, class Allocator>
     // bool operator!=(const map<Key, T, Compare, Allocator>& x,
     //                 const map<Key, T, Compare, Allocator>& y);
 
     bool (*operatorNe)(const Obj&, const Obj&) = operator!=;
     (void)operatorNe;
+#endif
 
+#ifdef BSLALG_SYNTHTHREEWAYUTIL_AVAILABLE
+    (void) [](const Obj& lhs, const Obj& rhs) -> bool {
+        return lhs < rhs;
+    };
+    (void) [](const Obj& lhs, const Obj& rhs) -> bool {
+        return lhs > rhs;
+    };
+    (void) [](const Obj& lhs, const Obj& rhs) -> bool {
+        return lhs <= rhs;
+    };
+    (void) [](const Obj& lhs, const Obj& rhs) -> bool {
+        return lhs >= rhs;
+    };
+    (void) [](const Obj& lhs, const Obj& rhs) {
+        return lhs <=> rhs;
+    };
+#else
     // template <class Key, class T, class Compare, class Allocator>
     // bool operator< (const map<Key, T, Compare, Allocator>& x,
     //                 const map<Key, T, Compare, Allocator>& y);
@@ -2294,6 +2318,7 @@ void TestDriver<KEY, VALUE, COMP, ALLOC>::testCase26()
 
     bool (*operatorLe)(const Obj&, const Obj&) = operator<=;
     (void)operatorLe;
+#endif  // BSLALG_SYNTHTHREEWAYUTIL_AVAILABLE
 
     // specialized algorithms
 
@@ -3072,16 +3097,19 @@ void TestDriver<KEY, VALUE, COMP, ALLOC>::testCase19()
     //:   2 '(a <= b) == !(b < a)'
     //:
     //:   3 '(a >= b) == !(a < b)'
+    //:
+    //: 4 'operator<=>' is consistent with '<', '>', '<=', '>='.
     //
     // Plan:
     //: 1 For a variety of objects of different sizes and different values,
-    //:   test that the comparison returns as expected.  (C-1..3)
+    //:   test that the comparison returns as expected.  (C-1..4)
     //
     // Testing:
     //   bool operator< (const map& lhs, const map& rhs);
     //   bool operator> (const map& lhs, const map& rhs);
     //   bool operator>=(const map& lhs, const map& rhs);
     //   bool operator<=(const map& lhs, const map& rhs);
+    //   auto operator<=>(const map& lhs, const map& rhs);
     // ------------------------------------------------------------------------
 
     const int NUM_DATA                     = DEFAULT_NUM_DATA;
@@ -3146,6 +3174,13 @@ void TestDriver<KEY, VALUE, COMP, ALLOC>::testCase19()
                 ASSERTV(LINE1, LINE2, !isLessEq == (X > Y));
                 ASSERTV(LINE1, LINE2,  isLessEq == (X <= Y));
                 ASSERTV(LINE1, LINE2, !isLess   == (X >= Y));
+
+#ifdef BSLALG_SYNTHTHREEWAYUTIL_AVAILABLE
+                ASSERTV(LINE1, LINE2,  isLess   == (X <=> Y < 0));
+                ASSERTV(LINE1, LINE2, !isLessEq == (X <=> Y > 0));
+                ASSERTV(LINE1, LINE2,  isLessEq == (X <=> Y <= 0));
+                ASSERTV(LINE1, LINE2, !isLess   == (X <=> Y >= 0));
+#endif
 
                 TestComparator<KEY>::enableFunctor();
 
@@ -4234,13 +4269,13 @@ void TestDriver<KEY, VALUE, COMP, ALLOC>::testCase13()
     // Concerns:
     //: 1 If the key being searched exists in the container, 'find' and
     //:   'lower_bound' return an iterator referring to the existing element,
-    //:   and 'upper_bound' returns an iterator referring to the element after
-    //:   the searched element.
+    //:   'contains' returns 'true', and 'upper_bound' returns an iterator
+    //:   referring to the element after the searched element.
     //:
     //: 2 If the key being searched does not exist in the container, 'find'
-    //:   returns the 'end' iterator, and 'lower_bound' and 'upper_bound'
-    //:   return an iterator referring to the smallest element greater than the
-    //:   searched element.
+    //:   returns the 'end' iterator, 'contains' returns 'false', and
+    //:   'lower_bound' and 'upper_bound' :   return an iterator referring to
+    //:   the smallest element greater than the searched element.
     //:
     //: 3 'equal_range(key)' returns
     //:   'std::make_pair(lower_bound(key), upper_bound(key))'.
@@ -4271,6 +4306,8 @@ void TestDriver<KEY, VALUE, COMP, ALLOC>::testCase13()
     //:   4 Verify no memory is allocated from any allocator.  (C-7)
     //
     // Testing:
+    //   bool contains(const key_type& key);
+    //   bool contains(const LOOKUP_KEY& key);
     //   iterator find(const key_type& key);
     //   const_iterator find(const key_type& key) const;
     //   size_type count(const key_type& key) const;
@@ -4327,6 +4364,25 @@ void TestDriver<KEY, VALUE, COMP, ALLOC>::testCase13()
                     const int idx = tj / 2;
                     ASSERTV(ti, tj, CITER[idx] == X.find(VALUES[tj].first));
                     ASSERTV(ti, tj, ITER[idx]  == mX.find(VALUES[tj].first));
+
+                    bool cShouldBeFound = CITER[idx] != X.end();
+                    ASSERTV(
+                           ti,
+                           tj,
+                           cShouldBeFound,
+                           cShouldBeFound == X.contains(VALUES[tj].first));
+
+                    bool shouldBeFound  = ITER[idx] != X.end();
+                    ASSERTV(cShouldBeFound,
+                            shouldBeFound,
+                            cShouldBeFound == shouldBeFound);
+
+                    ASSERTV(
+                           ti,
+                           tj,
+                           shouldBeFound,
+                           shouldBeFound == mX.contains(VALUES[tj].first));
+
                     ASSERTV(ti, tj,
                             CITER[idx] == X.lower_bound(VALUES[tj].first));
                     ASSERTV(ti, tj,
@@ -5594,7 +5650,7 @@ int main(int argc, char *argv[])
       } break;
       case 13: {
         // --------------------------------------------------------------------
-        // TESTING SEARCH FUNCTIONS ('find', 'count', etc.)
+        // TESTING SEARCH FUNCTIONS ('find', 'count', 'contains', etc.)
         // --------------------------------------------------------------------
 
         RUN_EACH_TYPE(TestDriver,

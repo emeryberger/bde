@@ -87,9 +87,9 @@ BSLS_IDENT("$Id: $")
 #include <bdldfp_decimal.h>
 #include <bdldfp_decimalconvertutil.h>
 #include <bdldfp_decimalutil.h>
-
-#include <bdlt_iso8601util.h>
+#include <bdljsn_stringutil.h>
 #include <bdlt_datetimeinterval.h>
+#include <bdlt_iso8601util.h>
 
 #include <bslalg_numericformatterutil.h>
 
@@ -162,8 +162,6 @@ struct PrintUtil {
         // Encode the specified string 'value' into JSON format and output the
         // result to the specified 'stream'.
 
-  public:
-    // CLASS METHODS
     static int printValue(bsl::ostream&         stream,
                           bool                  value,
                           const EncoderOptions *options = 0);
@@ -360,6 +358,13 @@ int PrintUtil::printFloatingPoint(bsl::ostream&                 stream,
 }
 
 inline
+int PrintUtil::printString(bsl::ostream&           stream,
+                           const bsl::string_view& value)
+{
+    return bdljsn::StringUtil::writeString(stream, value);
+}
+
+inline
 int PrintUtil::printValue(bsl::ostream& stream,
                           bool          value,
                           const EncoderOptions *)
@@ -452,7 +457,7 @@ int PrintUtil::printValue(bsl::ostream&  stream,
                           const char    *value,
                           const EncoderOptions *)
 {
-    return printString(stream, value);
+    return bdljsn::StringUtil::writeString(stream, value);
 }
 
 inline
@@ -480,7 +485,7 @@ int PrintUtil::printValue(bsl::ostream&            stream,
                           const bsl::string_view&  value,
                           const EncoderOptions    *)
 {
-    return printString(stream, value);
+    return bdljsn::StringUtil::writeString(stream, value);
 }
 
 inline

@@ -15,7 +15,7 @@
 // delimited regions of C++11 code, then this test driver is a minimal 'main'
 // program that tests nothing and is not '#include'd in the original.
 //
-// Generated on Mon Sep 19 09:31:28 2022
+// Generated on Mon Apr 10 03:25:28 2023
 // Command line: sim_cpp11_features.pl bslstl_queue.t.cpp
 
 // Expanded test driver only when compiling bslstl_queue.cpp
@@ -95,6 +95,7 @@ using namespace bsl;
 // [15] bool operator> (const queue& lhs, const queue& rhs);
 // [15] bool operator>=(const queue& lhs, const queue& rhs);
 // [15] bool operator<=(const queue& lhs, const queue& rhs);
+// [15] auto operator<=>(const queue& lhs, const queue& rhs);
 //
 // specialized algorithms:
 // [ 8] void swap(queue& lhs,queue& rhs);
@@ -344,6 +345,7 @@ class NonAllocContainer {
 
     // CREATORS
     NonAllocContainer() : d_deque(&bslma::MallocFreeAllocator::singleton()) {}
+    NonAllocContainer(const NonAllocContainer& rhs) : d_deque(rhs.d_deque) {}
 
     ~NonAllocContainer() {}
 
@@ -1773,6 +1775,35 @@ bool isCalledMethodCheckPassed(CalledMethod flag)
     return true;
 }
 
+                            // ======================
+                            // class NothrowSwapDeque
+                            // ======================
+
+template <class VALUE>
+class NothrowSwapDeque : public bsl::deque<VALUE, bsl::allocator<VALUE> > {
+    // 'deque' with non-throwing 'swap'
+
+    // TYPES
+    typedef bsl::deque<VALUE, bsl::allocator<VALUE> > base;
+        // Base class alias.
+  public:
+    // MANIPULATORS
+    void swap(NothrowSwapDeque& other) BSLS_KEYWORD_NOEXCEPT
+        // Exchange the value of this object with that of the specified 'other'
+        // object.
+    {
+        base::swap(other);
+    }
+
+    // FREE FUNCTIONS
+    friend void swap(NothrowSwapDeque& a,
+                     NothrowSwapDeque& b) BSLS_KEYWORD_NOEXCEPT
+        // Exchange the values of the specified 'a' and 'b' objects.
+    {
+        a.swap(b);
+    }
+};
+
 //=============================================================================
 //                       TEST DRIVER TEMPLATE
 //-----------------------------------------------------------------------------
@@ -2105,7 +2136,10 @@ void TestDriver<VALUE, CONTAINER>::testCase20()
         Obj x;
         Obj q;
 
-        ASSERT(false == BSLS_KEYWORD_NOEXCEPT_OPERATOR(x.swap(q)));
+#if BSLS_KEYWORD_NOEXCEPT_AVAILABLE
+        ASSERT(bsl::is_nothrow_swappable<CONTAINER>::value ==
+               BSLS_KEYWORD_NOEXCEPT_OPERATOR(x.swap(q)));
+#endif
     }
 
     // page 900
@@ -3215,6 +3249,8 @@ void TestDriver<VALUE, CONTAINER>::testCase15()
     //:   2 '(a <= b) == !(b < a)'
     //:
     //:   3 '(a >= b) == !(a < b)'
+    //:
+    //: 3 'operator<=>' is consistent with '<', '>', '<=', '>='.
     //
     // Plan:
     //: 1 For a variety of objects of different sizes and different values,
@@ -3225,6 +3261,7 @@ void TestDriver<VALUE, CONTAINER>::testCase15()
     //   bool operator> (const queue<V, C>& lhs, const queue<V, C>& rhs);
     //   bool operator>=(const queue<V, C>& lhs, const queue<V, C>& rhs);
     //   bool operator<=(const queue<V, C>& lhs, const queue<V, C>& rhs);
+    //   auto operator<=>(const queue<V, C>& lhs, const queue<V, C>& rhs);
     // ------------------------------------------------------------------------
 
     const int NUM_DATA                     = DEFAULT_NUM_DATA;
@@ -3289,6 +3326,16 @@ void TestDriver<VALUE, CONTAINER>::testCase15()
                 ASSERTV(LINE1, LINE2, !isLessEq == (X > Y));
                 ASSERTV(LINE1, LINE2,  isLessEq == (X <= Y));
                 ASSERTV(LINE1, LINE2, !isLess   == (X >= Y));
+
+#if defined BSLS_COMPILERFEATURES_SUPPORT_THREE_WAY_COMPARISON \
+ && defined BSLS_LIBRARYFEATURES_HAS_CPP20_CONCEPTS
+                if constexpr (bsl::three_way_comparable<CONTAINER>) {
+                    ASSERTV(LINE1, LINE2,  isLess   == (X <=> Y <  0));
+                    ASSERTV(LINE1, LINE2, !isLessEq == (X <=> Y >  0));
+                    ASSERTV(LINE1, LINE2,  isLessEq == (X <=> Y <= 0));
+                    ASSERTV(LINE1, LINE2, !isLess   == (X <=> Y >= 0));
+                }
+#endif
 
                 ASSERTV(LINE1, LINE2, oaxm.isTotalSame());
                 ASSERTV(LINE1, LINE2, oaym.isTotalSame());
@@ -6318,7 +6365,15 @@ int main(int argc, char *argv[])
         if (verbose) printf("\n" "'noexcept' SPECIFICATION" "\n"
                                  "------------------------" "\n");
 
+#if BSLS_KEYWORD_NOEXCEPT_AVAILABLE
+        ASSERT(!bsl::is_nothrow_swappable<bsl::vector<int> >::value);
         TestDriver<int, bsl::vector<int> >::testCase20();
+
+#ifndef BSLMF_ISNOTHROWSWAPPABLE_ALWAYS_FALSE
+        ASSERT(bsl::is_nothrow_swappable<NothrowSwapDeque<int> >::value);
+        TestDriver<int, NothrowSwapDeque<int> >::testCase20();
+#endif
+#endif
 
       } break;
       case 19: {
@@ -6498,7 +6553,7 @@ int main(int argc, char *argv[])
         MessageProcessor msgProcessor(&ta);
 
         for (int i = 0;i < TOTAL_MSGS; ++i) {
-            sprintf(buffer, "This is message %d", i);
+            snprintf(buffer, sizeof(buffer), "This is message %d", i);
             msg.d_msgId = i;
             msg.d_msg_p = buffer;
             msgProcessor.receiveMessage(msg);
@@ -6810,7 +6865,7 @@ int main() {
 #endif // defined(COMPILING_BSLSTL_QUEUE_T_CPP)
 
 // ----------------------------------------------------------------------------
-// Copyright 2022 Bloomberg Finance L.P.
+// Copyright 2023 Bloomberg Finance L.P.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.

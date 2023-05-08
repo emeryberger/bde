@@ -8,6 +8,8 @@ BSLS_IDENT_RCSID(RCSid_bdlb_guidutil_cpp,"$Id$ $CSID$")
 #include <bdlb_pcgrandomgenerator.h>
 #include <bdlb_randomdevice.h>
 
+#include <bdlde_sha1.h>
+
 #include <bslmf_assert.h>
 
 #include <bslmt_lockguard.h>
@@ -20,6 +22,7 @@ BSLS_IDENT_RCSID(RCSid_bdlb_guidutil_cpp,"$Id$ $CSID$")
 #include <bsls_performancehint.h>
 #include <bsls_platform.h>
 
+#include <bsl_algorithm.h>
 #include <bsl_cstdio.h>
 #include <bsl_cstring.h>
 #include <bsl_ctime.h>
@@ -42,8 +45,6 @@ namespace {
                         // ---------------
                         // struct GuidUtil
                         // ---------------
-
-
 
 // LOCAL METHODS
 int charToHex(unsigned char* hex, unsigned char c)
@@ -168,13 +169,15 @@ inline int getPid()
     // allows us to call it inline within the component.
 {
 #ifdef BSLS_PLATFORM_OS_WINDOWS
-    return 0;
+    // Return a placeholder; the actual PID is not important since there is no
+    // possibility of forking on Windows.
+    return 1;
 #else
     return static_cast<int>(::getpid());
 #endif
 }
 
-static bsls::AtomicInt s_pid(-1);
+static bsls::AtomicInt s_pid;
 
 extern "C" void guidUtilForkChildCallback()
     // Callback for the child process as set by pthread_atfork.  If the process
@@ -182,7 +185,7 @@ extern "C" void guidUtilForkChildCallback()
     // point during the forking process we are guaranteed to only have a single
     // running thread.
 {
-    s_pid = -1;
+    s_pid = 0;
 }
 
 void registerForkCallback()
@@ -205,25 +208,21 @@ void reseed(GuidState_Imp *guidStatePtr)
         state_t;
 
     state_t state;
-    if (0 != RandomDevice::getRandomBytes(
+    if (0 != RandomDevice::getRandomBytesNonBlocking(
                                reinterpret_cast<unsigned char *>(state.data()),
                                sizeof(state_t::value_type) * state.size())) {
-        if (0 != RandomDevice::getRandomBytesNonBlocking(
-                               reinterpret_cast<unsigned char *>(state.data()),
-                               sizeof(state_t::value_type) * state.size())) {
-            // fallback state: Combine the time and (for unix only) the process
-            // id with the addresses of a library function, a static variable,
-            // a stack variable and a local function to approximate
-            // process-specific semi-random seed values.
-            bsl::uint64_t seed = static_cast<bsl::uint64_t>(bsl::time(0)) ^
-                                 reinterpret_cast<uintptr_t>(&bsl::printf);
-            state[0] = seed;
-            state[1] = seed ^ (static_cast<bsl::uint64_t>(s_pid) << 32) ^
-                       reinterpret_cast<uintptr_t>(&state);
-            state[2] = (seed << 32) ^
-                       reinterpret_cast<uintptr_t>(&registerForkCallback);
-            state[3] = seed ^ reinterpret_cast<uintptr_t>(&s_pid);
-        }
+        // fallback state: Combine the time and (for unix only) the process id
+        // with the addresses of a library function, a static variable, a stack
+        // variable and a local function to approximate process-specific
+        // semi-random seed values.
+        bsl::uint64_t seed = static_cast<bsl::uint64_t>(bsl::time(0)) ^
+                             reinterpret_cast<uintptr_t>(&bsl::printf);
+        state[0] = seed;
+        state[1] = seed ^ (static_cast<bsl::uint64_t>(s_pid) << 32) ^
+                   reinterpret_cast<uintptr_t>(&state);
+        state[2] = (seed << 32) ^
+                   reinterpret_cast<uintptr_t>(&registerForkCallback);
+        state[3] = seed ^ reinterpret_cast<uintptr_t>(&s_pid);
     }
 
     guidStatePtr->seed(state);
@@ -244,9 +243,9 @@ void GuidState_Imp::seed(
     }
 }
 
-                              // ===================
-                              // class GuidUtil
-                              // ===================
+                               // ==============
+                               // class GuidUtil
+                               // ==============
 
 // CLASS METHODS
 void GuidUtil::generate(unsigned char *result, bsl::size_t numGuids)
@@ -287,7 +286,7 @@ void GuidUtil::generateNonSecure(Guid *result, bsl::size_t numGuids)
     static GuidState_Imp *guidStatePtr;
     static bslmt::Mutex  *pcgMutexPtr;
 
-    if (BSLS_PERFORMANCEHINT_PREDICT_UNLIKELY(-1 == s_pid.loadRelaxed())) {
+    if (BSLS_PERFORMANCEHINT_PREDICT_UNLIKELY(!s_pid.loadRelaxed())) {
         BSLMT_ONCE_DO
         {
             registerForkCallback();
@@ -301,7 +300,7 @@ void GuidUtil::generateNonSecure(Guid *result, bsl::size_t numGuids)
 
         bslmt::LockGuard<bslmt::Mutex> guard(pcgMutexPtr);
 
-        if (-1 == s_pid.load()) {
+        if (!s_pid.load()) {
             s_pid = getPid();
             reseed(guidStatePtr);
         }
@@ -329,6 +328,63 @@ Guid GuidUtil::generateNonSecure()
     generateNonSecure(&result);
     return result;
 }
+
+Guid GuidUtil::generateFromName(const Guid&             namespaceId,
+                                const bsl::string_view& name)
+{
+    bdlde::Sha1 sha1(namespaceId.data(), Guid::k_GUID_NUM_BYTES);
+    sha1.update(name.data(), name.length());
+
+    unsigned char digest[bdlde::Sha1::k_DIGEST_SIZE];
+    sha1.loadDigest(digest);
+    // Overwrite the 4 most significant bits of 'time_hi_and_version' (bytes 6
+    // and 7) to 5 (the version number).
+    digest[6] = (0x0f & digest[6]) | 0x50;
+    // Overwrite the 2 most significant bits of 'clock_seq_hi_and_reserved'
+    // (byte 8) to 1 and 0 as specified by RFC 4122.
+    digest[8] = (0x3f & digest[8]) | 0x80;
+
+    unsigned char guidBytes[bdlb::Guid::k_GUID_NUM_BYTES];
+    bsl::copy(digest, digest + sizeof(guidBytes), guidBytes);
+
+    return Guid(guidBytes);
+}
+
+Guid GuidUtil::dnsNamespace()
+{
+    static const unsigned char k_DNS_UUID[] = {
+        0x6b, 0xa7, 0xb8, 0x10, 0x9d, 0xad, 0x11, 0xd1,
+        0x80, 0xb4, 0x00, 0xc0, 0x4f, 0xd4, 0x30, 0xc8
+    };
+    return Guid(k_DNS_UUID);
+}
+
+Guid GuidUtil::urlNamespace()
+{
+    static const unsigned char k_URL_UUID[] = {
+        0x6b, 0xa7, 0xb8, 0x11, 0x9d, 0xad, 0x11, 0xd1,
+        0x80, 0xb4, 0x00, 0xc0, 0x4f, 0xd4, 0x30, 0xc8
+    };
+    return Guid(k_URL_UUID);
+}
+
+Guid GuidUtil::oidNamespace()
+{
+    static const unsigned char k_OID_UUID[]  = {
+        0x6b, 0xa7, 0xb8, 0x12, 0x9d, 0xad, 0x11, 0xd1,
+        0x80, 0xb4, 0x00, 0xc0, 0x4f, 0xd4, 0x30, 0xc8
+    };
+    return Guid(k_OID_UUID);
+}
+
+Guid GuidUtil::x500Namespace()
+{
+    static const unsigned char k_X500_UUID[] = {
+        0x6b, 0xa7, 0xb8, 0x14, 0x9d, 0xad, 0x11, 0xd1,
+        0x80, 0xb4, 0x00, 0xc0, 0x4f, 0xd4, 0x30, 0xc8
+    };
+    return Guid(k_X500_UUID);
+};
 
 bsls::Types::Uint64 GuidUtil::getLeastSignificantBits(const Guid& guid)
 {

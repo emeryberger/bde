@@ -85,7 +85,7 @@ BSLS_IDENT("$Id: $")
 #include <bsls_platform.h>
 #include <bsls_types.h>
 
-#if defined(BSLS_LIBRARYFEATURES_HAS_CPP17_CHARCONV)
+#if defined(BSLS_LIBRARYFEATURES_HAS_CPP17_INT_CHARCONV)
 
 #include <charconv>
 
@@ -163,17 +163,18 @@ to_chars(char *first, char *last, INTEGRAL_TYPE value, int base)
 }  // close package namespace
 }  // close enterprise namespace
 
-#endif
-
 namespace bsl {
 
-#if defined(BSLS_LIBRARYFEATURES_HAS_CPP17_CHARCONV)
+#if defined(BSLS_LIBRARYFEATURES_HAS_CPP17_INT_CHARCONV)
 
 using std::to_chars_result;
 using std::to_chars;
-using std::chars_format;
 using std::from_chars;
 using std::from_chars_result;
+
+#if defined(BSLS_LIBRARYFEATURES_HAS_CPP17_CHARCONV)
+using std::chars_format;
+#endif
 
 #else
 
@@ -183,6 +184,8 @@ using BloombergLP::bslstl::to_chars;
 #endif
 
 }  // close namespace bsl
+
+#endif  // INCLUDED_BSLSTL_CHARCONV
 
 // ----------------------------------------------------------------------------
 // Copyright 2020 Bloomberg Finance L.P.

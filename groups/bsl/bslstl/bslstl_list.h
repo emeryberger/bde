@@ -578,6 +578,7 @@ BSLS_IDENT("$Id: $")
 #include <bslstl_iteratorutil.h>
 
 #include <bslalg_rangecompare.h>
+#include <bslalg_synththreewayutil.h>
 #include <bslalg_typetraithasstliterators.h>
 
 #include <bslma_allocator.h>
@@ -801,6 +802,7 @@ bool operator==(List_Iterator<T1> lhs, List_Iterator<T2> rhs);
     // iterators and there will be a compilation error if 'T1' and 'T2' differ
     // in any way other than 'const'-ness.
 
+#ifndef BSLS_COMPILERFEATURES_SUPPORT_THREE_WAY_COMPARISON
 template <class T1, class T2>
 bool operator!=(List_Iterator<T1> lhs, List_Iterator<T2> rhs);
     // Return 'true' if the specified 'lhs' and 'rhs' iterators do not have the
@@ -811,6 +813,7 @@ bool operator!=(List_Iterator<T1> lhs, List_Iterator<T2> rhs);
     // the different types 'T1' and 'T2' are to facilitate comparisons between
     // 'const' and non-'const' iterators and there will be a compilation error
     // if 'T1' and 'T2' differ in any way other than 'const'-ness.
+#endif
 
                          // ===========================
                          // struct List_DefaultLessThan
@@ -1282,7 +1285,8 @@ class list {
         // be copy-inserted or erased.
 
     list& operator=(BloombergLP::bslmf::MovableRef<list> rhs)
-                                    BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(false);
+        BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(
+                                          AllocTraits::is_always_equal::value);
         // Assign to this object the value of the specified 'rhs' object,
         // propagate to this object the allocator of 'rhs' if the 'ALLOCATOR'
         // type has trait 'propagate_on_container_move_assignment', and return
@@ -1721,7 +1725,8 @@ class list {
 
                               // *** misc ***
 
-    void swap(list& other) BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(false);
+    void swap(list& other) BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(
+                                          AllocTraits::is_always_equal::value);
         // Exchange the value of this object with that of the specified 'other'
         // object; also exchange the allocator of this object with that of
         // 'other' if the (template parameter) type 'ALLOCATOR' has the
@@ -1882,11 +1887,11 @@ bool operator==(const list<VALUE, ALLOCATOR>& lhs,
     // 'rhs'.  This method requires that the (template parameter) type 'VALUE'
     // be 'equality-comparable' (see {Requirements on 'VALUE'}).
 
+#ifndef BSLS_COMPILERFEATURES_SUPPORT_THREE_WAY_COMPARISON
+
 template <class VALUE, class ALLOCATOR>
 bool operator!=(const list<VALUE, ALLOCATOR>& lhs,
                 const list<VALUE, ALLOCATOR>& rhs);
-
-
     // Return 'true' if the specified 'lhs' and 'rhs' objects do not have the
     // same value, and 'false' otherwise.  Two 'list' objects 'lhs' and 'rhs'
     // do not have the same value if they do not have the same number of
@@ -1895,6 +1900,20 @@ bool operator!=(const list<VALUE, ALLOCATOR>& lhs,
     // sequence of elements of 'rhs'.  This method requires that the
     // (template parameter) type 'VALUE' be 'equality-comparable' (see
     // {Requirements on 'VALUE'}).
+
+#endif  // BSLS_COMPILERFEATURES_SUPPORT_THREE_WAY_COMPARISON
+
+#ifdef BSLALG_SYNTHTHREEWAYUTIL_AVAILABLE
+
+template <class VALUE, class ALLOCATOR>
+BloombergLP::bslalg::SynthThreeWayUtil::Result<VALUE> operator<=>(
+                                            const list<VALUE, ALLOCATOR>& lhs,
+                                            const list<VALUE, ALLOCATOR>& rhs);
+    // Perform a lexicographic three-way comparison of the specified 'lhs' and
+    // the specified 'rhs' lists by using the comparison operators of 'VALUE'
+    // on each element; return the result of that comparison.
+
+#else
 
 template <class VALUE, class ALLOCATOR>
 bool operator< (const list<VALUE, ALLOCATOR>& lhs,
@@ -1944,6 +1963,8 @@ bool operator>=(const list<VALUE, ALLOCATOR>& lhs,
     // requires that 'operator<', inducing a total order, be defined for
     // 'value_type'.  Note that this operator returns '!(lhs < rhs)'.
 
+#endif  // BSLALG_SYNTHTHREEWAYUTIL_AVAILABLE
+
 // FREE FUNCTIONS
 template <class VALUE, class ALLOCATOR, class BDE_OTHER_TYPE>
 typename list<VALUE, ALLOCATOR>::size_type
@@ -1959,7 +1980,8 @@ erase_if(list<VALUE, ALLOCATOR>& l, PREDICATE predicate);
 
 template <class VALUE, class ALLOCATOR>
 void swap(list<VALUE, ALLOCATOR>& a, list<VALUE, ALLOCATOR>& b)
-                                    BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(false);
+    BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(BSLS_KEYWORD_NOEXCEPT_OPERATOR(
+                                                                   a.swap(b)));
     // Exchange the value of the specified 'a' object with that of the
     // specified 'b' object; also exchange the allocator of 'a' with that of
     // 'b' if the (template parameter) type 'ALLOCATOR' has the
@@ -2078,6 +2100,7 @@ bool operator==(bsl::List_Iterator<T1> lhs, bsl::List_Iterator<T2> rhs)
     return lhs.d_node_p == rhs.d_node_p;
 }
 
+#ifndef BSLS_COMPILERFEATURES_SUPPORT_THREE_WAY_COMPARISON
 template <class T1, class T2>
 inline
 bool operator!=(bsl::List_Iterator<T1> lhs, bsl::List_Iterator<T2> rhs)
@@ -2090,6 +2113,7 @@ bool operator!=(bsl::List_Iterator<T1> lhs, bsl::List_Iterator<T2> rhs)
 
     return ! (lhs == rhs);
 }
+#endif
 
                           // ------------------------------
                           // class List_AllocAndSizeWrapper
@@ -2613,7 +2637,7 @@ list<VALUE, ALLOCATOR>& list<VALUE, ALLOCATOR>::operator=(const list& rhs)
 template <class VALUE, class ALLOCATOR>
 list<VALUE, ALLOCATOR>& list<VALUE, ALLOCATOR>::operator=(
                                       BloombergLP::bslmf::MovableRef<list> rhs)
-                                     BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(false)
+    BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(AllocTraits::is_always_equal::value)
 {
     list& lvalue = rhs;
 
@@ -3295,7 +3319,7 @@ void list<VALUE, ALLOCATOR>::unique(EQ_PREDICATE binaryPredicate)
 
 template <class VALUE, class ALLOCATOR>
 void list<VALUE, ALLOCATOR>::swap(list& other)
-                                     BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(false)
+    BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(AllocTraits::is_always_equal::value)
 {
     // C++11 behavior for member 'swap': undefined for unequal allocators.
     // BSLS_ASSERT(allocatorImp() == other.allocatorImp());
@@ -3470,6 +3494,8 @@ bool bsl::operator==(const list<VALUE, ALLOCATOR>& lhs,
                                                     rhs.size());
 }
 
+#ifndef BSLS_COMPILERFEATURES_SUPPORT_THREE_WAY_COMPARISON
+
 template <class VALUE, class ALLOCATOR>
 inline
 bool bsl::operator!=(const list<VALUE, ALLOCATOR>& lhs,
@@ -3477,6 +3503,26 @@ bool bsl::operator!=(const list<VALUE, ALLOCATOR>& lhs,
 {
     return ! (lhs == rhs);
 }
+
+#endif  // BSLS_COMPILERFEATURES_SUPPORT_THREE_WAY_COMPARISON
+
+#ifdef BSLALG_SYNTHTHREEWAYUTIL_AVAILABLE
+
+template <class VALUE, class ALLOCATOR>
+inline
+BloombergLP::bslalg::SynthThreeWayUtil::Result<VALUE> bsl::operator<=>(
+                                             const list<VALUE, ALLOCATOR>& lhs,
+                                             const list<VALUE, ALLOCATOR>& rhs)
+{
+    return bsl::lexicographical_compare_three_way(
+                              lhs.begin(),
+                              lhs.end(),
+                              rhs.begin(),
+                              rhs.end(),
+                              BloombergLP::bslalg::SynthThreeWayUtil::compare);
+}
+
+#else
 
 template <class VALUE, class ALLOCATOR>
 inline
@@ -3515,6 +3561,8 @@ bool bsl::operator>=(const list<VALUE, ALLOCATOR>& lhs,
     return !(lhs < rhs);
 }
 
+#endif // BSLALG_SYNTHTHREEWAYUTIL_AVAILABLE
+
 // FREE FUNCTIONS
 template <class VALUE, class ALLOCATOR, class BDE_OTHER_TYPE>
 inline typename bsl::list<VALUE, ALLOCATOR>::size_type
@@ -3547,7 +3595,8 @@ bsl::erase_if(list<VALUE, ALLOCATOR>& l, PREDICATE predicate)
 template <class VALUE, class ALLOCATOR>
 inline
 void bsl::swap(list<VALUE, ALLOCATOR>& a, list<VALUE, ALLOCATOR>& b)
-                                     BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(false)
+    BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(BSLS_KEYWORD_NOEXCEPT_OPERATOR(
+                                                                    a.swap(b)))
 {
     a.swap(b);
 }

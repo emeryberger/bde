@@ -55,6 +55,7 @@
 #include <bslstl_iterator.h>
 
 #include <iterator>   // 'iterator_traits'
+#include <new>        // ::operator new
 #include <stdexcept>  // 'length_error', 'out_of_range'
 #include <utility>    // 'move'
 
@@ -207,6 +208,7 @@
 // [20] bool operator>(const vector<T,A>&, const vector<T,A>&);
 // [20] bool operator<=(const vector<T,A>&, const vector<T,A>&);
 // [20] bool operator>=(const vector<T,A>&, const vector<T,A>&);
+// [20] auto operator<=>(const vector<T,A>&, const vector<T,A>&);
 //-----------------------------------------------------------------------------
 // [21] CONCERN: 'std::length_error' is used properly
 // [22] CONCERN: Vector support types with overloaded new/delete
@@ -240,6 +242,7 @@
 // [38] CONCERN: Movable types are moved when growing a vector
 // [39] CLASS TEMPLATE DEDUCTION GUIDES
 // [41] INCOMPLETE TYPE SUPPORT
+// [42] CONCERN: Default constructor is called for default-inserted elems
 
 // ============================================================================
 //                     STANDARD BSL ASSERT TEST FUNCTION
@@ -1129,6 +1132,11 @@ class InputIterator {
         return result;
     }
 
+#ifdef BSLS_COMPILERFEATURES_SUPPORT_THREE_WAY_COMPARISON
+
+    bool operator==(const InputIterator&) const = default;
+
+#else
     friend bool operator==(const InputIterator& lhs, const InputIterator& rhs)
     {
         return lhs.d_ptr == rhs.d_ptr;
@@ -1138,6 +1146,7 @@ class InputIterator {
     {
         return lhs.d_ptr != rhs.d_ptr;
     }
+#endif
 };
 
                                // ===================
@@ -1392,6 +1401,107 @@ void debugprint(const BitwiseNotAssignable& v)
 {
     printf("%d", v.value());
 }
+
+                             // ==================
+                             // class MoveOnlyType
+                             // ==================
+
+#if BSLS_COMPILERFEATURES_CPLUSPLUS >= 201103L
+// This class doesn't make sence for C++03 tests.  Even though we can emulate
+// move-operations, we cannot make them noexcept as 'vector' requires.
+class MoveOnlyType {
+    // Non-copyable but movable type.
+
+    // DATA
+    void *ptr;
+  public:
+    // CREATORS
+    MoveOnlyType() : ptr(0)
+        // Create a 'MoveOnlyType' object.
+    {
+    }
+    MoveOnlyType(MoveOnlyType &&) = default;
+    MoveOnlyType(const MoveOnlyType &) = delete;
+
+    // MANIPULATORS
+    MoveOnlyType &operator=(MoveOnlyType &&) = default;
+    MoveOnlyType &operator=(const MoveOnlyType &) = delete;
+};
+#endif
+
+                    // =================================
+                    // template class StatelessAllocator
+                    // =================================
+
+template <class TYPE,
+          bool  PROPAGATE_ON_CONTAINER_SWAP            = false,
+          bool  PROPAGATE_ON_CONTAINER_MOVE_ASSIGNMENT = false>
+struct StatelessAllocator {
+    // Stateless std allocator with 'is_always_equal == true_type'
+
+    // TYPES
+    typedef TYPE      value_type;
+    typedef size_t    size_type;
+    typedef ptrdiff_t difference_type;
+
+    typedef value_type       *pointer;
+    typedef const value_type *const_pointer;
+
+    template <class OTHER_TYPE>
+    struct rebind {
+        typedef StatelessAllocator<OTHER_TYPE,
+                                   PROPAGATE_ON_CONTAINER_SWAP,
+                                   PROPAGATE_ON_CONTAINER_MOVE_ASSIGNMENT>
+            other;
+    };
+
+    typedef bsl::true_type is_always_equal;
+    typedef bsl::integral_constant<bool, PROPAGATE_ON_CONTAINER_SWAP>
+        propagate_on_container_swap;
+    typedef bsl::integral_constant<bool,
+                                   PROPAGATE_ON_CONTAINER_MOVE_ASSIGNMENT>
+        propagate_on_container_move_assignment;
+
+    // CREATORS
+    StatelessAllocator()
+        // Create a 'StatelessAllocator' object.
+    {
+    }
+    template <class OTHER_TYPE>
+    StatelessAllocator(
+             const StatelessAllocator<OTHER_TYPE,
+                                      PROPAGATE_ON_CONTAINER_SWAP,
+                                      PROPAGATE_ON_CONTAINER_MOVE_ASSIGNMENT>&)
+        // Create a 'StatelessAllocator' object.
+    {
+    }
+
+    // MANIPULATORS
+    pointer allocate(size_type count)
+        // Return a pointer to an uninitialized memory that is enough to store
+        // an array of the specified 'count' objects.
+    {
+        return static_cast<pointer>(::operator new(count *
+                                                   sizeof(value_type)));
+    }
+    void deallocate(pointer address, size_type)
+        // Return the memory at the specified 'address' to this allocator.
+    {
+        ::operator delete(static_cast<void *>(address));
+    }
+
+    // FREE OPERATORS
+    friend bool operator==(StatelessAllocator, StatelessAllocator)
+    {
+        return true;
+    }
+#ifndef BSLS_COMPILERFEATURES_SUPPORT_THREE_WAY_COMPARISON
+    friend bool operator!=(StatelessAllocator, StatelessAllocator)
+    {
+        return false;
+    }
+#endif
+};
 
 // TBD: duplicate these types as allocator-aware
 // TBD: duplicate the allocator-aware types for std allocators

@@ -248,6 +248,8 @@ BSLS_IDENT("$Id: $")
 //  +----------------------------------------------------+--------------------+
 //  | a.value_comp()                                     | O[1]               |
 //  +----------------------------------------------------+--------------------+
+//  | a.contains(k)                                      | O[log(n)]          |
+//  +----------------------------------------------------+--------------------+
 //  | a.find(k)                                          | O[log(n)]          |
 //  +----------------------------------------------------+--------------------+
 //  | a.count(k)                                         | O[log(n) +         |
@@ -490,6 +492,7 @@ BSLS_IDENT("$Id: $")
 #include <bslalg_rbtreenode.h>
 #include <bslalg_rbtreeutil.h>
 #include <bslalg_swaputil.h>
+#include <bslalg_synththreewayutil.h>
 #include <bslalg_typetraithasstliterators.h>
 
 #include <bslma_isstdallocator.h>
@@ -497,6 +500,7 @@ BSLS_IDENT("$Id: $")
 #include <bslma_usesbslmaallocator.h>
 
 #include <bslmf_isconvertible.h>
+#include <bslmf_isnothrowswappable.h>
 #include <bslmf_istransparentpredicate.h>
 #include <bslmf_movableref.h>
 #include <bslmf_typeidentity.h>
@@ -519,6 +523,10 @@ BSLS_IDENT("$Id: $")
 #ifndef BDE_DONT_ALLOW_TRANSITIVE_INCLUDES
 #include <bsls_nativestd.h>
 #endif // BDE_DONT_ALLOW_TRANSITIVE_INCLUDES
+
+#ifdef BSLS_COMPILERFEATURES_SUPPORT_TRAITS_HEADER
+#include <type_traits>  // 'std::is_nothrow_move_assignable'
+#endif
 
 #if BSLS_COMPILERFEATURES_SIMULATE_CPP11_FEATURES
 // Include version that can be compiled with C++03
@@ -840,7 +848,9 @@ class multiset {
         // into this multiset (see {Requirements on 'KEY'}).
 
     multiset& operator=(BloombergLP::bslmf::MovableRef<multiset> rhs)
-                                    BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(false);
+                       BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(
+                           AllocatorTraits::is_always_equal::value
+                        && std::is_nothrow_move_assignable<COMPARATOR>::value);
         // Assign to this object the value and comparator of the specified
         // 'rhs' object, propagate to this object the allocator of 'rhs' if the
         // 'ALLOCATOR' type has trait 'propagate_on_container_move_assignment',
@@ -1010,7 +1020,9 @@ class multiset {
         // the 'end' iterator, and the 'first' position is at or before the
         // 'last' position in the ordered sequence provided by this container.
 
-    void swap(multiset& other) BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(false);
+    void swap(multiset& other) BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(
+                                 AllocatorTraits::is_always_equal::value
+                              && bsl::is_nothrow_swappable<COMPARATOR>::value);
         // Exchange the value and comparator of this object with those of the
         // specified 'other' object; also exchange the allocator of this object
         // with that of 'other' if the (template parameter) type 'ALLOCATOR'
@@ -1237,6 +1249,24 @@ class multiset {
         // Return a reverse iterator providing non-modifiable access to the
         // prior-to-the-beginning element in the ordered sequence of
         // 'value_type' objects maintained by this multiset.
+
+    bool contains(const key_type &key) const;
+        // Return 'true' if this map contains an element whose key is
+        // equivalent to the specified 'key'.
+
+    template <class LOOKUP_KEY>
+    typename bsl::enable_if<
+        BloombergLP::bslmf::IsTransparentPredicate<COMPARATOR,
+                                                   LOOKUP_KEY>::value,
+        bool>::type
+    contains(const LOOKUP_KEY& key) const
+        // Return 'true' if this map contains an element whose key is
+        // equivalent to the specified 'key'.
+        //
+        // Note: implemented inline due to Sun CC compilation error
+    {
+        return find(key) != end();
+    }
 
     bool empty() const BSLS_KEYWORD_NOEXCEPT;
         // Return 'true' if this multiset contains no elements, and 'false'
@@ -1599,6 +1629,7 @@ bool operator==(const multiset<KEY, COMPARATOR, ALLOCATOR>& lhs,
     // This method requires that the (template parameter) type 'KEY' be
     // 'equality-comparable' (see {Requirements on 'KEY'}).
 
+#ifndef BSLS_COMPILERFEATURES_SUPPORT_THREE_WAY_COMPARISON
 template <class KEY, class COMPARATOR, class ALLOCATOR>
 bool operator!=(const multiset<KEY, COMPARATOR, ALLOCATOR>& lhs,
                 const multiset<KEY, COMPARATOR, ALLOCATOR>& rhs);
@@ -1609,6 +1640,19 @@ bool operator!=(const multiset<KEY, COMPARATOR, ALLOCATOR>& lhs,
     // have the same value as the corresponding element in the ordered sequence
     // of keys of 'rhs'.  This method requires that the (template parameter)
     // type 'KEY' be 'equality-comparable' (see {Requirements on 'KEY'}).
+#endif
+
+#ifdef BSLALG_SYNTHTHREEWAYUTIL_AVAILABLE
+
+template <class KEY, class COMPARATOR, class ALLOCATOR>
+BloombergLP::bslalg::SynthThreeWayUtil::Result<KEY>
+operator<=>(const multiset<KEY, COMPARATOR, ALLOCATOR>& lhs,
+            const multiset<KEY, COMPARATOR, ALLOCATOR>& rhs);
+    // Perform a lexicographic three-way comparison of the specified 'lhs' and
+    // the specified 'rhs' multisets by using the comparison operators of 'KEY'
+    // on each element; return the result of that comparison.
+
+#else
 
 template <class KEY, class COMPARATOR, class ALLOCATOR>
 bool operator< (const multiset<KEY, COMPARATOR, ALLOCATOR>& lhs,
@@ -1658,6 +1702,8 @@ bool operator>=(const multiset<KEY, COMPARATOR, ALLOCATOR>& lhs,
     // method requires that 'operator<', inducing a total order, be defined for
     // 'value_type'.  Note that this operator returns '!(lhs < rhs)'.
 
+#endif  // BSLALG_SYNTHTHREEWAYUTIL_AVAILABLE
+
 // FREE FUNCTIONS
 template <class KEY, class COMPARATOR, class ALLOCATOR, class PREDICATE>
 typename multiset<KEY, COMPARATOR, ALLOCATOR>::size_type
@@ -1668,7 +1714,8 @@ erase_if(multiset<KEY, COMPARATOR, ALLOCATOR>& ms, PREDICATE predicate);
 template <class KEY, class COMPARATOR, class ALLOCATOR>
 void swap(multiset<KEY, COMPARATOR, ALLOCATOR>& a,
           multiset<KEY, COMPARATOR, ALLOCATOR>& b)
-                                    BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(false);
+                                    BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(
+                                    BSLS_KEYWORD_NOEXCEPT_OPERATOR(a.swap(b)));
     // Exchange the value and comparator of the specified 'a' object with those
     // of the specified 'b' object; also exchange the allocator of 'a' with
     // that of 'b' if the (template parameter) type 'ALLOCATOR' has the
@@ -2051,7 +2098,9 @@ inline
 multiset<KEY, COMPARATOR, ALLOCATOR>&
 multiset<KEY, COMPARATOR, ALLOCATOR>::operator=(
                                   BloombergLP::bslmf::MovableRef<multiset> rhs)
-                                     BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(false)
+                        BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(
+                            AllocatorTraits::is_always_equal::value
+                         && std::is_nothrow_move_assignable<COMPARATOR>::value)
 {
     multiset& lvalue = rhs;
 
@@ -2370,7 +2419,9 @@ multiset<KEY, COMPARATOR, ALLOCATOR>::erase(const_iterator first,
 template <class KEY, class COMPARATOR, class ALLOCATOR>
 inline
 void multiset<KEY, COMPARATOR, ALLOCATOR>::swap(multiset& other)
-                                     BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(false)
+                              BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(
+                                  AllocatorTraits::is_always_equal::value
+                               && bsl::is_nothrow_swappable<COMPARATOR>::value)
 {
     if (AllocatorTraits::propagate_on_container_swap::value) {
         quickSwapExchangeAllocators(other);
@@ -2491,6 +2542,13 @@ multiset<KEY, COMPARATOR, ALLOCATOR>::crend() const BSLS_KEYWORD_NOEXCEPT
     return const_reverse_iterator(begin());
 }
 
+template <class KEY, class COMPARATOR, class ALLOCATOR>
+inline
+bool multiset<KEY, COMPARATOR, ALLOCATOR>::contains(const key_type& key) const
+{
+    return find(key) != end();
+}
+
 // capacity:
 template <class KEY, class COMPARATOR, class ALLOCATOR>
 inline
@@ -2548,6 +2606,7 @@ bool bsl::operator==(const bsl::multiset<KEY, COMPARATOR, ALLOCATOR>& lhs,
                                                     rhs.size());
 }
 
+#ifndef BSLS_COMPILERFEATURES_SUPPORT_THREE_WAY_COMPARISON
 template <class KEY,  class COMPARATOR,  class ALLOCATOR>
 inline
 bool bsl::operator!=(const bsl::multiset<KEY, COMPARATOR, ALLOCATOR>& lhs,
@@ -2555,6 +2614,25 @@ bool bsl::operator!=(const bsl::multiset<KEY, COMPARATOR, ALLOCATOR>& lhs,
 {
     return !(lhs == rhs);
 }
+#endif
+
+#ifdef BSLALG_SYNTHTHREEWAYUTIL_AVAILABLE
+
+template <class KEY, class COMPARATOR, class ALLOCATOR>
+inline
+BloombergLP::bslalg::SynthThreeWayUtil::Result<KEY>
+bsl::operator<=>(const multiset<KEY, COMPARATOR, ALLOCATOR>& lhs,
+                 const multiset<KEY, COMPARATOR, ALLOCATOR>& rhs)
+{
+    return bsl::lexicographical_compare_three_way(
+                              lhs.begin(),
+                              lhs.end(),
+                              rhs.begin(),
+                              rhs.end(),
+                              BloombergLP::bslalg::SynthThreeWayUtil::compare);
+}
+
+#else
 
 template <class KEY,  class COMPARATOR,  class ALLOCATOR>
 inline
@@ -2594,6 +2672,8 @@ bool bsl::operator>=(const bsl::multiset<KEY, COMPARATOR, ALLOCATOR>& lhs,
     return !(lhs < rhs);
 }
 
+#endif  // BSLALG_SYNTHTHREEWAYUTIL_AVAILABLE
+
 // FREE FUNCTIONS
 template <class KEY,  class COMPARATOR,  class ALLOCATOR, class PREDICATE>
 inline
@@ -2607,7 +2687,8 @@ template <class KEY,  class COMPARATOR,  class ALLOCATOR>
 inline
 void bsl::swap(bsl::multiset<KEY, COMPARATOR, ALLOCATOR>& a,
                bsl::multiset<KEY, COMPARATOR, ALLOCATOR>& b)
-                                     BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(false)
+                                 BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(
+                                     BSLS_KEYWORD_NOEXCEPT_OPERATOR(a.swap(b)))
 {
     a.swap(b);
 }

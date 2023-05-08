@@ -2502,7 +2502,6 @@ void testIncompleteTypeConversion(const IncompleteType &obj)
     overloadedFunction(obj);
 }
 
-
 template <class CHAR_TYPE>
 class TestDriver {
     // TYPES
@@ -2596,8 +2595,8 @@ void TestDriver<CHAR_TYPE>::testCase14()
         "Weasel & the White Boy's Cool - Rickie Lee Jones",
         "Chuck E's in Love - Rickie Lee Jones",
         "Company - Rickie Lee Jones",
-        "There are more things in heaven and Earth, Horatio, than are dreamt"
-                                                      " of in your philosophy."
+      ( "There are more things in heaven and Earth, Horatio, than are dreamt"
+                                                    " of in your philosophy." )
     };
     enum { k_NUM_DATA = sizeof DATA / sizeof *DATA };
 
@@ -3829,6 +3828,9 @@ int main(int argc, char *argv[])
         typedef bslstl::StringRefImp<wchar_t> WRefImp;
 
         ASSERT( bsl::is_trivially_copyable<RefImp>::value);
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP11_BASELINE_LIBRARY
+        ASSERT( std::is_trivially_copyable<RefImp>::value);
+#endif
         ASSERT(!bsl::is_trivially_default_constructible<RefImp>::value);
         ASSERT(!bslmf::IsBitwiseEqualityComparable<RefImp>::value);
         ASSERT( bslmf::IsBitwiseMoveable<RefImp>::value);
@@ -3837,6 +3839,9 @@ int main(int argc, char *argv[])
         ASSERT( bsl::is_trivially_copyable<WRefImp>::value);
         ASSERT(!bsl::is_trivially_default_constructible<WRefImp>::value);
         ASSERT(!bslmf::IsBitwiseEqualityComparable<WRefImp>::value);
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP11_BASELINE_LIBRARY
+        ASSERT( std::is_trivially_copyable<WRefImp>::value);
+#endif
         ASSERT( bslmf::IsBitwiseMoveable<WRefImp>::value);
         ASSERT(!bslma::UsesBslmaAllocator<WRefImp>::value);
 

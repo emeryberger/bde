@@ -1016,6 +1016,97 @@ class TestHashFunctor {
     }
 };
 
+                            // =======================
+                            // struct ThrowingMoveHash
+                            // =======================
+
+template <class TYPE>
+struct ThrowingMoveHash : public bsl::hash<TYPE> {
+    // Hash functor with throwing move operations.
+
+    // CREATORS
+    ThrowingMoveHash()
+        // Create a 'ThrowingMoveHash' object.
+    {
+    }
+
+    ThrowingMoveHash(const ThrowingMoveHash &other)
+        // Create a 'ThrowingMoveHash' object having the same value as that of
+        // the specified 'other'.
+    {
+        (void)other;
+    }
+
+    ThrowingMoveHash(bslmf::MovableRef<ThrowingMoveHash> other)
+                                     BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(false)
+        // Create a 'ThrowingMoveHash' object having the same value as that of
+        // the specified 'other'.
+    {
+        (void)other;
+    }
+
+    // MANIPULATORS
+    ThrowingMoveHash &operator=(const ThrowingMoveHash &other)
+        // Assign to this object the value of the specified 'other'.
+    {
+        (void)other;
+        return *this;
+    }
+
+    ThrowingMoveHash &operator=(bslmf::MovableRef<ThrowingMoveHash> other)
+                                     BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(false)
+        // Assign to this object the value of the specified 'other'.
+    {
+        (void)other;
+        return *this;
+    }
+};
+                            // ========================
+                            // struct ThrowingMoveEqual
+                            // ========================
+
+template <class TYPE>
+struct ThrowingMoveEqual : public bsl::equal_to<TYPE> {
+    // Equal functor with throwing move operations.
+
+    // CREATORS
+    ThrowingMoveEqual()
+        // Create a 'ThrowingMoveEqual' object.
+    {
+    }
+
+    ThrowingMoveEqual(const ThrowingMoveEqual &other)
+        // Create a 'ThrowingMoveEqual' object having the same value as that of
+        // the specified 'other'.
+    {
+        (void)other;
+    }
+
+    ThrowingMoveEqual(bslmf::MovableRef<ThrowingMoveEqual> other)
+                                     BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(false)
+        // Create a 'ThrowingMoveEqual' object having the same value as that of
+        // the specified 'other'.
+    {
+        (void)other;
+    }
+
+    // MANIPULATORS
+    ThrowingMoveEqual &operator=(const ThrowingMoveEqual &other)
+        // Assign to this object the value of the specified 'other'.
+    {
+        (void)other;
+        return *this;
+    }
+
+    ThrowingMoveEqual &operator=(bslmf::MovableRef<ThrowingMoveEqual> other)
+                                     BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(false)
+        // Assign to this object the value of the specified 'other'.
+    {
+        (void)other;
+        return *this;
+    }
+};
+
                        // =====================
                        // class TemplateWrapper
                        // =====================
@@ -1442,6 +1533,20 @@ void testTransparentComparator(Container& container,
 
     const Iterator NON_EXISTING_F = container.find(nonExistingKey);
     ASSERT(container.end()                  == NON_EXISTING_F);
+    ASSERT(nonExistingKey.conversionCount() == expectedConversionCount);
+
+    // Testing 'contains'.
+
+    const bool EXISTING_CONTAINS = container.contains(existingKey);
+    if (!isTransparent) {
+        ++expectedConversionCount;
+    }
+
+    ASSERT(true == EXISTING_CONTAINS);
+    ASSERT(existingKey.conversionCount() == expectedConversionCount);
+
+    const bool NON_EXISTING_CONTAINS = container.contains(nonExistingKey);
+    ASSERT(false == NON_EXISTING_CONTAINS);
     ASSERT(nonExistingKey.conversionCount() == expectedConversionCount);
 
     // Testing 'count'.
@@ -1886,6 +1991,9 @@ class TestDriver {
     static void testCase28_propagate_on_container_move_assignment_dispatch();
     static void testCase28_propagate_on_container_move_assignment();
         // Test 'propagate_on_container_move_assignment'.
+
+    static void testCase28_noexcept();
+        // Test move assignment operator noexcept.
 
     static void testCase28();
         // Test move-assignment operator.
@@ -5837,6 +5945,24 @@ void TestDriver<KEY, VALUE, HASH, EQUAL, ALLOC>::
 }
 
 template <class KEY, class VALUE, class HASH, class EQUAL, class ALLOC>
+void TestDriver<KEY, VALUE, HASH, EQUAL, ALLOC>::testCase28_noexcept()
+    // Verify that noexcept specification of the move assignment operator is
+    // correct.
+{
+    Obj a;
+    Obj b;
+
+#if BSLS_KEYWORD_NOEXCEPT_AVAILABLE
+    const bool isNoexcept =
+                        bsl::allocator_traits<ALLOC>::is_always_equal::value &&
+                        std::is_nothrow_move_assignable<HASH>::value &&
+                        std::is_nothrow_move_assignable<EQUAL>::value;
+    ASSERT(isNoexcept ==
+           BSLS_KEYWORD_NOEXCEPT_OPERATOR(a = MoveUtil::move(b)));
+#endif
+}
+
+template <class KEY, class VALUE, class HASH, class EQUAL, class ALLOC>
 void TestDriver<KEY, VALUE, HASH, EQUAL, ALLOC>::testCase28()
 {
     // ------------------------------------------------------------------------
@@ -6918,8 +7044,14 @@ void TestDriver<KEY, VALUE, HASH, EQUAL, ALLOC>::testCase26()
         bool (*operatorEq)(const Obj&, const Obj&) = &operator==;
         (void)operatorEq;
 
+#ifdef BSLS_COMPILERFEATURES_SUPPORT_THREE_WAY_COMPARISON
+        (void) [](const Obj& lhs, const Obj& rhs) -> bool {
+            return lhs != rhs;
+        };
+#else
         bool (*operatorNe)(const Obj&, const Obj&) = &operator!=;
         (void)operatorNe;
+#endif
 
         void (*functionSwap)(Obj&, Obj&) = &swap;
         (void)functionSwap;
@@ -8461,10 +8593,11 @@ void TestDriver<KEY, VALUE, HASH, EQUAL, ALLOC>::testCase13()
     //
     // Concerns:
     //: 1 If the key being searched exists in the container, 'find' returns the
-    //:   iterator referring to the existing element.
+    //:   iterator referring to the existing element and 'contains' returns
+    //:   'true'.
     //:
     //: 2 If the key being searched does not exists in the container, 'find'
-    //:   returns the 'end' iterator.
+    //:   returns the 'end' iterator and 'contains' returns 'false'.
     //:
     //: 3 'equal_range(key)' returns 'std::make_pair(fird(key), ++find(key))'.
     //:
@@ -8490,6 +8623,8 @@ void TestDriver<KEY, VALUE, HASH, EQUAL, ALLOC>::testCase13()
     //:   4 Verify no memory is allocated from any allocators.  (C-4)
     //
     // Testing:
+    //   bool contains(const key_type& key);
+    //   bool contains(const LOOKUP_KEY& key);
     //   iterator find(const key_type& key);
     //   const_iterator find(const key_type& key) const;
     //   size_type count(const key_type& key) const;
@@ -8544,6 +8679,24 @@ void TestDriver<KEY, VALUE, HASH, EQUAL, ALLOC>::testCase13()
                     const size_t idx = tj / 2;
                     ASSERTV(ti, tj, CITER[idx] ==  X.find(VALUES[tj].first));
                     ASSERTV(ti, tj, ITER[idx]  == mX.find(VALUES[tj].first));
+
+                    bool cShouldBeFound = CITER[idx] != X.end();
+                    ASSERTV(
+                           ti,
+                           tj,
+                           cShouldBeFound,
+                           cShouldBeFound == X.contains(VALUES[tj].first));
+
+                    bool shouldBeFound  = ITER[idx] != mX.end();
+                    ASSERTV(cShouldBeFound,
+                            shouldBeFound,
+                            cShouldBeFound == shouldBeFound);
+
+                    ASSERTV(
+                           ti,
+                           tj,
+                           shouldBeFound,
+                           shouldBeFound == mX.contains(VALUES[tj].first));
 
                     ASSERTV( X.end() != CITER[idx]);
                     ASSERTV(mX.end() != ITER[ idx]);
@@ -9679,6 +9832,126 @@ int main(int argc, char *argv[])
 
         TestDriver<TestKeyType, TestValueType>::
                            testCase28_propagate_on_container_move_assignment();
+
+#if BSLS_KEYWORD_NOEXCEPT_AVAILABLE
+        // Test noexcept
+        {
+            typedef bsltf::StdStatefulAllocator<bsl::pair<const int, int>,
+                                                false,
+                                                false,
+                                                false,
+                                                false> Alloc;
+            typedef bsl::hash<int> Hash;
+            typedef bsl::equal_to<int> Equal;
+
+            ASSERT(!bsl::allocator_traits<Alloc>::is_always_equal::value);
+            ASSERT( std::is_nothrow_move_assignable<Hash>::value);
+            ASSERT( std::is_nothrow_move_assignable<Equal>::value);
+            TestDriver<int, int, Hash, Equal, Alloc>::testCase28_noexcept();
+        }
+        {
+            typedef bsltf::StdStatefulAllocator<bsl::pair<const int, int>,
+                                                false,
+                                                false,
+                                                false,
+                                                false> Alloc;
+            typedef u::ThrowingMoveHash<int> Hash;
+            typedef bsl::equal_to<int> Equal;
+
+            ASSERT(!bsl::allocator_traits<Alloc>::is_always_equal::value);
+            ASSERT(!std::is_nothrow_move_assignable<Hash>::value);
+            ASSERT( std::is_nothrow_move_assignable<Equal>::value);
+            TestDriver<int, int, Hash, Equal, Alloc>::testCase28_noexcept();
+        }
+        {
+            typedef bsltf::StdStatefulAllocator<bsl::pair<const int, int>,
+                                                false,
+                                                false,
+                                                false,
+                                                false> Alloc;
+            typedef bsl::hash<int> Hash;
+            typedef u::ThrowingMoveEqual<int> Equal;
+
+            ASSERT(!bsl::allocator_traits<Alloc>::is_always_equal::value);
+            ASSERT( std::is_nothrow_move_assignable<Hash>::value);
+            ASSERT(!std::is_nothrow_move_assignable<Equal>::value);
+            TestDriver<int, int, Hash, Equal, Alloc>::testCase28_noexcept();
+        }
+        {
+            typedef bsltf::StdStatefulAllocator<bsl::pair<const int, int>,
+                                                false,
+                                                false,
+                                                false,
+                                                false> Alloc;
+            typedef u::ThrowingMoveHash<int> Hash;
+            typedef u::ThrowingMoveEqual<int> Equal;
+
+            ASSERT(!bsl::allocator_traits<Alloc>::is_always_equal::value);
+            ASSERT(!std::is_nothrow_move_assignable<Hash>::value);
+            ASSERT(!std::is_nothrow_move_assignable<Equal>::value);
+            TestDriver<int, int, Hash, Equal, Alloc>::testCase28_noexcept();
+        }
+        {
+            typedef bsltf::StdStatefulAllocator<bsl::pair<const int, int>,
+                                                false,
+                                                false,
+                                                false,
+                                                false,
+                                                true> Alloc;
+            typedef bsl::hash<int> Hash;
+            typedef bsl::equal_to<int> Equal;
+
+            ASSERT( bsl::allocator_traits<Alloc>::is_always_equal::value);
+            ASSERT( std::is_nothrow_move_assignable<Hash>::value);
+            ASSERT( std::is_nothrow_move_assignable<Equal>::value);
+            TestDriver<int, int, Hash, Equal, Alloc>::testCase28_noexcept();
+        }
+        {
+            typedef bsltf::StdStatefulAllocator<bsl::pair<const int, int>,
+                                                false,
+                                                false,
+                                                false,
+                                                false,
+                                                true> Alloc;
+            typedef u::ThrowingMoveHash<int> Hash;
+            typedef bsl::equal_to<int> Equal;
+
+            ASSERT( bsl::allocator_traits<Alloc>::is_always_equal::value);
+            ASSERT(!std::is_nothrow_move_assignable<Hash>::value);
+            ASSERT( std::is_nothrow_move_assignable<Equal>::value);
+            TestDriver<int, int, Hash, Equal, Alloc>::testCase28_noexcept();
+        }
+        {
+            typedef bsltf::StdStatefulAllocator<bsl::pair<const int, int>,
+                                                false,
+                                                false,
+                                                false,
+                                                false,
+                                                true> Alloc;
+            typedef bsl::hash<int> Hash;
+            typedef u::ThrowingMoveEqual<int> Equal;
+
+            ASSERT( bsl::allocator_traits<Alloc>::is_always_equal::value);
+            ASSERT( std::is_nothrow_move_assignable<Hash>::value);
+            ASSERT(!std::is_nothrow_move_assignable<Equal>::value);
+            TestDriver<int, int, Hash, Equal, Alloc>::testCase28_noexcept();
+        }
+        {
+            typedef bsltf::StdStatefulAllocator<bsl::pair<const int, int>,
+                                                false,
+                                                false,
+                                                false,
+                                                false,
+                                                true> Alloc;
+            typedef u::ThrowingMoveHash<int> Hash;
+            typedef u::ThrowingMoveEqual<int> Equal;
+
+            ASSERT( bsl::allocator_traits<Alloc>::is_always_equal::value);
+            ASSERT(!std::is_nothrow_move_assignable<Hash>::value);
+            ASSERT(!std::is_nothrow_move_assignable<Equal>::value);
+            TestDriver<int, int, Hash, Equal, Alloc>::testCase28_noexcept();
+        }
+#endif
       } break;
       case 27: {
         // --------------------------------------------------------------------
@@ -9897,7 +10170,7 @@ int main(int argc, char *argv[])
       } break;
       case 13: {
         // --------------------------------------------------------------------
-        // TESTING 'find'
+        // TESTING 'find', 'contains'
         // --------------------------------------------------------------------
 
         RUN_EACH_TYPE(TestDriver,

@@ -166,6 +166,15 @@ typedef bdlmt::FixedThreadPool Obj;
 
 const int k_DECISECOND = 100000;  // microseconds in 0.1 seconds
 
+#if defined(BSLS_PLATFORM_OS_WINDOWS) || defined(BSLS_PLATFORM_OS_AIX)
+// On Windows, the thread name will only be set if we're running on Windows 10,
+// version 1607 or later, otherwise it will be empty. AIX does not support
+// thread naming.
+static const bool k_threadNameCanBeEmpty = true;
+#else
+static const bool k_threadNameCanBeEmpty = false;
+#endif
+
 // ============================================================================
 //                           GLOBAL VARIABLES FOR TESTING
 // ----------------------------------------------------------------------------
@@ -259,13 +268,10 @@ void testJobFunction1(void *ptr)
 
     bsl::string threadName;
     bslmt::ThreadUtil::getThreadName(&threadName);
-#if defined(BSLS_PLATFORM_OS_LINUX) || defined(BSLS_PLATFORM_OS_SOLARIS) ||   \
-                                       defined(BSLS_PLATFORM_OS_DARWIN)
-    ASSERTV(threadName, threadName == "bdl.FixedPool" ||
-                                                    threadName == "OtherName");
-#else
-    ASSERTV(threadName, threadName.empty());
-#endif
+
+    ASSERTV(threadName,
+            (k_threadNameCanBeEmpty && threadName.empty()) ||
+                threadName == "bdl.FixedPool" || threadName == "OtherName");
 
     ++args->d_count;
     ++args->d_startSig;
@@ -947,6 +953,9 @@ int main(int argc, char *argv[])
     bslma::DefaultAllocatorGuard guard(&taDefault);
     bslma::TestAllocator  testAllocator(veryVeryVerbose);
 
+    bslma::TestAllocator  globalAllocator;
+    bslma::Default::setGlobalAllocator(&globalAllocator);
+
     cout << "TEST " << __FILE__ << " CASE " << test << endl;
 
     switch (test) { case 0:  // case 0 is always the first case
@@ -1548,7 +1557,8 @@ int main(int argc, char *argv[])
             double fudgeFactor   = 10;  // to allow for imprecisions in timing
             double maxConsumedCpuTime = fudgeFactor *
                                 (additiveFudge +
-                                 consumedIdleCpuTime * QUEUE_CAPACITY_THREADS);
+                                  consumedIdleCpuTime *
+                                  static_cast<double>(QUEUE_CAPACITY_THREADS));
             if (veryVerbose) {
                 P(maxConsumedCpuTime);
             }
@@ -1737,6 +1747,10 @@ int main(int argc, char *argv[])
             const int THREADS  = VALUES[i].d_numThreads;
             const int QUEUE_CAPACITY  = VALUES[i].d_maxNumJobs;
 
+            TestJobFunctionArgs1 emptyArgs;  // lifetime must exceed pool's
+            emptyArgs.d_startBarrier_p = 0;
+            emptyArgs.d_stopBarrier_p  = 0;
+
             bslmt::ThreadAttributes attr;
             Obj x(attr, THREADS, QUEUE_CAPACITY, &testAllocator);
             const Obj& X = x;
@@ -1757,10 +1771,6 @@ int main(int argc, char *argv[])
             }
             startBarrier.wait(); // make sure that threads have indeed started
             ASSERTV(i, 0 == X.numPendingJobs()); // and that queue is empty
-
-            TestJobFunctionArgs1 emptyArgs;
-            emptyArgs.d_startBarrier_p = 0;
-            emptyArgs.d_stopBarrier_p  = 0;
 
             for (int j = 0; j < QUEUE_CAPACITY; ++j) {
                 ASSERTV(i, 0 == x.tryEnqueueJob(testJobFunction3,
@@ -2210,11 +2220,12 @@ int main(int argc, char *argv[])
             for (int i=0; i<NITERATIONS; ++i) {
                 args.d_startSig = 0;
                 args.d_stopSig = 0;
-                bslmt::ThreadUtil::create(
+                bslmt::ThreadUtil::createWithAllocator(
                           &threadHandles[i],
                           attributes,
                           &testThreadJobFunction1,
-                          &args);
+                          &args,
+                          &testAllocator);
                 while ( !args.d_startSig ) {
                     startCond.wait(&mutex);
                 }
@@ -2252,11 +2263,12 @@ int main(int argc, char *argv[])
                 mutex.lock();
                 args.d_startSig=0;
                 args.d_stopSig=0;
-                bslmt::ThreadUtil::create(
+                bslmt::ThreadUtil::createWithAllocator(
                           &threadHandles[i],
                           attributes,
                           &testThreadJobFunction2,
-                          &args);
+                          &args,
+                          &testAllocator);
                 while (!args.d_startSig) {
                     startCond.wait(&mutex);
                 }
@@ -2287,11 +2299,12 @@ int main(int argc, char *argv[])
             bslmt::ThreadAttributes attributes;
 
             for (int i=0; i<NITERATIONS; ++i) {
-                bslmt::ThreadUtil::create(
+                bslmt::ThreadUtil::createWithAllocator(
                           &threadHandles[i],
                           attributes,
                           &testThreadJobFunction3,
-                          &args);
+                          &args,
+                          &testAllocator);
             }
             ASSERT(0 == args.d_count);
             startBarrier.wait();
@@ -2461,6 +2474,8 @@ int main(int argc, char *argv[])
         testStatus = -1;
       }
     }
+
+    ASSERT(0 == globalAllocator.numAllocations());
 
     if (testStatus > 0) {
         cerr << "Error, non-zero test status = " << testStatus << "." << endl;

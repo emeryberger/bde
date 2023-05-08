@@ -405,6 +405,7 @@ BSLS_IDENT("$Id: $")
 #include <bslalg_dequeprimitives.h>
 #include <bslalg_rangecompare.h>
 #include <bslalg_swaputil.h>
+#include <bslalg_synththreewayutil.h>
 #include <bslalg_typetraithasstliterators.h>
 
 #include <bslma_allocatortraits.h>
@@ -809,6 +810,10 @@ class deque : public  Deque_Base<VALUE_TYPE>
         // unless 'first' and 'last' refer to a sequence of valid values where
         // 'first' is at a position at or before 'last'.
 
+    void privateAppendDefaultInsertable(size_type numElements);
+        // Append the specified 'numElements' value-inititalized objects to
+        // this deque.
+
     void privateAppendRaw(size_type numElements, const VALUE_TYPE& value);
         // Append the specified 'numElements' copies of the specified 'value'
         // to this deque.
@@ -935,18 +940,17 @@ class deque : public  Deque_Base<VALUE_TYPE>
     deque(size_type        numElements,
           const ALLOCATOR& basicAllocator = ALLOCATOR());
         // Create a deque of the specified 'numElements' size whose every
-        // element is default-constructed.  Optionally specify a
-        // 'basicAllocator' used to supply memory.  If 'basicAllocator' is not
-        // supplied, a default-constructed object of the (template parameter)
-        // type 'ALLOCATOR' is used.  If the type 'ALLOCATOR' is
-        // 'bsl::allocator' (the default), then 'basicAllocator', if supplied,
-        // shall be convertible to 'bslma::Allocator *'.  If the type
-        // 'ALLOCATOR' is 'bsl::allocator' and 'basicAllocator' is not
-        // supplied, the currently installed default allocator is used.  Throw
-        // 'bsl::length_error' if 'numElements > max_size()'.  This method
-        // requires that the (template parameter) 'VALUE_TYPE' be
-        // 'default-insertable' into this deque (see {Requirements on
-        // 'VALUE_TYPE'}).
+        // element is value-initialized.  Optionally specify a 'basicAllocator'
+        // used to supply memory.  If 'basicAllocator' is not supplied, a
+        // default-constructed object of the (template parameter) type
+        // 'ALLOCATOR' is used.  If the type 'ALLOCATOR' is 'bsl::allocator'
+        // (the default), then 'basicAllocator', if supplied, shall be
+        // convertible to 'bslma::Allocator *'.  If the type 'ALLOCATOR' is
+        // 'bsl::allocator' and 'basicAllocator' is not supplied, the currently
+        // installed default allocator is used.  Throw 'bsl::length_error' if
+        // 'numElements > max_size()'.  This method requires that the (template
+        // parameter) 'VALUE_TYPE' be 'default-insertable' into this deque (see
+        // {Requirements on 'VALUE_TYPE'}).
 
     deque(size_type         numElements,
           const VALUE_TYPE& value,
@@ -1064,7 +1068,8 @@ class deque : public  Deque_Base<VALUE_TYPE>
         // deque (see {Requirements on 'VALUE_TYPE'}).
 
     deque& operator=(BloombergLP::bslmf::MovableRef<deque> rhs)
-                                    BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(false);
+        BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(
+                                      AllocatorTraits::is_always_equal::value);
         // Assign to this object the value of the specified 'rhs' object,
         // propagate to this object the allocator of 'rhs' if the 'ALLOCATOR'
         // type has trait 'propagate_on_container_move_assignment', and return
@@ -1141,7 +1146,7 @@ class deque : public  Deque_Base<VALUE_TYPE>
         // 'size() - newSize' elements at the back if 'newSize < size()'.
         // Append 'newSize - size()' elements at the back having the optionally
         // specified 'value' if 'newSize > size()'; if 'value' is not
-        // specified, default-constructed objects of the (template parameter)
+        // specified, value-initialized objects of the (template parameter)
         // 'VALUE_TYPE' are emplaced.  This method has no effect if
         // 'newSize == size()'.  Throw 'bsl::length_error' if
         // 'newSize > max_size()'.
@@ -1342,7 +1347,8 @@ class deque : public  Deque_Base<VALUE_TYPE>
         // '[first .. cend()]' (both endpoints included).
 
     void swap(deque<VALUE_TYPE, ALLOCATOR>& other)
-                                    BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(false);
+        BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(
+                                      AllocatorTraits::is_always_equal::value);
         // Exchange the value of this object with that of the specified 'other'
         // object; also exchange the allocator of this object with that of
         // 'other' if the (template parameter) type 'ALLOCATOR' has the
@@ -1461,6 +1467,7 @@ bool operator==(const deque<VALUE_TYPE, ALLOCATOR>& lhs,
     // 'VALUE_TYPE' be 'equality-comparable' (see {Requirements on
     // 'VALUE_TYPE'}).
 
+#ifndef BSLS_COMPILERFEATURES_SUPPORT_THREE_WAY_COMPARISON
 template <class VALUE_TYPE, class ALLOCATOR>
 bool operator!=(const deque<VALUE_TYPE, ALLOCATOR>& lhs,
                 const deque<VALUE_TYPE, ALLOCATOR>& rhs);
@@ -1472,6 +1479,19 @@ bool operator!=(const deque<VALUE_TYPE, ALLOCATOR>& lhs,
     // sequence of elements of 'rhs'.  This method requires that the (template
     // parameter) type 'VALUE_TYPE' be 'equality-comparable' (see {Requirements
     // on 'VALUE_TYPE'}).
+#endif
+
+#ifdef BSLALG_SYNTHTHREEWAYUTIL_AVAILABLE
+
+template <class VALUE_TYPE, class ALLOCATOR>
+BloombergLP::bslalg::SynthThreeWayUtil::Result<VALUE_TYPE> operator<=>(
+                                      const deque<VALUE_TYPE, ALLOCATOR>& lhs,
+                                      const deque<VALUE_TYPE, ALLOCATOR>& rhs);
+    // Perform a lexicographic three-way comparison of the specified 'lhs' and
+    // the specified 'rhs' containers by using the comparison operators of
+    // 'VALUE_TYPE' on each element; return the result of that comparison.
+
+#else
 
 template <class VALUE_TYPE, class ALLOCATOR>
 bool operator<(const deque<VALUE_TYPE, ALLOCATOR>& lhs,
@@ -1521,6 +1541,8 @@ bool operator>=(const deque<VALUE_TYPE, ALLOCATOR>& lhs,
     // requires that 'operator<', inducing a total order, be defined for
     // 'value_type'.  Note that this operator returns '!(lhs < rhs)'.
 
+#endif  // BSLALG_SYNTHTHREEWAYUTIL_AVAILABLE
+
 // FREE FUNCTIONS
 template <class VALUE_TYPE, class ALLOCATOR, class BDE_OTHER_TYPE>
 typename deque<VALUE_TYPE, ALLOCATOR>::size_type
@@ -1536,7 +1558,8 @@ erase_if(deque<VALUE_TYPE, ALLOCATOR>& deq, PREDICATE predicate);
 
 template <class VALUE_TYPE, class ALLOCATOR>
 void swap(deque<VALUE_TYPE, ALLOCATOR>& a, deque<VALUE_TYPE, ALLOCATOR>& b)
-                                    BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(false);
+    BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(BSLS_KEYWORD_NOEXCEPT_OPERATOR(
+                                                                   a.swap(b)));
     // Exchange the value of the specified 'a' object with that of the
     // specified 'b' object; also exchange the allocator of 'a' with that of
     // 'b' if the (template parameter) type 'ALLOCATOR' has the
@@ -2149,6 +2172,23 @@ deque<VALUE_TYPE, ALLOCATOR>::privateAppend(INPUT_ITERATOR          first,
 }
 
 template <class VALUE_TYPE, class ALLOCATOR>
+void deque<VALUE_TYPE, ALLOCATOR>::privateAppendDefaultInsertable(
+                                                         size_type numElements)
+{
+    // Create new blocks at the back.  In case an exception is thrown, any
+    // unused blocks are returned to the allocator.
+
+    size_type numNewBlocks = (this->d_finish.offsetInBlock() + numElements) /
+                                                                  BLOCK_LENGTH;
+    BlockCreator newBlocks(this);
+    newBlocks.insertAtBack(numNewBlocks);
+    DequePrimitives::valueInititalizeN(&this->d_finish,
+                                       this->d_finish,
+                                       numElements,
+                                       ContainerBase::allocator());
+}
+
+template <class VALUE_TYPE, class ALLOCATOR>
 void deque<VALUE_TYPE, ALLOCATOR>::privateAppendRaw(
                                                  size_type         numElements,
                                                  const VALUE_TYPE& value)
@@ -2701,7 +2741,7 @@ deque<VALUE_TYPE, ALLOCATOR>::deque(size_type        numElements,
     }
     deque temp(k_RAW_INIT, this->get_allocator());
     temp.privateInit(numElements);
-    temp.privateAppendRaw(numElements, VALUE_TYPE());
+    temp.privateAppendDefaultInsertable(numElements);
     Deque_Util::move(static_cast<Base *>(this), static_cast<Base *>(&temp));
 }
 
@@ -2902,7 +2942,8 @@ template <class VALUE_TYPE, class ALLOCATOR>
 deque<VALUE_TYPE, ALLOCATOR>&
 deque<VALUE_TYPE, ALLOCATOR>::operator=(
                                      BloombergLP::bslmf::MovableRef<deque> rhs)
-                                     BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(false)
+    BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(
+                                       AllocatorTraits::is_always_equal::value)
 {
     deque& lvalue = rhs;
 
@@ -3101,10 +3142,35 @@ void deque<VALUE_TYPE, ALLOCATOR>::reserve(size_type numElements)
 }
 
 template <class VALUE_TYPE, class ALLOCATOR>
-inline
 void deque<VALUE_TYPE, ALLOCATOR>::resize(size_type newSize)
 {
-    resize(newSize, VALUE_TYPE());
+    if (BSLS_PERFORMANCEHINT_PREDICT_UNLIKELY(newSize > max_size())) {
+        BSLS_PERFORMANCEHINT_UNLIKELY_HINT;
+
+        BloombergLP::bslstl::StdExceptUtil::throwLengthError(
+                                     "deque<...>::resize(n): deque too big");
+    }
+
+    size_type origSize = this->size();
+
+    if (newSize <= origSize) {
+        // Note that we do not use 'erase' here as 'erase' requires elements be
+        // copy-insertable, while the standard does not require elements be
+        // copy-insertable for this 'resize' overload.
+
+        IteratorImp oldEnd = this->d_finish;
+        IteratorImp newEnd = this->d_start + newSize;
+        DequePrimitives::destruct(newEnd, oldEnd, ContainerBase::allocator());
+        // Deallocate blocks no longer used
+        for (; oldEnd.blockPtr() != newEnd.blockPtr();
+               oldEnd.previousBlock()) {
+            this->deallocateN(*oldEnd.blockPtr(), 1);
+        }
+        this->d_finish = newEnd;
+    }
+    else {
+        privateAppendDefaultInsertable(newSize - origSize);
+    }
 }
 
 template <class VALUE_TYPE, class ALLOCATOR>
@@ -3750,7 +3816,8 @@ deque<VALUE_TYPE, ALLOCATOR>::erase(const_iterator first, const_iterator last)
 
 template <class VALUE_TYPE, class ALLOCATOR>
 void deque<VALUE_TYPE, ALLOCATOR>::swap(deque<VALUE_TYPE, ALLOCATOR>& other)
-                                     BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(false)
+    BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(
+                                       AllocatorTraits::is_always_equal::value)
 {
     if (AllocatorTraits::propagate_on_container_swap::value) {
         Deque_Util::swap(static_cast<Base *>(this),
@@ -3850,6 +3917,8 @@ bool operator==(const deque<VALUE_TYPE, ALLOCATOR>& lhs,
     return true;
 }
 
+#ifndef BSLS_COMPILERFEATURES_SUPPORT_THREE_WAY_COMPARISON
+
 template <class VALUE_TYPE, class ALLOCATOR>
 inline
 bool operator!=(const deque<VALUE_TYPE, ALLOCATOR>& lhs,
@@ -3857,6 +3926,26 @@ bool operator!=(const deque<VALUE_TYPE, ALLOCATOR>& lhs,
 {
     return !(lhs == rhs);
 }
+
+#endif
+
+#ifdef BSLALG_SYNTHTHREEWAYUTIL_AVAILABLE
+
+template <class VALUE_TYPE, class ALLOCATOR>
+inline
+BloombergLP::bslalg::SynthThreeWayUtil::Result<VALUE_TYPE> operator<=>(
+                                       const deque<VALUE_TYPE, ALLOCATOR>& lhs,
+                                       const deque<VALUE_TYPE, ALLOCATOR>& rhs)
+{
+    return bsl::lexicographical_compare_three_way(
+                              lhs.begin(),
+                              lhs.end(),
+                              rhs.begin(),
+                              rhs.end(),
+                              BloombergLP::bslalg::SynthThreeWayUtil::compare);
+}
+
+#else
 
 template <class VALUE_TYPE, class ALLOCATOR>
 inline
@@ -3895,6 +3984,8 @@ bool operator>=(const deque<VALUE_TYPE, ALLOCATOR>& lhs,
     return !(lhs < rhs);
 }
 
+#endif  // BSLALG_SYNTHTHREEWAYUTIL_AVAILABLE
+
 // FREE FUNCTIONS
 template <class VALUE_TYPE, class ALLOCATOR, class BDE_OTHER_TYPE>
 inline typename deque<VALUE_TYPE, ALLOCATOR>::size_type
@@ -3917,7 +4008,8 @@ erase_if(deque<VALUE_TYPE, ALLOCATOR>& deq, PREDICATE predicate)
 template <class VALUE_TYPE, class ALLOCATOR>
 inline
 void swap(deque<VALUE_TYPE, ALLOCATOR>& a, deque<VALUE_TYPE, ALLOCATOR>& b)
-                                     BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(false)
+    BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(BSLS_KEYWORD_NOEXCEPT_OPERATOR(
+                                                                    a.swap(b)))
 {
     a.swap(b);
 }

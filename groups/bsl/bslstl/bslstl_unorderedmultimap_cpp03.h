@@ -21,7 +21,7 @@
 // regions of C++11 code, then this header contains no code and is not
 // '#include'd in the original header.
 //
-// Generated on Wed Sep 21 17:27:43 2022
+// Generated on Mon Apr 10 03:55:22 2023
 // Command line: sim_cpp11_features.pl bslstl_unorderedmultimap.h
 
 #ifdef COMPILING_BSLSTL_UNORDEREDMULTIMAP_H
@@ -348,7 +348,10 @@ class unordered_multimap {
 
     unordered_multimap&
     operator=(BloombergLP::bslmf::MovableRef<unordered_multimap> rhs)
-                                    BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(false);
+        BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(
+                                AllocatorTraits::is_always_equal::value &&
+                                std::is_nothrow_move_assignable<HASH>::value &&
+                                std::is_nothrow_move_assignable<EQUAL>::value);
         // Assign to this object the value, hash function, and key-equivalence
         // comparator of the specified 'rhs' object, propagate to this object
         // the allocator of 'rhs' if the 'ALLOCATOR' type has trait
@@ -695,8 +698,10 @@ class unordered_multimap {
         // growing the container to 'size() == numElements'.  Also note that
         // this operation has no effect if 'numElements <= size()'.
 
-    void swap(unordered_multimap& other)
-                                    BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(false);
+    void swap(unordered_multimap& other) BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(
+                                     AllocatorTraits::is_always_equal::value &&
+                                     bsl::is_nothrow_swappable<HASH>::value &&
+                                     bsl::is_nothrow_swappable<EQUAL>::value);
         // Exchange the value, hasher, key-equality functor, and
         // 'max_load_factor' of this object with those of the specified 'other'
         // object; also exchange the allocator of this object with that of
@@ -728,6 +733,25 @@ class unordered_multimap {
         // Return an iterator providing non-modifiable access to the
         // past-the-end position in the sequence of 'value_type' objects
         // maintained by this unordered multimap.
+
+    bool contains(const key_type &key) const;
+        // Return 'true' if this unordered map contains an element whose key is
+        // equivalent to the specified 'key'.
+
+    template <class LOOKUP_KEY>
+    typename enable_if<
+        BloombergLP::bslmf::IsTransparentPredicate<HASH, LOOKUP_KEY>::value &&
+            BloombergLP::bslmf::IsTransparentPredicate<EQUAL,
+                                                       LOOKUP_KEY>::value,
+        bool>::type
+    contains(const LOOKUP_KEY& key) const
+        // Return 'true' if this unordered map contains an element whose key is
+        // equivalent to the specified 'key'.
+        //
+        // Note: implemented inline due to Sun CC compilation error
+    {
+        return find(key) != end();
+    }
 
     bool empty() const BSLS_KEYWORD_NOEXCEPT;
         // Return 'true' if this unordered multimap contains no elements, and
@@ -1264,6 +1288,7 @@ bool operator==(
     // types 'KEY' and 'VALUE' both be 'equality-comparable' (see {Requirements
     // on 'KEY' and 'VALUE'}).
 
+#ifndef BSLS_COMPILERFEATURES_SUPPORT_THREE_WAY_COMPARISON
 template <class KEY, class VALUE, class HASH, class EQUAL, class ALLOCATOR>
 bool operator!=(
             const unordered_multimap<KEY, VALUE, HASH, EQUAL, ALLOCATOR>& lhs,
@@ -1275,6 +1300,7 @@ bool operator!=(
     // not also contained in the other object.  This method requires that the
     // (template parameter) types 'KEY' and 'VALUE' both be
     // 'equality-comparable' (see {Requirements on 'KEY' and 'VALUE'}).
+#endif
 
 // FREE FUNCTIONS
 template <class KEY, class VALUE, class HASH, class EQUAL, class ALLOCATOR>
@@ -1539,7 +1565,10 @@ inline
 unordered_multimap<KEY, VALUE, HASH, EQUAL, ALLOCATOR>&
 unordered_multimap<KEY, VALUE, HASH, EQUAL, ALLOCATOR>::operator=(
                         BloombergLP::bslmf::MovableRef<unordered_multimap> rhs)
-                                     BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(false)
+    BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(
+                                AllocatorTraits::is_always_equal::value &&
+                                std::is_nothrow_move_assignable<HASH>::value &&
+                                std::is_nothrow_move_assignable<EQUAL>::value)
 {
     // Note that we have delegated responsibility for correct handling of
     // allocator propagation to the 'HashTable' implementation.
@@ -1740,6 +1769,14 @@ void unordered_multimap<KEY, VALUE, HASH, EQUAL, ALLOCATOR>::clear()
 
 template <class KEY, class VALUE, class HASH, class EQUAL, class ALLOCATOR>
 inline
+bool unordered_multimap<KEY, VALUE, HASH, EQUAL, ALLOCATOR>::contains(
+                                                     const key_type& key) const
+{
+    return find(key) != end();
+}
+
+template <class KEY, class VALUE, class HASH, class EQUAL, class ALLOCATOR>
+inline
 typename unordered_multimap<KEY, VALUE, HASH, EQUAL, ALLOCATOR>::iterator
 unordered_multimap<KEY, VALUE, HASH, EQUAL, ALLOCATOR>::find(
                                                            const key_type& key)
@@ -1911,7 +1948,10 @@ template <class KEY, class VALUE, class HASH, class EQUAL, class ALLOCATOR>
 inline
 void unordered_multimap<KEY, VALUE, HASH, EQUAL, ALLOCATOR>::swap(
                                                      unordered_multimap& other)
-                                     BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(false)
+    BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(
+                                     AllocatorTraits::is_always_equal::value &&
+                                     bsl::is_nothrow_swappable<HASH>::value &&
+                                     bsl::is_nothrow_swappable<EQUAL>::value)
 {
     d_impl.swap(other.d_impl);
 }
@@ -2172,6 +2212,7 @@ bool bsl::operator==(
     return lhs.d_impl == rhs.d_impl;
 }
 
+#ifndef BSLS_COMPILERFEATURES_SUPPORT_THREE_WAY_COMPARISON
 template <class KEY, class VALUE, class HASH, class EQUAL, class ALLOCATOR>
 inline
 bool bsl::operator!=(
@@ -2180,6 +2221,7 @@ bool bsl::operator!=(
 {
     return !(lhs == rhs);
 }
+#endif
 
 // FREE FUNCTIONS
 template <class KEY, class VALUE, class HASH, class EQUAL, class ALLOCATOR>
@@ -2254,7 +2296,7 @@ struct IsBitwiseMoveable<
 #endif // ! defined(INCLUDED_BSLSTL_UNORDEREDMULTIMAP_CPP03)
 
 // ----------------------------------------------------------------------------
-// Copyright 2022 Bloomberg Finance L.P.
+// Copyright 2023 Bloomberg Finance L.P.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.

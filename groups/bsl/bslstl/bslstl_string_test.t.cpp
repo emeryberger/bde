@@ -1,9 +1,10 @@
 // bslstl_string_test.t.cpp                                           -*-C++-*-
 #include <bslstl_string_test.h>
 
+#include <bslstl_algorithm.h>    // 'count', 'sort'
 #include <bslstl_forwarditerator.h>
 #include <bslstl_string.h>
-#include <bslstl_string.h>
+#include <bslstl_stringref.h>
 
 #include <bslma_allocator.h>
 #include <bslma_default.h>
@@ -15,6 +16,8 @@
 #include <bslma_testallocatorexception.h>
 #include <bslma_testallocatormonitor.h>
 
+#include <bslh_hash.h>
+
 #include <bslmf_assert.h>
 #include <bslmf_isnothrowmoveconstructible.h>
 #include <bslmf_issame.h>
@@ -24,6 +27,8 @@
 #include <bsls_asserttest.h>
 #include <bsls_bsltestutil.h>
 #include <bsls_buildtarget.h>
+#include <bsls_compilerfeatures.h>
+#include <bsls_libraryfeatures.h>
 #include <bsls_macrorepeat.h>
 #include <bsls_nameof.h>
 #include <bsls_objectbuffer.h>
@@ -33,9 +38,9 @@
 
 #include <bsltf_stdstatefulallocator.h>
 
-#include <algorithm>    // 'adjacent_find', 'sort'
 #include <cstring>      // 'memcmp'
 #include <iomanip>
+#include <ios>          // 'hex'
 #include <iostream>
 #include <istream>
 #include <limits>
@@ -129,6 +134,11 @@ using bsls::nameOfType;
 // =============================
 // [11] TRAITS
 //
+// TYPES:
+// [40] bsl::u8string
+// [40] bsl::u16string
+// [40] bsl::u32string
+//
 // CREATORS:
 // [ 2] basic_string(const ALLOC& a = ALLOC());
 // [ 7] basic_string(const basic_string& original);
@@ -156,7 +166,7 @@ using bsls::nameOfType;
 // [17] basic_string& operator+=(const basic_string& rhs);
 // [17] basic_string& operator+=(const CHAR_TYPE *s);
 // [17] basic_string& operator+=(CHAR_TYPE c);
-// [17] basic_string& operator+=(const basic_string_view& strView);
+// [17] basic_string& operator+=(const STRING_VIEW_LIKE_TYPE& rhs);
 // [16] iterator begin();
 // [16] iterator end();
 // [16] reverse_iterator rbegin();
@@ -174,14 +184,15 @@ using bsls::nameOfType;
 // [13] basic_string& assign(const basic_string& str, pos, n = npos);
 // [13] basic_string& assign(const CHAR_TYPE *s, size_type n);
 // [13] basic_string& assign(const CHAR_TYPE *s);
-// [13] basic_string& assign(const StringRefData<CHAR_TYPE>& strRef);
+// [13] basic_string& assign(const STRING_VIEW_LIKE_TYPE& s);
+// [13] basic_string& assign(const STRING_VIEW_LIKE_TYPE& s, p, n = npos);
 // [13] basic_string& assign(size_type n, CHAR_TYPE c);
 // [13] template <class Iter> basic_string& assign(Iter first, Iter last);
 // [33] basic_string& assign(initializer_list<CHAR_TYPE> values);
 // [17] basic_string& append(const basic_string& str);
 // [17] basic_string& append(const basic_string& str, pos, n = npos);
-// [17] basic_string& append(const basic_string_view& strView);
-// [17] basic_string& append(const basic_string_view& strView, pos, n = npos);
+// [17] basic_string& append(const STRING_VIEW_LIKE_TYPE& strView);
+// [17] basic_string& append(const STRING_VIEW_LIKE_TYPE& strView, pos,n);
 // [17] basic_string& append(const CHAR_TYPE *s, size_type n);
 // [17] basic_string& append(const CHAR_TYPE *s);
 // [17] basic_string& append(size_type n, CHAR_TYPE c);
@@ -193,22 +204,25 @@ using bsls::nameOfType;
 // [18] basic_string& insert(size_type pos, const CHAR_TYPE *s, n);
 // [18] basic_string& insert(size_type pos, const CHAR_TYPE *s);
 // [18] basic_string& insert(size_type pos, size_type n, CHAR_TYPE c);
+// [18] basic_string& insert(size_type p, const STRING_VIEW_LIKE_TYPE& s);
+// [18] basic_string& insert(p1, const STRING_VIEW_LIKE_TYPE& s, p2, n);
 // [18] iterator insert(const_iterator pos, CHAR_TYPE value);
 // [18] iterator insert(const_iterator pos, size_type n, CHAR_TYPE value);
 // [18] template <class Iter> iterator insert(const_iterator, Iter, Iter);
-// [18] basic_string& insert(pos1, const string_view& strView, pos2, n=npos);
-// [18] basic_string& insert(pos1, const string_view& strView, pos2, n=npos);
 // [33] iterator insert(const_iterator pos, initializer_list<CHAR_TYPE>);
 // [19] void pop_back();
 // [19] iterator erase(size_type pos = 0, size_type n = npos);
 // [19] iterator erase(const_iterator position);
 // [19] iterator erase(const_iterator first, const_iterator last);
 // [20] basic_string& replace(pos1, n1, const string& str);
+// [20] basic_string& replace(pos1, n1, const STRING_VIEW_LIKE_TYPE& str);
 // [20] basic_string& replace(pos1, n1, const string& str, pos2, n2=npos);
+// [20] basic_string& replace(p1,n1,const STRING_VIEW_LIKE_TYPE& s,p2,n2);
 // [20] basic_string& replace(pos1, n1, const C *s, n2);
 // [20] basic_string& replace(pos1, n1, const C *s);
 // [20] basic_string& replace(pos1, n1, size_type n2, C c);
 // [20] basic_string& replace(const_iterator p, q, const string& str);
+// [20] basic_string& replace(const_iterator p,q,const STRING_VIEW_LIKE&);
 // [20] basic_string& replace(const_iterator p, q, const C *s, n2);
 // [20] basic_string& replace(const_iterator p, q, const C *s);
 // [20] basic_string& replace(const_iterator p, q, size_type n2, C c);
@@ -240,29 +254,35 @@ using bsls::nameOfType;
 // [ 4] const CHAR_TYPE *data() const;
 // [  ] allocator_type get_allocator() const;
 // [22] size_type find(const string& str, pos = 0) const;
+// [22] size_type find(const STRING_VIEW_LIKE_TYPE& str, pos = 0) const;
 // [22] size_type find(const C *s, pos, n) const;
 // [22] size_type find(const C *s, pos = 0) const;
 // [22] size_type find(C c, pos = 0) const;
-// [22] size_type rfind(const string& str, pos = 0) const;
+// [22] size_type rfind(const string& str, pos = npos) const;
+// [22] size_type rfind(const STRING_VIEW_LIKE_TYPE& str, pos) const;
 // [22] size_type rfind(const C *s, pos, n) const;
-// [22] size_type rfind(const C *s, pos = 0) const;
-// [22] size_type rfind(C c, pos = 0) const;
+// [22] size_type rfind(const C *s, pos = npos) const;
+// [22] size_type rfind(C c, pos = npos) const;
 // [22] size_type find_first_of(const string& str, pos = 0) const;
+// [22] size_type find_first_of(const STRING_VIEW_LIKE_TYPE& s, p) const;
 // [22] size_type find_first_of(const C *s, pos, n) const;
 // [22] size_type find_first_of(const C *s, pos = 0) const;
 // [22] size_type find_first_of(C c, pos = 0) const;
-// [22] size_type find_last_of(const string& str, pos = 0) const;
+// [22] size_type find_last_of(const string& str, pos = npos) const;
+// [22] size_type find_last_of(const STRING_VIEW_LIKE_TYPE& str, p) const;
 // [22] size_type find_last_of(const C *s, pos, n) const;
-// [22] size_type find_last_of(const C *s, pos = 0) const;
-// [22] size_type find_last_of(C c, pos = 0) const;
+// [22] size_type find_last_of(const C *s, pos = npos) const;
+// [22] size_type find_last_of(C c, pos = npos) const;
 // [22] size_type find_first_not_of(const string& str, pos = 0) const;
+// [22] size_type find_first_not_of(const STRING_VIEW_LIKE_TYPE&,p) const;
 // [22] size_type find_first_not_of(const C *s, pos, n) const;
 // [22] size_type find_first_not_of(const C *s, pos = 0) const;
 // [22] size_type find_first_not_of(C c, pos = 0) const;
-// [22] size_type find_last_not_of(const string& str, pos = 0) const;
+// [22] size_type find_last_not_of(const string& str, pos = npos) const;
+// [22] size_type find_last_not_of(const STRING_VIEW_LIKE_TYPE&, p) const;
 // [22] size_type find_last_not_of(const C *s, pos, n) const;
-// [22] size_type find_last_not_of(const C *s, pos = 0) const;
-// [22] size_type find_last_not_of(C c, pos = 0) const;
+// [22] size_type find_last_not_of(const C *s, pos = npos) const;
+// [22] size_type find_last_not_of(C c, pos = npos) const;
 // [23] string substr(pos, n) const;
 // [23] size_type copy(char *s, n, pos = 0) const;
 // [24] int compare(const string& str) const;
@@ -271,6 +291,15 @@ using bsls::nameOfType;
 // [24] int compare(const C *s) const;
 // [24] int compare(pos1, n1, const C *s) const;
 // [24] int compare(pos1, n1, const C *s, n2) const;
+// [24] int compare(const STRING_VIEW_LIKE_TYPE& str) const;
+// [24] int compare(p1, n1, const STRING_VIEW_LIKE_TYPE& str) const;
+// [24] int compare(p1, n1, const STRING_VIEW_LIKE_TYPE& s, p2, n2) const;
+// [41] bool starts_with(basic_string_view characterString) const;
+// [41] bool starts_with(CHAR_TYPE character) const;
+// [41] bool starts_with(const CHAR_TYPE *characterString) const;
+// [41] bool ends_with(basic_string_view characterString) const;
+// [41] bool ends_with(CHAR_TYPE character) const;
+// [41] bool ends_with(const CHAR_TYPE *characterString) const;
 //
 // FREE OPERATORS:
 // [ 6] bool operator==(const string<C,CT,A>&, const string<C,CT,A>&);
@@ -280,17 +309,28 @@ using bsls::nameOfType;
 // [ 6] bool operator!=(const C *, const string<C,CT,A>&);
 // [ 6] bool operator!=(const string<C,CT,A>&, const C *);
 // [24] bool operator<(const string<C,CT,A>&, const string<C,CT,A>&);
+// [24] bool operator<(const string<C,CT,A1>&, const std::string<C,CT,A2>&);
+// [24] bool operator<(const std::string<C,CT,A1>&, const string<C,CT,A2>&);
 // [24] bool operator<(const C *, const string<C,CT,A>&);
 // [24] bool operator<(const string<C,CT,A>&, const C *);
 // [24] bool operator>(const string<C,CT,A>&, const string<C,CT,A>&);
+// [24] bool operator>(const string<C,CT,A1>&, const std::string<C,CT,A2>&);
+// [24] bool operator>(const std::string<C,CT,A1>&, const string<C,CT,A2>&);
 // [24] bool operator>(const C *, const string<C,CT,A>&);
 // [24] bool operator>(const string<C,CT,A>&, const C *);
 // [24] bool operator<=(const string<C,CT,A>&, const string<C,CT,A>&);
+// [24] bool operator<=(const string<C,CT,A1>&, const std::string<C,CT,A2>&);
+// [24] bool operator<=(const std::string<C,CT,A1>&, const string<C,CT,A2>&);
 // [24] bool operator<=(const C *, const string<C,CT,A>&);
 // [24] bool operator<=(const string<C,CT,A>&, const C *);
 // [24] bool operator>=(const string<C,CT,A>&, const string<C,CT,A>&);
+// [24] bool operator>=(const string<C,CT,A1>&, const std::string<C,CT,A2>&);
+// [24] bool operator>=(const std::string<C,CT,A1>&, const string<C,CT,A2>&);
 // [24] bool operator>=(const C *, const string<C,CT,A>&);
 // [24] bool operator>=(const string<C,CT,A>&, const C *);
+// [24] auto operator<=>(const string<C,CT,A>&, const string<C,CT,A>&);
+// [24] auto operator<=>(const string<C,CT,A>&, const C *);
+// [24] auto operator<=>(const string<C,CT,A1>&, const std::string<C,CT,A2>&);
 // [34] string operator ""_s(const char *, size_t);
 // [34] wstring operator ""_s(const wchar_t *, size_t);
 // [34] string operator ""_S(const char *, size_t);
@@ -350,10 +390,11 @@ using bsls::nameOfType;
 // [37] string operator+(const string&&,     CHAR);
 // [37] string operator+(CHAR,               const string&);
 // [37] string operator+(CHAR,               const string&&);
-// [38] CLASS TEMPLATE DEDUCTION GUIDES
+// [42] size_type erase(basic_string& str, const C& c);
+// [42] size_type erase_if(basic_string& str, const UNARY_PRED& pred);
 //-----------------------------------------------------------------------------
 // [ 1] BREATHING TEST
-// [40] USAGE EXAMPLE
+// [43] USAGE EXAMPLE
 // [11] CONCERN: The object has the necessary type traits
 // [26] 'npos' VALUE
 // [25] CONCERN: 'std::length_error' is used properly
@@ -531,15 +572,21 @@ BSLA_MAYBE_UNUSED const int NUM_ALLOCS[] = {
 // redundancy involved in the manual evaluation of the formula below.
 
 #if defined(BSLS_PLATFORM_CPU_32_BIT)
-const size_t k_SHORT_BUFFER_CAPACITY_CHAR    = 19;
-const size_t k_SHORT_BUFFER_CAPACITY_WCHAR_T = 2 == sizeof(wchar_t) ? 9
-                                             : 4 == sizeof(wchar_t) ? 4
-                                             : 20 / sizeof(wchar_t) - 1;
+const size_t k_SHORT_BUFFER_CAPACITY_CHAR     = 19;
+const size_t k_SHORT_BUFFER_CAPACITY_WCHAR_T  = 2 == sizeof(wchar_t) ? 9
+                                              : 4 == sizeof(wchar_t) ? 4
+                                              : 20 / sizeof(wchar_t) - 1;
+const size_t k_SHORT_BUFFER_CAPACITY_CHAR8_T  = k_SHORT_BUFFER_CAPACITY_CHAR;
+const size_t k_SHORT_BUFFER_CAPACITY_CHAR16_T = 9;
+const size_t k_SHORT_BUFFER_CAPACITY_CHAR32_T = 4;
 #elif defined(BSLS_PLATFORM_CPU_64_BIT)
-const size_t k_SHORT_BUFFER_CAPACITY_CHAR    = 23;
-const size_t k_SHORT_BUFFER_CAPACITY_WCHAR_T = 2 == sizeof(wchar_t) ? 11
-                                             : 4 == sizeof(wchar_t) ? 5
-                                             : 24 / sizeof(wchar_t) - 1;
+const size_t k_SHORT_BUFFER_CAPACITY_CHAR     = 23;
+const size_t k_SHORT_BUFFER_CAPACITY_WCHAR_T  = 2 == sizeof(wchar_t) ? 11
+                                              : 4 == sizeof(wchar_t) ? 5
+                                              : 24 / sizeof(wchar_t) - 1;
+const size_t k_SHORT_BUFFER_CAPACITY_CHAR8_T  = k_SHORT_BUFFER_CAPACITY_CHAR;
+const size_t k_SHORT_BUFFER_CAPACITY_CHAR16_T = 11;
+const size_t k_SHORT_BUFFER_CAPACITY_CHAR32_T = 5;
 #else
 // Unknown platform configuration is likely to error when trying to use either
 // of the two constants not defined in this block.
@@ -556,6 +603,21 @@ template <>
 struct ExpectedShortBufferCapacity<wchar_t>
     : bsl::integral_constant<size_t, k_SHORT_BUFFER_CAPACITY_WCHAR_T> {};
 
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_UTF8_CHAR_TYPE)
+template <>
+struct ExpectedShortBufferCapacity<char8_t>
+    : bsl::integral_constant<size_t, k_SHORT_BUFFER_CAPACITY_CHAR8_T> {};
+#endif
+
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_UNICODE_CHAR_TYPES)
+template <>
+struct ExpectedShortBufferCapacity<char16_t>
+    : bsl::integral_constant<size_t, k_SHORT_BUFFER_CAPACITY_CHAR16_T> {};
+template <>
+struct ExpectedShortBufferCapacity<char32_t>
+    : bsl::integral_constant<size_t, k_SHORT_BUFFER_CAPACITY_CHAR32_T> {};
+#endif
+
 extern char BSLSTL_STRING_TEST_ONLY_INCOMPLETE_CHAR_ARRAY[];
 // This variable is required to reproduce specific AIX issue, when we are not
 // able to convert inclomplete char arrays.  To reproduce this situation we
@@ -569,49 +631,73 @@ extern char BSLSTL_STRING_TEST_ONLY_INCOMPLETE_CHAR_ARRAY[];
 // Support function overloads for printing debug info, discovered via ADL.
 namespace bsl {
 
-template <class TRAITS, class ALLOC>
-void debugprint(const bsl::basic_string<char, TRAITS, ALLOC>& v)
-    // Print the contents of the specified string 'v' to 'stdout', then flush.
+template <class CHAR_TYPE, class TRAITS, class ALLOC>
+void debugprint(const bsl::basic_string<CHAR_TYPE, TRAITS, ALLOC>& v)
 {
     if (v.empty()) {
         printf("<empty>");
     }
     else {
         for (size_t i = 0; i < v.size(); ++i) {
-            printf("%c", v[i]);
+            printf("%lc", static_cast<wchar_t>(v[i]));
         }
     }
     fflush(stdout);
 }
 
-template <class TRAITS, class ALLOC>
-void debugprint(const bsl::basic_string<wchar_t, TRAITS, ALLOC>& v)
-    // Print the contents of the specified string 'v' to 'stdout', then flush.
-{
-    if (v.empty()) {
-        printf("<empty>");
-    }
-    else {
-        for (size_t i = 0; i < v.size(); ++i) {
-            printf("%lc", wint_t(v[i]));
-        }
-    }
-    fflush(stdout);
-}
 }  // close namespace bsl
 
 // Legacy debug print support.
-inline
-void dbg_print(const char *s) { printf("\"%s\"", s); }
-void dbg_print(const wchar_t *s)
+
+template <class CHAR_TYPE>
+void dbg_print_impl(const CHAR_TYPE *s)
 {
     putchar('"');
-    while (*s) {
-        printf("%lc", wint_t(*s));
-        ++s;
+    if (sizeof(CHAR_TYPE) == sizeof(char)) {
+        printf("%s", reinterpret_cast<const char *>(s));
+    }
+    else {
+        while (*s) {
+            printf("%lc", static_cast<wchar_t>(*s));
+            ++s;
+        }
     }
     putchar('"');
 }
+
+inline
+void dbg_print(const char *s)
+{
+    dbg_print_impl(s);
+}
+
+inline
+void dbg_print(const wchar_t *s)
+{
+    dbg_print_impl(s);
+}
+
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_UTF8_CHAR_TYPE)
+inline
+void dbg_print(const char8_t *s)
+{
+    dbg_print_impl(s);
+}
+#endif
+
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_UNICODE_CHAR_TYPES)
+inline
+void dbg_print(const char16_t *s)
+{
+    dbg_print_impl(s);
+}
+
+inline
+void dbg_print(const char32_t *s)
+{
+    dbg_print_impl(s);
+}
+#endif
 
 // Generic debug print function (3-arguments).
 template <class TYPE>
@@ -689,21 +775,47 @@ void debugprint(const std::initializer_list<char>& v)
     fflush(stdout);
 }
 
-void debugprint(const std::initializer_list<wchar_t>& v)
+template <class CHAR_TYPE>
+inline
+void debugprint_impl(const std::initializer_list<CHAR_TYPE>& v)
 {
     if (0 == v.size()) {
         printf("<empty>");
     }
     else {
-        for (std::initializer_list<wchar_t>::iterator itr  = v.begin(),
-                                                      end  = v.end();
-                                                      end != itr;
-                                                      ++itr) {
-            printf("'l%c'", *itr);
+        typedef typename std::initializer_list<CHAR_TYPE>::iterator It;
+
+        for (It itr = v.begin(), end = v.end(); end != itr; ++itr) {
+            printf("'l%c'", static_cast<wchar_t>(*itr));
         }
     }
     fflush(stdout);
 }
+
+void debugprint(const std::initializer_list<wchar_t>& v)
+{
+    debugprint_impl(v);
+}
+
+# if defined(BSLS_COMPILERFEATURES_SUPPORT_UTF8_CHAR_TYPE)
+void debugprint(const std::initializer_list<char8_t>& v)
+{
+    debugprint_impl(v);
+}
+# endif
+
+# if defined(BSLS_COMPILERFEATURES_SUPPORT_UNICODE_CHAR_TYPES)
+void debugprint(const std::initializer_list<char16_t>& v)
+{
+    debugprint_impl(v);
+}
+
+void debugprint(const std::initializer_list<char32_t>& v)
+{
+    debugprint_impl(v);
+}
+# endif
+
 }  // close namespace std
 
 #endif
@@ -954,6 +1066,9 @@ class LimitAllocator : public ALLOC {
 
     // ACCESSORS
     size_type max_size() const { return d_limit; }
+    LimitAllocator select_on_container_copy_construction() const {
+        return LimitAllocator();
+    }
 };
 
 template <class TYPE, class TRAITS, class ALLOC>
@@ -975,6 +1090,183 @@ struct UsesBslmaAllocator<LimitAllocator<ALLOC> > : bsl::false_type {};
 
 }  // close namespace bslma
 }  // close enterprise namespace
+
+                 // ========================================
+                 // class ConvertibleToStringViewAndCStrType
+                 // ========================================
+
+template <class TYPE,
+          class TRAITS = bsl::char_traits<TYPE> >
+class ConvertibleToStringViewAndCStrType
+    // This test class provides conversion operators to
+    // 'bsl::basic_string_view' object and c-string.  It is used for testing
+    // methods that accept 'StringViewLike' types.
+{
+    // DATA
+    const TYPE *d_value_p;  // value (held, not owned)
+
+  public:
+    // CREATORS
+    explicit ConvertibleToStringViewAndCStrType(const TYPE *value);
+        // Create an object that has the specified 'value'.
+
+    // ACCESSORS
+    operator bsl::basic_string_view<TYPE, TRAITS>() const;
+        // Convert this object to a 'bsl::basic_string_view' object,
+        // instantiated with the same character type and traits type.  The
+        // return string will contain the same sequence of characters as this
+        // object.  Note that this conversion operator can be invoked
+        // implicitly (e.g., during argument passing).
+
+    operator const TYPE *() const;
+        // Convert this object to a null-terminated character string.  The
+        // return string will contain the same sequence of characters as this
+        // object.  Note that this conversion operator can be invoked
+        // implicitly (e.g., during argument passing).
+
+    const TYPE *data() const;
+        // Return the value of this object.
+
+    size_t length() const;
+        // Return the length of the underlying string.
+};
+
+                 // ----------------------------------------
+                 // class ConvertibleToStringViewAndCStrType
+                 // ----------------------------------------
+
+// CREATORS
+template <class TYPE, class TRAITS>
+inline
+ConvertibleToStringViewAndCStrType<TYPE, TRAITS>::
+ConvertibleToStringViewAndCStrType(const TYPE *value)
+: d_value_p(value)
+{
+}
+
+// ACCESSORS
+template <class TYPE, class TRAITS>
+inline
+ConvertibleToStringViewAndCStrType<TYPE, TRAITS>::
+operator bsl::basic_string_view<TYPE, TRAITS>() const
+{
+    return bsl::basic_string_view<TYPE, TRAITS>(d_value_p);
+}
+
+template <class TYPE, class TRAITS>
+inline
+ConvertibleToStringViewAndCStrType<TYPE, TRAITS>::operator const TYPE *() const
+{
+    return d_value_p;
+}
+
+template <class TYPE, class TRAITS>
+inline
+const TYPE *ConvertibleToStringViewAndCStrType<TYPE, TRAITS>::data() const
+{
+    return d_value_p;
+}
+
+template <class TYPE, class TRAITS>
+inline
+size_t ConvertibleToStringViewAndCStrType<TYPE, TRAITS>::length() const
+{
+    return TRAITS::length(d_value_p);
+}
+
+                 // =====================================
+                 // class ConvertibleToStringViewOnlyType
+                 // =====================================
+
+template <class TYPE,
+          class TRAITS = bsl::char_traits<TYPE> >
+class ConvertibleToStringViewOnlyType
+    // This test class provides conversion operators to
+    // 'bsl::basic_string_view' object.  It is used for testing methods that
+    // accept 'StringViewLike' types.
+{
+    // DATA
+    const TYPE *d_value_p;  // value (held, not owned)
+
+  public:
+    // CREATORS
+    explicit ConvertibleToStringViewOnlyType(const TYPE *value);
+        // Create an object that has the specified 'value'.
+
+    // ACCESSORS
+    operator bsl::basic_string_view<TYPE, TRAITS>() const;
+        // Convert this object to a 'bsl::basic_string_view' object,
+        // instantiated with the same character type and traits type.  The
+        // return string will contain the same sequence of characters as this
+        // object.  Note that this conversion operator can be invoked
+        // implicitly (e.g., during argument passing).
+
+    const TYPE *data() const;
+        // Return the value of this object.
+
+    size_t length() const;
+        // Return the length of the underlying string.
+};
+
+                 // -------------------------------------
+                 // class ConvertibleToStringViewOnlyType
+                 // -------------------------------------
+
+// CREATORS
+template <class TYPE, class TRAITS>
+inline
+ConvertibleToStringViewOnlyType<TYPE, TRAITS>::
+ConvertibleToStringViewOnlyType(const TYPE *value)
+: d_value_p(value)
+{
+}
+
+// ACCESSORS
+template <class TYPE, class TRAITS>
+inline
+ConvertibleToStringViewOnlyType<TYPE, TRAITS>::
+operator bsl::basic_string_view<TYPE, TRAITS>() const
+{
+    return bsl::basic_string_view<TYPE, TRAITS>(d_value_p);
+}
+
+template <class TYPE, class TRAITS>
+inline
+const TYPE *ConvertibleToStringViewOnlyType<TYPE, TRAITS>::data() const
+{
+    return d_value_p;
+}
+
+template <class TYPE, class TRAITS>
+inline
+size_t ConvertibleToStringViewOnlyType<TYPE, TRAITS>::length() const
+{
+    return TRAITS::length(d_value_p);
+}
+
+                 // ------------------------------
+                 // class CharacterSearchPredicate
+                 // ------------------------------
+
+template <class TYPE>
+class CharacterSearchPredicate
+    // This predicate matches the character passed in at construction.
+{
+    TYPE d_chr;
+
+  public:
+    // CREATORS
+    CharacterSearchPredicate(const TYPE chr)                        // IMPLICIT
+        // Create an object whose 'operator()' matches the specified 'chr'.
+    : d_chr(chr)
+    {
+    }
+
+    // ACCESSORS
+    bool operator()(const TYPE chr) const { return d_chr == chr; }
+        // Return 'true' if the specified 'chr' matches the character passed to
+        // this object's constructor.
+};
 
 //=============================================================================
 //                       TEST DRIVER TEMPLATE
@@ -1145,6 +1437,12 @@ struct TestDriver {
         // specifications, and check that the specified 'result' agrees.
 
     // TEST CASES
+    static void testCase42();
+        // Test 'erase' and 'erase_if'.
+
+    static void testCase41();
+        // Test 'starts_with' and 'ends_with'.
+
     static void testCase39();
         // Test 'shrink_to_fit'.
 
@@ -1258,8 +1556,8 @@ struct TestDriver {
     static void testCase13Range(const CONTAINER&);
         // Test 'assign' member template.
 
-    static void testCase13StrRefData();
-        // Test 'assign' member template from 'StrRefData' type.
+    static void testCase13StrViewLike();
+        // Test 'assign' member template from 'StrViewLike' type.
 
     static void testCase13InputIterator();
         // Test 'assign' member template from a pair of input iterators.
@@ -1424,6 +1722,616 @@ void TestDriver<TYPE,TRAITS,ALLOC>::stretchRemoveAll(Obj         *object,
                                 // ----------
                                 // TEST CASES
                                 // ----------
+
+template <class TYPE, class TRAITS, class ALLOC>
+void TestDriver<TYPE, TRAITS, ALLOC>::testCase42()
+{
+    // ------------------------------------------------------------------------
+    // TESTING 'erase' AND 'erase_if'
+    //
+    // Concerns:
+    //: 1 The 'erase' and 'erase_if' free functions work correctly for objects
+    //:   of any size and content.
+    //:
+    //: 2 The NUL character is handled correctly regardless of whether it
+    //:   belongs to the object or is the character being erased.
+    //:
+    //: 3 An empty string is handled correctly.
+    //:
+    //: 4 No additional memory allocation occurs.
+    //
+    // Plan:
+    //: 1 Call 'erase' and 'erase_if' on an empty string and make sure there's
+    //:   no effect. (C-1)
+    //:
+    //: 2 Construct an object with a variety of elements, including the NUL
+    //:   character.
+    //:
+    //: 3 Call 'erase' and 'erase_if' methods and verify the results.
+    //:   (C-1, 2, 3)
+    //:
+    //: 4 Verify that no additional memory allocation occurs during erasure.
+    //:   (C-4)
+    //
+    // Testing:
+    //   size_type erase(basic_string& str, const C& c);
+    //   size_type erase_if(basic_string& str, const UNARY_PRED& pred);
+    // ------------------------------------------------------------------------
+
+    {
+        if (veryVerbose)
+            printf("\t...erasing '\\0' from an empty string\n");
+        {
+            Obj mX(g(""));  // empty string
+            Tam dam(defaultAllocator_p);
+
+            ASSERTV(mX.length(), 0 == mX.length());
+
+            const TYPE chr = '\0';  // not present in 'mX'
+
+            const size_t count = bsl::count(mX.begin(), mX.end(), chr);
+            ASSERTV(count, 0 == count);
+
+            const size_t erased = bsl::erase(mX, chr);
+
+            ASSERTV(erased, 0 == erased);
+            ASSERTV(mX.length(), 0 == mX.length());
+
+            const size_t eraseIfd =
+                        bsl::erase_if(mX, CharacterSearchPredicate<TYPE>(chr));
+
+            ASSERTV(eraseIfd, 0 == eraseIfd);
+            ASSERTV(mX.length(), 0 == mX.length());
+
+            ASSERT(dam.isTotalSame());
+        }
+
+        const char *SPEC = "ABBCCCDDDDEEEEEFFFFFF";
+        const Obj   SPECOBJ(g(SPEC));
+
+        Obj data;
+        data.push_back(TYPE('\0'));
+        data += SPECOBJ;
+        data.push_back(TYPE('\0'));
+        data.push_back(TYPE('\0'));
+        data += SPECOBJ;
+        data.push_back(TYPE('\0'));
+        data.push_back(TYPE('\0'));
+        data.push_back(TYPE('\0'));
+
+        // Make sure 'data' is too large for small-string optimization.
+        data += data;
+        data += data;
+
+        for (size_t len = 0; len < data.length(); ++len) {
+            if (veryVerbose)
+                printf("\t...at length %zu\n", len);
+            const Obj    DATA(data, len);
+            const size_t LENGTH = DATA.length();
+
+            Obj uniqueDataElements(data);
+            bsl::sort(uniqueDataElements.begin(), uniqueDataElements.end());
+            bsl::unique(uniqueDataElements.begin(), uniqueDataElements.end());
+
+            if (veryVerbose)
+                printf("\t\t...erasing a non-existent character\n");
+            {
+                Obj mX(DATA);  // object to (not) erase from
+                Tam dam(defaultAllocator_p);
+
+                const TYPE chr = 'Z';  // not present in 'mX'
+
+                const size_t count = bsl::count(mX.begin(), mX.end(), chr);
+                ASSERTV(count, 0 == count);
+
+                const size_t erased = bsl::erase(mX, chr);
+
+                ASSERTV(erased, 0 == erased);
+                ASSERTV(mX.length(), LENGTH == mX.length());
+
+                const size_t eraseIfd =
+                        bsl::erase_if(mX, CharacterSearchPredicate<TYPE>(chr));
+
+                ASSERTV(eraseIfd, 0 == eraseIfd);
+                ASSERTV(mX.length(), LENGTH == mX.length());
+
+                ASSERT(dam.isTotalSame());
+            }
+
+            if (veryVerbose)
+                printf("\t\t...testing erasing each character from a "
+                       "string\n");
+            for (size_t i = 0; i < uniqueDataElements.length(); ++i) {
+                Obj mX(DATA);  // object to erase from
+                Tam dam(defaultAllocator_p);
+
+                // Use 'uniqueDataElements' to skip redundant elements.
+                const TYPE chr = uniqueDataElements[i];
+
+                if (veryVeryVerbose)
+                    std::cout << "\t\t... erasing '"
+                              << (std::isprint(chr) ? char(chr) : '.')
+                              << "' ('\\x" << std::hex << int(chr) << std::dec
+                              << "')" << std::endl;
+
+                const size_t count = bsl::count(mX.begin(), mX.end(), chr);
+
+                const size_t erased = bsl::erase(mX, chr);
+
+                ASSERTV(count, erased, count == erased);
+                ASSERTV(mX.length(), erased, LENGTH == mX.length() + erased);
+
+                const size_t postCount = bsl::count(mX.begin(), mX.end(), chr);
+                ASSERTV(postCount, 0 == postCount);
+                ASSERT(dam.isTotalSame());
+
+                Obj mY(DATA);  // object to erase_if from
+
+                dam.reset();
+
+                const size_t eraseIfd =
+                        bsl::erase_if(mY, CharacterSearchPredicate<TYPE>(chr));
+
+                ASSERTV(count, eraseIfd, count == eraseIfd);
+                ASSERTV(mY.length(),
+                        eraseIfd,
+                        LENGTH == mY.length() + eraseIfd);
+
+                const size_t postIfCount = bsl::count(mY.begin(),
+                                                      mY.end(),
+                                                      chr);
+                ASSERTV(postIfCount, 0 == postIfCount);
+                ASSERT(dam.isTotalSame());
+            }
+        }
+    }
+}
+
+template <class TYPE, class TRAITS, class ALLOC>
+void TestDriver<TYPE, TRAITS, ALLOC>::testCase41()
+{
+    // ------------------------------------------------------------------------
+    // TESTING 'starts_with' AND 'ends_with'
+    //
+    // Concerns:
+    //: 1 The 'starts_with' and 'ends_with' methods work correctly for objects
+    //:   of any size and content.
+    //:
+    //: 2 The null character is handled correctly regardless of whether it
+    //:   belongs to the object or to the string for search.
+    //:
+    //: 3 An empty string is handled correctly regardless of whether it
+    //:   is an empty object or an empty string for search.
+    //:
+    //: 4 No additional memory allocation occurs.
+    //:
+    //: 5 QoI: Asserted precondition violations are detected when enabled.
+    //
+    // Plan:
+    //: 1 Using a loop-based approach, construct a set of objects and a set
+    //:   of strings for search having different sizes and content.
+    //:
+    //: 2 Call every overload of the 'starts_with' and 'ends_with' methods and
+    //:   verify the results.  Verify that no memory was allocated by the
+    //:   default allocator.  (C-1, 3)
+    //:
+    //: 3 Using a table-based approach, construct a set of objects and a set
+    //:   of strings for search having different sizes and content and
+    //:   containing the null character.
+    //:
+    //: 4 Call 'string_view' and single characters overloads of the
+    //:   'starts_with' and 'ends_with' methods and verify the results.
+    //:   Verify that no memory was allocated by the default allocator.
+    //:
+    //: 5 Using a table-based approach, construct a set of objects containing
+    //:   the null character and a set of strings for search having different
+    //:   sizes.  Due to the c-strings peculiarity when the first null
+    //:   character encountered is considered the end of the string, we have to
+    //:   create a separate table, different from the table from P-3.  In this
+    //:   table only object specifications contain null characters.
+    //:
+    //: 6 Call c-string overloads of the 'starts_with' and 'ends_with'
+    //:   methods and verify the results.  Verify that no memory was allocated
+    //:   by the default allocator.  (C-2, 4)
+    //:
+    //: 7 Verify that, in appropriate build modes, defensive checks are
+    //:   triggered for invalid attribute values, but not triggered for
+    //:   adjacent valid ones (using the 'BSLS_ASSERTTEST_*' macros).  (C-5)
+    //
+    // Testing:
+    //   bool starts_with(basic_string_view characterString) const;
+    //   bool starts_with(CHAR_TYPE character) const;
+    //   bool starts_with(const CHAR_TYPE *characterString) const;
+    //   bool ends_with(basic_string_view characterString) const;
+    //   bool ends_with(CHAR_TYPE character) const;
+    //   bool ends_with(const CHAR_TYPE *characterString) const;
+    // ------------------------------------------------------------------------
+
+    typedef bsl::basic_string_view<TYPE> StringView;
+
+    const char   *ty = bsls::NameOf<TYPE>();
+
+    if (verbose) printf("\tTesting basic behavior\n");
+    {
+        const char   *SPEC   = "ABCDEFGHIJKL";
+        const Obj     DATA(g(SPEC));
+        const size_t  LENGTH = DATA.length();
+
+        // Despite there is no overload that accepts 'basic_string' object, we
+        // are going to use such object as a basis for parameters.
+
+        Obj        mX;          // object to search in
+        const Obj& X = mX;
+        Obj        mStr;        // string for search
+        const Obj& Str = mStr;
+
+        mX.reserve(LENGTH);
+        mStr.reserve(LENGTH);
+
+        for (size_t i = 0; i < LENGTH; ++i) {
+            const size_t OBJ_INDEX = i;
+            for (size_t j = 0; j <= LENGTH - OBJ_INDEX; ++j) {
+                const size_t OBJ_LENGTH = j;
+
+                // Make sure that we don't go beyond the boundaries of the
+                // original data.
+                ASSERTV(LENGTH, OBJ_INDEX, OBJ_LENGTH,
+                        LENGTH >= OBJ_INDEX + OBJ_LENGTH);
+                mX.assign(DATA.data() + OBJ_INDEX, OBJ_LENGTH);
+
+                for (size_t k = 0; k < LENGTH; ++k) {
+                    const size_t STR_INDEX = k;
+                    for (size_t l = 0; l <= LENGTH - STR_INDEX; ++l) {
+                        const size_t STR_LENGTH = l;
+
+                        // Make sure that we don't go beyond the boundaries of
+                        // the original data.
+                        ASSERTV(LENGTH, STR_INDEX, STR_LENGTH,
+                                LENGTH >= STR_INDEX + STR_LENGTH);
+                        mStr.assign(DATA.data() + STR_INDEX, STR_LENGTH);
+
+                        if (veryVerbose) {
+                            T_ T_ P_(ty)
+                                  P_(OBJ_INDEX)
+                                  P_(OBJ_LENGTH)
+                                  P_(STR_INDEX)
+                                  P (STR_LENGTH);
+                        }
+
+                        // Calculation of expected results.
+
+                        const bool EXP_S_RESULT = (OBJ_INDEX  == STR_INDEX &&
+                                                   OBJ_LENGTH >= STR_LENGTH)
+                                               || (0 == STR_LENGTH);
+
+                        const bool EXP_E_RESULT = (OBJ_INDEX <= STR_INDEX &&
+                                                   OBJ_INDEX + OBJ_LENGTH ==
+                                                   STR_INDEX + STR_LENGTH)
+                                               || (0 == STR_LENGTH);
+
+                        // Objects for search.
+
+                        const StringView  SV(Str.data(), Str.length());
+                        const TYPE       *C_STR = Str.data();
+
+                        // The test itself.
+
+                        Tam dam(defaultAllocator_p);
+
+                        ASSERTV(ty, X, Str, EXP_S_RESULT,
+                                EXP_S_RESULT == X.starts_with(SV));
+                        ASSERTV(ty, X, Str, EXP_S_RESULT,
+                                EXP_S_RESULT == X.starts_with(C_STR));
+
+                        ASSERTV(ty, X, Str, EXP_E_RESULT,
+                                EXP_E_RESULT == X.ends_with(SV));
+                        ASSERTV(ty, X, Str, EXP_E_RESULT,
+                                EXP_E_RESULT == X.ends_with(C_STR));
+
+                        ASSERT(dam.isTotalSame());
+                    }
+
+                    // Testing overload with single character.
+
+                    {
+                        const TYPE CH          = DATA[STR_INDEX];
+                        const bool S_CH_RESULT = OBJ_LENGTH != 0 &&
+                                                 OBJ_INDEX  == STR_INDEX;
+                        const bool E_CH_RESULT = OBJ_LENGTH != 0 &&
+                                       OBJ_INDEX + OBJ_LENGTH - 1 == STR_INDEX;
+
+                        Tam dam(defaultAllocator_p);
+
+                        ASSERTV(ty, X, CH, S_CH_RESULT,
+                                S_CH_RESULT == X.starts_with(CH));
+                        ASSERTV(ty, X, CH, E_CH_RESULT,
+                                E_CH_RESULT == X.ends_with(CH));
+
+                        ASSERT(dam.isTotalSame());
+                    }
+                }
+            }
+        }
+    }
+
+    if (verbose) printf("\tTesting null character\n");
+    // Note that since we use c-strings for specifications we have to replace
+    // null characters with zero symbols in the table.
+    {
+        // Testing 'string_view' and single character overloads.
+        {
+            static const struct {
+                int         d_lineNum;     // source line number
+
+                const char *d_objSpec_p;   // object specification string
+
+                const char *d_strSpec_p;   // specification for search string
+
+                bool        d_startsWith;  // expected result of the
+                                           // 'starts_with'
+
+                bool        d_endsWith;    // expected result of the
+                                           // 'ends_with'
+            } DATA[] = {
+                //LINE  OBJ_SPEC STR_SPEC STARTS_WITH ENDS_WITH
+                //----  -------- -------- ----------- ---------
+                { L_,   "",      "0",     false,      false    },
+                { L_,   "",      "00",    false,      false    },
+                { L_,   "",      "0A",    false,      false    },
+                { L_,   "",      "A0",    false,      false    },
+                { L_,   "",      "000",   false,      false    },
+
+                { L_,   "0",     "",      true,       true     },
+                { L_,   "0",     "0",     true,       true     },
+                { L_,   "0",     "A",     false,      false    },
+                { L_,   "0",     "00",    false,      false    },
+                { L_,   "0",     "0A",    false,      false    },
+                { L_,   "0",     "A0",    false,      false    },
+                { L_,   "0",     "000",   false,      false    },
+                { L_,   "A",     "0",     false,      false    },
+                { L_,   "A",     "A",     true,       true     },
+                { L_,   "A",     "00",    false,      false    },
+                { L_,   "A",     "0A",    false,      false    },
+                { L_,   "A",     "A0",    false,      false    },
+                { L_,   "A",     "000",   false,      false    },
+
+                { L_,   "00",    "",      true,       true     },
+                { L_,   "00",    "0",     true,       true     },
+                { L_,   "00",    "A",     false,      false    },
+                { L_,   "00",    "00",    true,       true     },
+                { L_,   "00",    "0A",    false,      false    },
+                { L_,   "00",    "A0",    false,      false    },
+                { L_,   "00",    "000",   false,      false    },
+                { L_,   "00",    "00A",   false,      false    },
+                { L_,   "00",    "0A0",   false,      false    },
+                { L_,   "00",    "A00",   false,      false    },
+                { L_,   "00",    "0000",  false,      false    },
+
+                { L_,   "0A",    "",      true,       true     },
+                { L_,   "0A",    "0",     true,       false    },
+                { L_,   "0A",    "A",     false,      true     },
+                { L_,   "0A",    "00",    false,      false    },
+                { L_,   "0A",    "0A",    true,       true     },
+                { L_,   "0A",    "A0",    false,      false    },
+                { L_,   "0A",    "000",   false,      false    },
+                { L_,   "0A",    "00A",   false,      false    },
+                { L_,   "0A",    "0A0",   false,      false    },
+                { L_,   "0A",    "A00",   false,      false    },
+                { L_,   "0A",    "0000",  false,      false    },
+
+                { L_,   "A0",    "",      true,       true     },
+                { L_,   "A0",    "0",     false,      true     },
+                { L_,   "A0",    "A",     true,       false    },
+                { L_,   "A0",    "00",    false,      false    },
+                { L_,   "A0",    "0A",    false,      false    },
+                { L_,   "A0",    "A0",    true,       true     },
+                { L_,   "A0",    "000",   false,      false    },
+                { L_,   "A0",    "00A",   false,      false    },
+                { L_,   "A0",    "0A0",   false,      false    },
+                { L_,   "A0",    "A00",   false,      false    },
+                { L_,   "A0",    "0000",  false,      false    },
+
+                { L_,   "000",   "",      true,       true     },
+                { L_,   "000",   "0",     true,       true     },
+                { L_,   "000",   "00",    true,       true     },
+                { L_,   "000",   "0A",    false,      false    },
+                { L_,   "000",   "A0",    false,      false    },
+                { L_,   "000",   "000",   true,       true     },
+                { L_,   "000",   "00A",   false,      false    },
+                { L_,   "000",   "0A0",   false,      false    },
+                { L_,   "000",   "A00",   false,      false    },
+                { L_,   "000",   "0000",  false,      false    },
+            };
+
+            const size_t NUM_DATA = sizeof DATA / sizeof *DATA;
+
+            for (size_t i = 0; i < NUM_DATA; ++i) {
+                const int     LINE         = DATA[i].d_lineNum;
+                const char   *OBJ_SPEC     = DATA[i].d_objSpec_p;
+                const size_t  OBJ_SPEC_LEN = strlen(OBJ_SPEC);
+                const char   *STR_SPEC     = DATA[i].d_strSpec_p;
+                const size_t  STR_SPEC_LEN = strlen(STR_SPEC);
+                const bool    EXP_S_RES    = DATA[i].d_startsWith;
+                const bool    EXP_E_RES    = DATA[i].d_endsWith;
+
+                if (veryVerbose) {
+                    T_ T_ P_(ty) P_(LINE) P_(OBJ_SPEC) P(STR_SPEC);
+                }
+                Obj        mX;      // object to search in
+                const Obj& X = mX;
+                Obj        mStr;    // string for search,
+                const Obj& Str = mStr;
+
+                // Expected results for the single character overload.
+
+                const bool EXP_0_S = 0 == OBJ_SPEC_LEN ? false
+                                                       : '0' == OBJ_SPEC[0];
+                const bool EXP_A_S = 0 == OBJ_SPEC_LEN ? false
+                                                       : 'A' == OBJ_SPEC[0];
+                const bool EXP_0_E = 0 == OBJ_SPEC_LEN
+                                   ? false
+                                   : '0' == OBJ_SPEC[OBJ_SPEC_LEN - 1];
+                const bool EXP_A_E = 0 == OBJ_SPEC_LEN
+                                   ? false
+                                   : 'A' == OBJ_SPEC[OBJ_SPEC_LEN - 1];
+
+                // Populating strings.
+
+                for (size_t j = 0; j < OBJ_SPEC_LEN; ++j) {
+                    if ('0' == OBJ_SPEC[j]) {
+                        mX.push_back(0);
+                    }
+                    else if ('A' == OBJ_SPEC[j]) {
+                        mX.push_back('A');
+                    }
+                }
+
+                for (size_t j = 0; j < STR_SPEC_LEN; ++j) {
+                    if ('0' == STR_SPEC[j]) {
+                        mStr.push_back(0);
+                    }
+                    else if ('A' == STR_SPEC[j]) {
+                        mStr.push_back('A');
+                    }
+                }
+
+                const StringView SV(Str.data(), Str.length());
+
+                // Testing single character overload.
+
+                Tam dam(defaultAllocator_p);
+
+                ASSERTV(LINE, OBJ_SPEC, EXP_0_S,
+                        EXP_0_S == X.starts_with(TYPE(0)));
+                ASSERTV(LINE, OBJ_SPEC, EXP_A_S,
+                        EXP_A_S == X.starts_with('A'));
+                ASSERTV(LINE, OBJ_SPEC, EXP_0_E,
+                        EXP_0_E == X.ends_with(TYPE(0)));
+                ASSERTV(LINE, OBJ_SPEC, EXP_A_E, EXP_A_E == X.ends_with('A'));
+
+                // Testing 'string_view' overload.
+
+                ASSERTV(LINE, OBJ_SPEC, STR_SPEC, EXP_S_RES,
+                        EXP_S_RES == X.starts_with(SV));
+                ASSERTV(LINE, OBJ_SPEC, STR_SPEC, EXP_E_RES,
+                        EXP_E_RES == X.ends_with(SV));
+
+                ASSERT(dam.isTotalSame());
+            }
+        }
+        // Testing c-string overload
+        {
+           static const struct {
+                int         d_lineNum;     // source line number
+
+                const char *d_objSpec_p;   // object specification string
+
+                const char *d_strSpec_p;   // specification for search string
+
+                bool        d_startsWith;  // expected result of the
+                                           // 'starts_with'
+
+                bool        d_endsWith;    // expected result of the
+                                           // 'ends_with'
+            } DATA[] = {
+                //LINE  OBJ_SPEC STR_SPEC STARTS_WITH ENDS_WITH
+                //----  -------- -------- ----------- ---------
+                { L_,   "0",     "",      true,       true     },
+                { L_,   "0",     "A",     false,      false    },
+                { L_,   "0",     "AA",    false,      false    },
+                { L_,   "0",     "AAA",   false,      false    },
+
+                { L_,   "00",    "",      true,       true     },
+                { L_,   "00",    "A",     false,      false    },
+                { L_,   "00",    "AA",    false,      false    },
+                { L_,   "00",    "AAA",   false,      false    },
+
+                { L_,   "0A",    "",      true,       true     },
+                { L_,   "0A",    "A",     false,      true     },
+                { L_,   "0A",    "AA",    false,      false    },
+                { L_,   "0A",    "AAA",   false,      false    },
+
+                { L_,   "A0",    "",      true,       true     },
+                { L_,   "A0",    "A",     true,       false    },
+                { L_,   "A0",    "AA",    false,      false    },
+                { L_,   "A0",    "AAA",   false,      false    },
+
+                { L_,   "000",   "",      true,       true     },
+                { L_,   "000",   "A",     false,      false    },
+                { L_,   "000",   "AA",    false,      false    },
+                { L_,   "000",   "AAA",   false,      false    },
+            };
+
+            const size_t NUM_DATA = sizeof DATA / sizeof *DATA;
+
+            for (size_t i = 0; i < NUM_DATA; ++i) {
+                const int     LINE         = DATA[i].d_lineNum;
+                const char   *OBJ_SPEC     = DATA[i].d_objSpec_p;
+                const size_t  OBJ_SPEC_LEN = strlen(OBJ_SPEC);
+                const char   *STR_SPEC     = DATA[i].d_strSpec_p;
+                const size_t  STR_SPEC_LEN = strlen(STR_SPEC);
+                const bool    EXP_S_RES    = DATA[i].d_startsWith;
+                const bool    EXP_E_RES    = DATA[i].d_endsWith;
+
+                if (veryVerbose) {
+                    T_ T_ P_(ty) P_(LINE) P_(OBJ_SPEC) P(STR_SPEC);
+                }
+                Obj        mX;      // object to search in
+                const Obj& X = mX;
+                Obj        mStr;    // string for search,
+                const Obj& Str = mStr;
+
+                // Populating strings.
+
+                for (size_t j = 0; j < OBJ_SPEC_LEN; ++j) {
+                    if ('0' == OBJ_SPEC[j]) {
+                        mX.push_back(0);
+                    }
+                    else if ('A' == OBJ_SPEC[j]) {
+                        mX.push_back('A');
+                    }
+                }
+
+                for (size_t j = 0; j < STR_SPEC_LEN; ++j) {
+                    if ('0' == STR_SPEC[j]) {
+                        mStr.push_back(0);
+                    }
+                    else if ('A' == STR_SPEC[j]) {
+                        mStr.push_back('A');
+                    }
+                }
+
+                const TYPE *C_STR = Str.data();
+                Tam         dam(defaultAllocator_p);
+
+                ASSERTV(LINE, OBJ_SPEC, STR_SPEC, EXP_S_RES,
+                        EXP_S_RES == X.starts_with(C_STR));
+                ASSERTV(LINE, OBJ_SPEC, STR_SPEC, EXP_E_RES,
+                        EXP_E_RES == X.ends_with(C_STR));
+
+                ASSERT(dam.isTotalSame());
+            }
+        }
+    }
+
+    if (verbose) printf("\tNegative testing\n");
+
+    {
+        bsls::AssertTestHandlerGuard guard;
+
+        Obj         mX;
+        const Obj&  X = mX;
+        const TYPE *validPtr  = X.data();
+        const TYPE *nullPtr   = 0;
+
+        ASSERT_SAFE_FAIL(X.starts_with(nullPtr ));
+        ASSERT_SAFE_PASS(X.starts_with(validPtr));
+
+        ASSERT_SAFE_FAIL(X.ends_with(nullPtr ));
+        ASSERT_SAFE_PASS(X.ends_with(validPtr));
+
+    }
+}
 
 template <class TYPE, class TRAITS, class ALLOC>
 void TestDriver<TYPE, TRAITS, ALLOC>::testCase39()
@@ -1612,9 +2520,8 @@ void TestDriver<TYPE, TRAITS, ALLOC>::testCase37()
     //:       (C-4)
     //:
     //: 3 Verify that, in appropriate build modes, defensive checks are
-    //:   triggered for invalid date and 'numDays' values, but not triggered
-    //:   for adjacent valid ones (using the 'BSLS_ASSERTTEST_*' macros).
-    //:   (C-5)
+    //:   triggered for invalid attribute values, but not triggered for
+    //:   adjacent valid ones (using the 'BSLS_ASSERTTEST_*' macros).  (C-5)
     //
     // Testing:
     //   string operator+(const string&,      const string&);
@@ -1680,6 +2587,7 @@ void TestDriver<TYPE, TRAITS, ALLOC>::testCase37()
 
     const size_t NUM_DATA = sizeof DATA / sizeof *DATA;
     const size_t MAX_LEN  = strlen(DATA[NUM_DATA - 1].d_spec_p);
+    (void) MAX_LEN;
 
     bslma::TestAllocator         la("left",    veryVeryVeryVerbose);
     StdAlloc                     sla(&la);
@@ -1932,6 +2840,7 @@ void TestDriver<TYPE, TRAITS, ALLOC>::testCase37()
                         ua == (CL  + XR).get_allocator().allocator());
             }
 
+#ifdef BSLS_COMPILERFEATURES_SUPPORT_RVALUE_REFERENCES
             // According to the paper mentioned above, moveable object
             // allocator must be used to supply memory.  Rvalue reference
             // points to the 'lhs' parameter, therefore the 'la' allocator is
@@ -2253,6 +3162,7 @@ void TestDriver<TYPE, TRAITS, ALLOC>::testCase37()
                                       .allocator());
                 }
             }
+#endif  // BSLS_COMPILERFEATURES_SUPPORT_RVALUE_REFERENCES
         }
     }
 
@@ -2263,10 +3173,6 @@ void TestDriver<TYPE, TRAITS, ALLOC>::testCase37()
 
         Obj         mX;
         const Obj&  X = mX;
-        Obj         mXML1;
-        Obj         mXML2;
-        Obj         mXMR1;
-        Obj         mXMR2;
         TYPE        character = 0;
         const TYPE *validPtr  = &character;
         const TYPE *nullPtr   = 0;
@@ -2277,11 +3183,18 @@ void TestDriver<TYPE, TRAITS, ALLOC>::testCase37()
         ASSERT_SAFE_FAIL(nullPtr  + X);
         ASSERT_SAFE_PASS(validPtr + X);
 
+#ifdef BSLS_COMPILERFEATURES_SUPPORT_RVALUE_REFERENCES
+        Obj mXML1;
+        Obj mXML2;
+        Obj mXMR1;
+        Obj mXMR2;
+
         ASSERT_SAFE_FAIL(MoveUtil::move(mXML1) + nullPtr );
         ASSERT_SAFE_PASS(MoveUtil::move(mXML2) + validPtr);
 
         ASSERT_SAFE_FAIL(nullPtr  + MoveUtil::move(mXMR1));
         ASSERT_SAFE_PASS(validPtr + MoveUtil::move(mXMR2));
+#endif
     }
 }
 
@@ -2444,6 +3357,17 @@ void TestDriver<TYPE, TRAITS, ALLOC>::testCase35()
         P(bsls::NameOf<ALLOC>())
     }
 
+    typedef bsl::allocator_traits<ALLOC> AllocatorTraits;
+
+    bool isMoveAssignmentNoexcept =
+             BSLS_KEYWORD_NOEXCEPT_AVAILABLE &&
+             (AllocatorTraits::propagate_on_container_move_assignment::value ||
+              AllocatorTraits::is_always_equal::value);
+    bool isSwapNoexcept =
+                        BSLS_KEYWORD_NOEXCEPT_AVAILABLE &&
+                        (AllocatorTraits::propagate_on_container_swap::value ||
+                         AllocatorTraits::is_always_equal::value);
+
     // N4594: page 699: String classes
 
     // page 704
@@ -2471,7 +3395,7 @@ void TestDriver<TYPE, TRAITS, ALLOC>::testCase35()
             == BSLS_KEYWORD_NOEXCEPT_OPERATOR(Obj(MoveUtil::move(str))));
 
         Obj s;
-        ASSERT(false
+        ASSERT(isMoveAssignmentNoexcept
             == BSLS_KEYWORD_NOEXCEPT_OPERATOR(s = MoveUtil::move(str)));
     }
 
@@ -2565,6 +3489,14 @@ void TestDriver<TYPE, TRAITS, ALLOC>::testCase35()
     //       allocator_traits<Allocator>::propagate_on_container_swap::value ||
     //       allocator_traits<Allocator>::is_always_equal::value);
     //..
+
+    {
+        Obj str1;
+        Obj str2;
+
+        ASSERT(isSwapNoexcept
+               == BSLS_KEYWORD_NOEXCEPT_OPERATOR(str1.swap(str2)));
+    }
 
     // page 706 - 707
     //..
@@ -2676,7 +3608,8 @@ void TestDriver<TYPE, TRAITS, ALLOC>::testCase35()
             == BSLS_KEYWORD_NOEXCEPT_OPERATOR(lhs >= rhs));
 
         using bsl::swap;
-        ASSERT(false == BSLS_KEYWORD_NOEXCEPT_OPERATOR(swap(lhs, rhs)));
+        ASSERT(isSwapNoexcept
+               == BSLS_KEYWORD_NOEXCEPT_OPERATOR(swap(lhs, rhs)));
     }
 }
 
@@ -3755,24 +4688,21 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase29()
     //   hashAppend(HASHALG& hashAlg, const basic_string& str);
     //   hashAppend(HASHALG& hashAlg, const std::basic_string& str);
     // --------------------------------------------------------------------
-    typedef ::BloombergLP::bslh::Hash<> Hasher;
-    typedef typename Hasher::result_type HashType;
-    typedef std::basic_string<TYPE,TRAITS,ALLOC> NativeObj;
+    typedef ::BloombergLP::bslh::Hash<>            Hasher;
+    typedef typename Hasher::result_type           HashType;
+    typedef std::basic_string<TYPE, TRAITS, ALLOC> NativeObj;
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP17_PMR
+    typedef std::pmr::basic_string<TYPE, TRAITS>   NativePmrObj;
+#endif
+    typedef bsl::basic_string_view<TYPE>           StringView;
+
+#ifdef BSLS_PLATFORM_CMP_CLANG
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunknown-warning-option"
+#endif // BSLS_PLATFORM_CMP_CLANG
 
     const int PRIME = 100003; // Arbitrary large prime to be used in hash-table
                               // like testing
-
-#ifdef BSLS_PLATFORM_HAS_PRAGMA_GCC_DIAGNOSTIC
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wlarger-than="
-#endif
-
-    int       collisions[PRIME]       = {};
-    int       nativeCollisions[PRIME] = {};
-
-#ifdef BSLS_PLATFORM_HAS_PRAGMA_GCC_DIAGNOSTIC
-#pragma GCC diagnostic pop
-#endif
 
     Hasher    hasher;
     size_t    prevHash                = 0;
@@ -3781,6 +4711,17 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase29()
     if (verbose) printf("Use 'bslh::Hash' to hash a few values of strings with"
                         " each char type. (C-1,2)\n");
     {
+#ifdef BSLS_PLATFORM_HAS_PRAGMA_GCC_DIAGNOSTIC
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wlarger-than="
+#endif
+
+        unsigned char collisions[PRIME] = {};
+
+#ifdef BSLS_PLATFORM_HAS_PRAGMA_GCC_DIAGNOSTIC
+#pragma GCC diagnostic pop
+#endif
+
         for (int i = 0; i != PRIME; ++i) {
             Obj num;
             if (i > 66000){
@@ -3813,20 +4754,40 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase29()
             ASSERT(prevHash != hash);
 
             // Check that minimal collisions are happening
-            ASSERT(++collisions[hash % PRIME] <= 11);  // Choose 11 as a max
-                                                   // number collisions
+            ++collisions[hash % PRIME];
+            // Choose 11 as max number of collisions.
+            ASSERTV(hash,
+                    hash % PRIME,
+                    collisions[hash % PRIME],
+                    collisions[hash % PRIME] <= 11);
 
             Obj numCopy = num;
 
             // Verify same hash is produced for the same value
             ASSERT(num == numCopy);
             ASSERT(hash == hasher(numCopy));
+
+            // Check that hash of the string is the same as the hash of the
+            // equivalent string_view.
+            // (https://cplusplus.github.io/LWG/issue2978)
+            ASSERT(hash == hasher(StringView(num)));
         }
     }
 
     if (verbose) printf("Use 'bslh::Hash' to hash a few values of 'std'"
                         " strings with each char type. (C-1,2)\n");
     {
+#ifdef BSLS_PLATFORM_HAS_PRAGMA_GCC_DIAGNOSTIC
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wlarger-than="
+#endif
+
+        unsigned char collisions[PRIME] = {};
+
+#ifdef BSLS_PLATFORM_HAS_PRAGMA_GCC_DIAGNOSTIC
+#pragma GCC diagnostic pop
+#endif
+
         for (int i = 0; i != PRIME; ++i) {
             NativeObj num;
             if (i > 66000){
@@ -3859,17 +4820,93 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase29()
             ASSERT(prevHash != hash);
 
             // Check that minimal collisions are happening
-            ASSERT(++nativeCollisions[hash % PRIME] <= 11);
-                                                         // Choose 11 as a max
-                                                         // number collisions
+            ++collisions[hash % PRIME];
+            // Choose 11 as max number of collisions.
+            ASSERTV(hash,
+                    hash % PRIME,
+                    collisions[hash % PRIME],
+                    collisions[hash % PRIME] <= 11);
 
             NativeObj numCopy = num;
 
             // Verify same hash is produced for the same value
             ASSERT(num == numCopy);
             ASSERT(hash == hasher(numCopy));
+
+            // Check that hash of the string is the same as the hash of the
+            // equivalent string_view.
+            // (https://cplusplus.github.io/LWG/issue2978)
+            ASSERT(hash == hasher(StringView(num)));
         }
     }
+
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP17_PMR
+    if (verbose) printf("Use 'bslh::Hash' to hash a few values of 'std::pmr'"
+                        " strings with each char type. (C-1,2)\n");
+    {
+#ifdef BSLS_PLATFORM_HAS_PRAGMA_GCC_DIAGNOSTIC
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wlarger-than="
+#endif
+
+        unsigned char collisions[PRIME] = {};
+
+#ifdef BSLS_PLATFORM_HAS_PRAGMA_GCC_DIAGNOSTIC
+#pragma GCC diagnostic pop
+#endif
+
+        for (int i = 0; i != PRIME; ++i) {
+            NativePmrObj num;
+            if (i > 66000){
+                //Make sure we're testing long strings
+                for (int j = 0; j < 40; ++j) {
+                    num.push_back(TYPE('A'));
+                }
+            }
+            else if (i > 33000) {
+                //Make sure we're testing with null characters in the strings
+                for (int j = 0; j < 5; ++j) {
+                    num.push_back(TYPE('A'));
+                    num.push_back(TYPE('\0'));
+                }
+            }
+            num.push_back( TYPE('0' + (i/1000000)     ));
+            num.push_back( TYPE('0' + (i/100000)  %10 ));
+            num.push_back( TYPE('0' + (i/10000)   %10 ));
+            num.push_back( TYPE('0' + (i/1000)    %10 ));
+            num.push_back( TYPE('0' + (i/100)     %10 ));
+            num.push_back( TYPE('0' + (i/10)      %10 ));
+            num.push_back( TYPE('0' + (i)         %10 ));
+
+            if (veryVerbose) dbg_print("Testing hash of ", num.data(), "\n");
+
+            prevHash = hash;
+            hash     = hasher(num);
+
+            // Check consecutive values are not hashing to the same hash
+            ASSERTV(prevHash, hash, prevHash != hash);
+
+            // Check that minimal collisions are happening
+            ++collisions[hash % PRIME];
+            // Choose 11 as max number of collisions.
+            ASSERTV(hash,
+                    hash % PRIME,
+                    collisions[hash % PRIME],
+                    collisions[hash % PRIME] <= 11);
+
+            NativePmrObj numCopy = num;
+
+            // Verify same hash is produced for the same value
+            ASSERT(num == numCopy);
+            ASSERT(hash == hasher(numCopy));
+
+            // Check that hash of the string is the same as the hash of the
+            // equivalent string_view.
+            // (https://cplusplus.github.io/LWG/issue2978)
+            ASSERT(hash == hasher(StringView(num)));
+        }
+    }
+#endif // BSLS_LIBRARYFEATURES_HAS_CPP17_PMR
 
     if (verbose) printf("Hash an empty string. (C-3)\n");
     {
@@ -3898,6 +4935,10 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase29()
         TYPE abc[] = { TYPE('a'), TYPE('b'), TYPE('c'), TYPE(0) };
         ASSERT(bsl::hash<Obj>()(s) == bsl::hash<Obj>()(abc));
     }
+
+#ifdef BSLS_PLATFORM_CMP_CLANG
+#pragma clang diagnostic pop
+#endif // BSLS_PLATFORM_CMP_CLANG
 }
 
 template <class TYPE, class TRAITS, class ALLOC>
@@ -4208,6 +5249,10 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase25()
     //   Proper use of 'std::length_error'
     // ------------------------------------------------------------------------
 
+    typedef bslstl::StringRefImp<TYPE>            StringRefImp;
+    typedef bsl::basic_string_view<TYPE, TRAITS>  StringView;
+    typedef ConvertibleToStringViewOnlyType<TYPE> StringViewOnlyLikeType;
+
     bslma::TestAllocator testAllocator(veryVeryVerbose);
 
     const TYPE DEFAULT_VALUE = TYPE(::DEFAULT_VALUE);
@@ -4222,6 +5267,10 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase25()
 
 #ifdef BDE_BUILD_TARGET_EXC
     const LimitObj& Y = mY;
+
+    const StringRefImp           SR( Y.data(), Y.length());
+    const StringView             SV( Y.data(), Y.length());
+    const StringViewOnlyLikeType SVL(Y.data());
 
     if (verbose) printf("\nConstructor 'string(str, pos, n, a = A())'.\n");
 
@@ -4449,18 +5498,24 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase25()
 
     if (verbose) printf("\nWith 'assign'.\n");
 
-    for (int assignMethod = 0; assignMethod <= 5; ++assignMethod) {
+    for (int assignMethod = 0; assignMethod <= 10; ++assignMethod) {
 
         if (veryVerbose) {
             switch (assignMethod) {
-                case 0: printf("\tWith assign(str).\n");          break;
-                case 1: printf("\tWith assign(str, pos, n).\n");  break;
-                case 2: printf("\tWith assign(C *s, n).n");       break;
-                case 3: printf("\tWith assign(C *s).\n");         break;
-                case 4: printf("\tWith assign(n, c).n");          break;
-                case 5: printf("\tWith assign<Iter>(f, l).\n");   break;
-                case 6: printf("\tWith assign<Iter>(i, i).\n");   break;
-                default: ASSERT(0);
+              case  0: printf("\tWith assign(str).\n");                  break;
+              case  1: printf("\tWith assign(str, pos, n).\n");          break;
+              case  2: printf("\tWith assign(C *s, n).n");               break;
+              case  3: printf("\tWith assign(C *s).\n");                 break;
+              case  4: printf("\tWith assign(n, c).n");                  break;
+              case  5: printf("\tWith assign<Iter>(f, l).\n");           break;
+              case  6: printf("\tWith assign<Iter>(i, i).\n");           break;
+              case  7: printf("\tWith assign(strRef).\n");               break;
+              case  8: printf("\tWith assign(strView).\n");              break;
+              case  9: printf("\tWith assign(strViewLike).\n");          break;
+              case 10: printf("\tWith assign(strRef, pos, n).\n");       break;
+              case 11: printf("\tWith assign(strView, pos, n).\n");      break;
+              case 12: printf("\tWith assign(strViewLike, pos, n).\n");  break;
+              default: ASSERT(0);
             }
         }
 
@@ -4475,13 +5530,19 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase25()
                 LimitObj mX(a);
 
                 switch (assignMethod) {
-                  case 0: mX.assign(Y);                                 break;
-                  case 1: mX.assign(Y, 0, LENGTH);                      break;
-                  case 2: mX.assign(Y.c_str(), LENGTH);                 break;
-                  case 3: mX.assign(Y.c_str());                         break;
-                  case 4: mX.assign(LENGTH, Y[0]);                      break;
-                  case 5: mX.assign(Y.begin(), Y.end());                break;
-                  case 6: mX.assign(LENGTH, static_cast<size_t>(Y[0])); break;
+                  case  0: mX.assign(Y);                                 break;
+                  case  1: mX.assign(Y, 0, LENGTH);                      break;
+                  case  2: mX.assign(Y.c_str(), LENGTH);                 break;
+                  case  3: mX.assign(Y.c_str());                         break;
+                  case  4: mX.assign(LENGTH, Y[0]);                      break;
+                  case  5: mX.assign(Y.begin(), Y.end());                break;
+                  case  6: mX.assign(LENGTH, static_cast<size_t>(Y[0])); break;
+                  case  7: mX.assign(SR);                                break;
+                  case  8: mX.assign(SV);                                break;
+                  case  9: mX.assign(SVL);                               break;
+                  case 10: mX.assign(SR, 0, LENGTH);                     break;
+                  case 11: mX.assign(SV, 0, LENGTH);                     break;
+                  case 12: mX.assign(SVL, 0, LENGTH);                    break;
                   default: ASSERT(0);
                 }
             }
@@ -4513,14 +5574,17 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase25()
 
     if (verbose) printf("\nWith 'operator+='.\n");
 
-    for (int operatorMethod = 0; operatorMethod <= 2; ++operatorMethod) {
+    for (int operatorMethod = 0; operatorMethod <= 4; ++operatorMethod) {
 
         if (veryVerbose) {
             switch (operatorMethod) {
-                case 0: printf("\toperator+=(str).\n");   break;
-                case 1: printf("\toperator+=(C *s).\n");  break;
-                case 2: printf("\toperator+=(C c).\n");   break;
-                default: ASSERT(0);
+              case 0: printf("\toperator+=(str).\n");          break;
+              case 1: printf("\toperator+=(C *s).\n");         break;
+              case 2: printf("\toperator+=(C c).\n");          break;
+              case 3: printf("\toperator+=(strRef).\n");       break;
+              case 4: printf("\toperator+=(strView).\n");      break;
+              case 5: printf("\toperator+=(strViewLike).\n");  break;
+              default: ASSERT(0);
             }
         }
 
@@ -4545,6 +5609,15 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase25()
                     for (size_t i = 0; i < Y.size(); ++i) {
                         mX += Y[i];
                     }
+                  } break;
+                  case 3: {
+                    mX += SR;
+                  } break;
+                  case 4: {
+                    mX += SV;
+                  } break;
+                  case 5: {
+                    mX += SVL;
                   } break;
                   default: {
                     ASSERT(0);
@@ -4583,13 +5656,19 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase25()
 
         if (verbose) {
             switch (appendMethod) {
-              case 0: printf("\tWith append(str).\n");         break;
-              case 1: printf("\tWith append(str, pos, n).\n"); break;
-              case 2: printf("\tWith append(C *s, n).\n");     break;
-              case 3: printf("\tWith append(C *s).\n");        break;
-              case 4: printf("\tWith append(n, c).\n");        break;
-              case 5: printf("\tWith append<Iter>(f, l).\n");  break;
-              case 6: printf("\tWith append<Iter>(i, i).\n");  break;
+              case  0: printf("\tWith append(str).\n");                 break;
+              case  1: printf("\tWith append(str, pos, n).\n");         break;
+              case  2: printf("\tWith append(C *s, n).\n");             break;
+              case  3: printf("\tWith append(C *s).\n");                break;
+              case  4: printf("\tWith append(n, c).\n");                break;
+              case  5: printf("\tWith append<Iter>(f, l).\n");          break;
+              case  6: printf("\tWith append<Iter>(i, i).\n");          break;
+              case  7: printf("\tWith append(strRef).\n");              break;
+              case  8: printf("\tWith append(strRef, pos, n).\n");      break;
+              case  9: printf("\tWith append(strView).\n");             break;
+              case 10: printf("\tWith append(strView, pos, n).\n");     break;
+              case 11: printf("\tWith append(strViewLike).\n");         break;
+              case 12: printf("\tWith append(strViewLike, pos, n).\n"); break;
               default: ASSERT(0);
             }
         }
@@ -4625,6 +5704,24 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase25()
                   } break;
                   case 6: {
                     mX.append(LENGTH, static_cast<size_t>(DEFAULT_VALUE));
+                  } break;
+                  case 7: {
+                    mX.append(SR);
+                  } break;
+                  case 8: {
+                    mX.append(SR, 0, LENGTH);
+                  } break;
+                  case 9: {
+                    mX.append(SV);
+                  } break;
+                  case 10: {
+                    mX.append(SV, 0, LENGTH);
+                  } break;
+                  case 11: {
+                    mX.append(SVL);
+                  } break;
+                  case 12: {
+                    mX.append(SVL, 0, LENGTH);
                   } break;
                   default: {
                     ASSERT(0);
@@ -4664,15 +5761,21 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase25()
 
         if (verbose) {
             switch (insertMethod) {
-              case 0: printf("\tWith push_back(c).\n");               break;
-              case 1: printf("\tWith insert(pos, str).\n");           break;
-              case 2: printf("\tWith insert(pos, str, pos2, n).\n");  break;
-              case 3: printf("\tWith insert(pos, C *s, n).\n");       break;
-              case 4: printf("\tWith insert(pos, C *s).\n");          break;
-              case 5: printf("\tWith insert(pos, n, C c).\n");        break;
-              case 6: printf("\tWith insert(p, C c).\n");             break;
-              case 7: printf("\tWith insert(p, n, C c).\n");          break;
-              case 8: printf("\tWith insert<Iter>(p, f, l).\n");      break;
+              case  0: printf("\tWith push_back(c).\n");                 break;
+              case  1: printf("\tWith insert(pos, str).\n");             break;
+              case  2: printf("\tWith insert(pos, str, pos2, n).\n");    break;
+              case  3: printf("\tWith insert(pos, C *s, n).\n");         break;
+              case  4: printf("\tWith insert(pos, C *s).\n");            break;
+              case  5: printf("\tWith insert(pos, n, C c).\n");          break;
+              case  6: printf("\tWith insert(p, C c).\n");               break;
+              case  7: printf("\tWith insert(p, n, C c).\n");            break;
+              case  8: printf("\tWith insert<Iter>(p, f, l).\n");        break;
+              case  9: printf("\tWith insert(p, strRef).\n");            break;
+              case 10: printf("\tWith insert(p, strRef, p2, n).\n");     break;
+              case 11: printf("\tWith insert(p, strView).\n");           break;
+              case 12: printf("\tWith insert(p, strView, p2, n).\n");    break;
+              case 13: printf("\tWith insert(p, strViewLike).\n");       break;
+              case 14: printf("\tWith insert(p, strViewLike, p2, n).\n");break;
               default: ASSERT(0);
             }
         }
@@ -4719,6 +5822,24 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase25()
                   case 8: {
                     mX.insert(mX.cbegin(), Y.begin(), Y.end());
                   } break;
+                  case 9: {
+                    mX.insert(0, SR);
+                  } break;
+                  case 10: {
+                    mX.insert(0, SR, 0, LENGTH);
+                  } break;
+                  case 11: {
+                    mX.insert(0, SV);
+                  } break;
+                  case 12: {
+                    mX.insert(0, SV, 0, LENGTH);
+                  } break;
+                  case 13: {
+                    mX.insert(0, SVL);
+                  } break;
+                  case 14: {
+                    mX.insert(0, SVL, 0, LENGTH);
+                  } break;
                   default: {
                     ASSERT(0);
                   } break;
@@ -4753,27 +5874,62 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase25()
 
     if (verbose) printf("\nWith 'replace'.\n");
 
-    for (int replaceMethod = 1; replaceMethod < 8; ++replaceMethod) {
+    for (int replaceMethod = 1; replaceMethod < 16; ++replaceMethod) {
 
         if (verbose) {
             switch (replaceMethod) {
-              case 1: printf("\tWith replace(pos1, n1, str).\n");
-                      break;
-              case 2: printf("\tWith replace(pos1, n1, str, pos2, n2).\n");
-                      break;
-              case 3: printf("\tWith replace(pos1, n1, C *s, n2).\n");
-                      break;
-              case 4: printf("\tWith replace(pos1, n1, C *s).\n");
-                      break;
-              case 5: printf("\tWith replace(pos1, n1, n2, C c).\n");
-                      break;
-              case 6: printf("\tWith replace(f, l, const C *s, n2).\n");
-                      break;
-              case 7: printf("\tWith replace(f, l, n, const C *s).\n");
-                      break;
-              case 8: printf("\treplace(f, l, n2, C c).\n");
-                      break;
-              default: ASSERT(0);
+              case  1: printf("\tWith replace(pos1, n1, str).\n");
+                break;
+              case 2:
+                printf("\tWith replace(pos1, n1, str, pos2, n2).\n");
+                break;
+              case 3:
+                printf("\tWith replace(pos1, n1, C *s, n2).\n");
+                break;
+              case 4:
+                printf("\tWith replace(pos1, n1, C *s).\n");
+                break;
+              case 5:
+                printf("\tWith replace(pos1, n1, n2, C c).\n");
+                break;
+              case 6:
+                printf("\tWith replace(f, l, const C *s, n2).\n");
+                break;
+              case 7:
+                printf("\tWith replace(f, l, n, const C *s).\n");
+                break;
+              case 8:
+                printf("\tWith replace(f, l, n2, C c).\n");
+                break;
+              case 9:
+                printf("\tWith replace(pos1, n1, strRef).\n");
+                break;
+              case 10:
+                printf("\tWith replace(pos1, n1, strView).\n");
+                break;
+              case 11:
+                printf("\tWith replace(pos1, n1, strViewLike).\n");
+                break;
+              case 12:
+                printf("\tWith replace(p1, n1, strRef, p2, n2).\n");
+                break;
+              case 13:
+                printf("\tWith replace(p1, n1, strView, p2, n2).\n");
+                break;
+              case 14:
+                printf("\tWith replace(p1, n1, strViewLike, p2,n2).\n");
+                break;
+              case 15:
+                printf("\tWith replace(f, l, str).\n");
+                break;
+              case 16:
+                printf("\tWith replace(f, l, strView).\n");
+                break;
+              case 17:
+                printf("\tWith replace(f, l, strViewLike).\n");
+                break;
+              default:
+                ASSERT(0);
             }
         }
 
@@ -4811,6 +5967,33 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase25()
                   } break;
                   case 8: {
                     mX.replace(mX.begin(), mX.end(), LENGTH, DEFAULT_VALUE);
+                  } break;
+                  case 9: {
+                    mX.replace(0, 1, SR);
+                  } break;
+                  case 10: {
+                    mX.replace(0, 1, SV);
+                  } break;
+                  case 11: {
+                    mX.replace(0, 1, SVL);
+                  } break;
+                  case 12: {
+                    mX.replace(0, 1, SR, 0, LENGTH);
+                  } break;
+                  case 13: {
+                    mX.replace(0, 1, SV, 0, LENGTH);
+                  } break;
+                  case 14: {
+                    mX.replace(0, 1, SVL, 0, LENGTH);
+                  } break;
+                  case 15: {
+                    mX.replace(mX.begin(), mX.end(), Y);
+                  } break;
+                  case 16: {
+                    mX.replace(mX.begin(), mX.end(), SV);
+                  } break;
+                  case 17: {
+                    mX.replace(mX.begin(), mX.end(), SVL);
                   } break;
                   default: {
                     ASSERT(0);
@@ -5136,7 +6319,8 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase24()
     //   2) 'operator>', 'operator<=', and 'operator>=' are correctly tied to
     //      'operator<'.
     //   3) 'compare' returns the correct result.
-    //   4) That traits get selected properly.
+    //   4) 'operator<=>' is consistent with '<', '>', '<=', '>='.
+    //   5) That traits get selected properly.
     //
     // Plan:
     //   For a variety of strings of different sizes and different values, test
@@ -5154,19 +6338,37 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase24()
     //   int  compare(const C* s) const;
     //   int  compare(pos1, n1, const C* s) const;
     //   int  compare(pos1, n1, const C* s, n2) const;
+    //   int compare(const STRING_VIEW_LIKE_TYPE& str) const;
+    //   int compare(p1, n1, const STRING_VIEW_LIKE_TYPE& str) const;
+    //   int compare(p1, n1, const STRING_VIEW_LIKE_TYPE& s, p2, n2) const;
     //   bool operator<(const string<C,CT,A>&, const string<C,CT,A>&);
+    //   bool operator<(const string<C,CT,A1>&, const std::string<C,CT,A2>&);
+    //   bool operator<(const std::string<C,CT,A1>&, const string<C,CT,A2>&);
     //   bool operator<(const C *, const string<C,CT,A>&);
     //   bool operator<(const string<C,CT,A>&, const C *);
     //   bool operator>(const string<C,CT,A>&, const string<C,CT,A>&);
+    //   bool operator>(const string<C,CT,A1>&, const std::string<C,CT,A2>&);
+    //   bool operator>(const std::string<C,CT,A1>&, const string<C,CT,A2>&);
     //   bool operator>(const C *, const string<C,CT,A>&);
     //   bool operator>(const string<C,CT,A>&, const C *);
     //   bool operator<=(const string<C,CT,A>&, const string<C,CT,A>&);
+    //   bool operator<=(const string<C,CT,A1>&, const std::string<C,CT,A2>&);
+    //   bool operator<=(const std::string<C,CT,A1>&, const string<C,CT,A2>&);
     //   bool operator<=(const C *, const string<C,CT,A>&);
     //   bool operator<=(const string<C,CT,A>&, const C *);
     //   bool operator>=(const string<C,CT,A>&, const string<C,CT,A>&);
+    //   bool operator>=(const string<C,CT,A1>&, const std::string<C,CT,A2>&);
+    //   bool operator>=(const std::string<C,CT,A1>&, const string<C,CT,A2>&);
     //   bool operator>=(const C *, const string<C,CT,A>&);
     //   bool operator>=(const string<C,CT,A>&, const C *);
+    //   auto operator<=>(const string<C,CT,A>&, const string<C,CT,A>&);
+    //   auto operator<=>(const string<C,CT,A>&, const C *);
+    //   auto operator<=>(const string<C,CT,A1>&, const std::string<C,CT,A2>&);
     // ------------------------------------------------------------------------
+
+    typedef bslstl::StringRefImp<TYPE>            StringRefImp;
+    typedef bsl::basic_string_view<TYPE, TRAITS>  StringView;
+    typedef ConvertibleToStringViewOnlyType<TYPE> StringViewOnlyLikeType;
 
     static const char *SPECS[] = {
         "",
@@ -5259,6 +6461,16 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase24()
                 LOOP2_ASSERT(si, sj,  isLessEq == (U <= V));
                 LOOP2_ASSERT(si, sj, !isLess   == (U >= V));
 
+#ifdef BSLS_COMPILERFEATURES_SUPPORT_THREE_WAY_COMPARISON
+                {
+                    const auto cmp = U <=> V;
+                    LOOP2_ASSERT(si, sj,  isLess   == (cmp < 0));
+                    LOOP2_ASSERT(si, sj, !isLessEq == (cmp > 0));
+                    LOOP2_ASSERT(si, sj,  isLessEq == (cmp <= 0));
+                    LOOP2_ASSERT(si, sj, !isLess   == (cmp >= 0));
+                }
+#endif
+
                 // Then test comparisons with C-strings
                 LOOP2_ASSERT(si, sj,  isLess   == (U.c_str() < V));
                 LOOP2_ASSERT(si, sj, !isLessEq == (U.c_str() > V));
@@ -5269,6 +6481,51 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase24()
                 LOOP2_ASSERT(si, sj, !isLessEq == (U > V.c_str()));
                 LOOP2_ASSERT(si, sj,  isLessEq == (U <= V.c_str()));
                 LOOP2_ASSERT(si, sj, !isLess   == (U >= V.c_str()));
+
+#ifdef BSLS_COMPILERFEATURES_SUPPORT_THREE_WAY_COMPARISON
+                {
+                    const auto cmp1 = U.c_str() <=> V;
+                    LOOP2_ASSERT(si, sj,  isLess   == (cmp1 < 0));
+                    LOOP2_ASSERT(si, sj, !isLessEq == (cmp1 > 0));
+                    LOOP2_ASSERT(si, sj,  isLessEq == (cmp1 <= 0));
+                    LOOP2_ASSERT(si, sj, !isLess   == (cmp1 >= 0));
+
+                    const auto cmp2 = U <=> V.c_str();
+                    LOOP2_ASSERT(si, sj,  isLess   == (cmp2 < 0));
+                    LOOP2_ASSERT(si, sj, !isLessEq == (cmp2 > 0));
+                    LOOP2_ASSERT(si, sj,  isLessEq == (cmp2 <= 0));
+                    LOOP2_ASSERT(si, sj, !isLess   == (cmp2 >= 0));
+                }
+#endif
+
+                // Finally test comparisons with 'std::string' objects
+                const std::basic_string<TYPE,TRAITS> stdU(U), stdV(V);
+
+                LOOP2_ASSERT(si, sj,  isLess   == (U < stdV));
+                LOOP2_ASSERT(si, sj, !isLessEq == (U > stdV));
+                LOOP2_ASSERT(si, sj,  isLessEq == (U <= stdV));
+                LOOP2_ASSERT(si, sj, !isLess   == (U >= stdV));
+
+                LOOP2_ASSERT(si, sj,  isLess   == (stdU < V));
+                LOOP2_ASSERT(si, sj, !isLessEq == (stdU > V));
+                LOOP2_ASSERT(si, sj,  isLessEq == (stdU <= V));
+                LOOP2_ASSERT(si, sj, !isLess   == (stdU >= V));
+
+#ifdef BSLS_COMPILERFEATURES_SUPPORT_THREE_WAY_COMPARISON
+                {
+                    const auto cmp1 = U <=> stdV;
+                    LOOP2_ASSERT(si, sj,  isLess   == (cmp1 < 0));
+                    LOOP2_ASSERT(si, sj, !isLessEq == (cmp1 > 0));
+                    LOOP2_ASSERT(si, sj,  isLessEq == (cmp1 <= 0));
+                    LOOP2_ASSERT(si, sj, !isLess   == (cmp1 >= 0));
+
+                    const auto cmp2 = stdU <=> V;
+                    LOOP2_ASSERT(si, sj,  isLess   == (cmp2 < 0));
+                    LOOP2_ASSERT(si, sj, !isLessEq == (cmp2 > 0));
+                    LOOP2_ASSERT(si, sj,  isLessEq == (cmp2 <= 0));
+                    LOOP2_ASSERT(si, sj, !isLess   == (cmp2 >= 0));
+                }
+#endif
             }
         }
     }
@@ -5293,7 +6550,10 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase24()
                 const char *const V_SPEC = SPECS[sj];
                 const size_t      V_LEN  = strlen(V_SPEC);
 
-                const Obj V(g(V_SPEC));
+                const Obj                    V(g(V_SPEC));
+                const StringRefImp           SR(V.data(), V.length());
+                const StringView             SV(V.data(), V.length());
+                const StringViewOnlyLikeType SVL(V.data());
 
                 if (veryVerbose) {
                     T_; T_; P_(V_SPEC); P(V);
@@ -5301,6 +6561,9 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase24()
 
                 checkCompare(U, V, U.compare(V));
                 checkCompare(U, V, U.compare(V.c_str()));
+                checkCompare(U, V, U.compare(SR));
+                checkCompare(U, V, U.compare(SV));
+                checkCompare(U, V, U.compare(SVL));
 
                 for (size_t i = 0; i <= U_LEN; ++i) {
                     for (size_t j = 0; j <= V_LEN; ++j) {
@@ -5311,19 +6574,68 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase24()
 
                         // int compare(pos1, n1, str) const;
 
-                        checkCompare(U1, V,  U.compare(i,     1, V));
-                        checkCompare(UN, V,  U.compare(i, U_LEN, V));
+                        checkCompare(U1, V,  U.compare(i,     1, V  ));
+                        checkCompare(UN, V,  U.compare(i, U_LEN, V  ));
+                        checkCompare(U1, V,  U.compare(i,     1, SR ));
+                        checkCompare(UN, V,  U.compare(i, U_LEN, SR ));
+                        checkCompare(U1, V,  U.compare(i,     1, SV ));
+                        checkCompare(UN, V,  U.compare(i, U_LEN, SV ));
+                        checkCompare(U1, V,  U.compare(i,     1, SVL));
+                        checkCompare(UN, V,  U.compare(i, U_LEN, SVL));
 
                         // int compare(pos1, n1, str, pos2, n2 = npos) const;
 
-                        checkCompare(U1, V1, U.compare(i,     1, V, j,     1));
-                        checkCompare(UN, V1, U.compare(i, U_LEN, V, j,     1));
+                        checkCompare(U1, V1,
+                                     U.compare(i,     1, V,   j,     1));
+                        checkCompare(UN, V1,
+                                     U.compare(i, U_LEN, V,   j,     1));
+                        checkCompare(U1, V1,
+                                     U.compare(i,     1, SR,  j,     1));
+                        checkCompare(UN, V1,
+                                     U.compare(i, U_LEN, SR,  j,     1));
+                        checkCompare(U1, V1,
+                                     U.compare(i,     1, SV,  j,     1));
+                        checkCompare(UN, V1,
+                                     U.compare(i, U_LEN, SV,  j,     1));
+                        checkCompare(U1, V1,
+                                     U.compare(i,     1, SVL, j,     1));
+                        checkCompare(UN, V1,
+                                     U.compare(i, U_LEN, SVL, j,     1));
 
-                        checkCompare(U1, VN, U.compare(i,     1, V, j, V_LEN));
-                        checkCompare(UN, VN, U.compare(i, U_LEN, V, j, V_LEN));
+                        checkCompare(U1, VN,
+                                     U.compare(i,     1, V,   j, V_LEN));
+                        checkCompare(UN, VN,
+                                     U.compare(i, U_LEN, V,   j, V_LEN));
+                        checkCompare(U1, VN,
+                                     U.compare(i,     1, SR,  j, V_LEN));
+                        checkCompare(UN, VN,
+                                     U.compare(i, U_LEN, SR,  j, V_LEN));
+                        checkCompare(U1, VN,
+                                     U.compare(i,     1, SV,  j, V_LEN));
+                        checkCompare(UN, VN,
+                                     U.compare(i, U_LEN, SV,  j, V_LEN));
+                        checkCompare(U1, VN,
+                                     U.compare(i,     1, SVL, j, V_LEN));
+                        checkCompare(UN, VN,
+                                     U.compare(i, U_LEN, SVL, j, V_LEN));
 
-                        checkCompare(U1, VN, U.compare(i,     1, V, j));
-                        checkCompare(UN, VN, U.compare(i, U_LEN, V, j));
+
+                        checkCompare(U1, VN,
+                                     U.compare(i,     1, V,   j       ));
+                        checkCompare(UN, VN,
+                                     U.compare(i, U_LEN, V,   j       ));
+                        checkCompare(U1, VN,
+                                     U.compare(i,     1, SR,  j       ));
+                        checkCompare(UN, VN,
+                                     U.compare(i, U_LEN, SR,  j       ));
+                        checkCompare(U1, VN,
+                                     U.compare(i,     1, SV,  j       ));
+                        checkCompare(UN, VN,
+                                     U.compare(i, U_LEN, SV,  j       ));
+                        checkCompare(U1, VN,
+                                     U.compare(i,     1, SVL, j       ));
+                        checkCompare(UN, VN,
+                                     U.compare(i, U_LEN, SVL, j       ));
                     }
                 }
             }
@@ -5362,6 +6674,7 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase24Negative()
     //   bool operator<=(const string<C,CT,A>& str, const C *s);
     //   bool operator>=(const C *s, const string<C,CT,A>& str);
     //   bool operator>=(const string<C,CT,A>& str, const C *s);
+    //   auto operator<=>(const string<C,CT,A>& str, const C *s);
     // -----------------------------------------------------------------------
 
     bsls::AssertTestHandlerGuard guard;
@@ -5429,6 +6742,17 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase24Negative()
         ASSERT_SAFE_PASS(if(X >= X.c_str()){});
         ASSERT_SAFE_PASS(if(X.c_str() >= X){});
     }
+
+#ifdef BSLS_COMPILERFEATURES_SUPPORT_THREE_WAY_COMPARISON
+    if (veryVerbose) printf("\toperator<=>\n");
+
+    {
+        ASSERT_SAFE_FAIL(if(X <=> nullStr == 0){});
+        ASSERT_SAFE_FAIL(if(nullStr <=> X == 0){});
+        ASSERT_SAFE_PASS(if(X <=> X.c_str() == 0){});
+        ASSERT_SAFE_PASS(if(X.c_str() <=> X == 0){});
+    }
+#endif
 }
 
 template <class TYPE, class TRAITS, class ALLOC>
@@ -5661,7 +6985,7 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase23Negative()
 template <class TYPE, class TRAITS, class ALLOC>
 void TestDriver<TYPE,TRAITS,ALLOC>::testCase22()
 {
-    // --------------------------------------------------------------------
+    // ------------------------------------------------------------------------
     // TESTING FIND VARIANTS
     //
     // Concerns:
@@ -5689,31 +7013,41 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase22()
     //   of our brute-force implementation in the boundary cases).
     //
     // Testing:
-    //   size_type find(const string& str, pos = 0) const;
-    //   size_type find(const C *s, pos, n) const;
-    //   size_type find(const C *s, pos = 0) const;
-    //   size_type find(C c, pos = 0) const;
-    //   size_type rfind(const string& str, pos = 0) const;
-    //   size_type rfind(const C *s, pos, n) const;
-    //   size_type rfind(const C *s, pos = 0) const;
-    //   size_type rfind(C c, pos = 0) const;
-    //   size_type find_first_of(const string& str, pos = 0) const;
-    //   size_type find_first_of(const C *s, pos, n) const;
-    //   size_type find_first_of(const C *s, pos = 0) const;
-    //   size_type find_first_of(C c, pos = 0) const;
-    //   size_type find_last_of(const string& str, pos = 0) const;
-    //   size_type find_last_of(const C *s, pos, n) const;
-    //   size_type find_last_of(const C *s, pos = 0) const;
-    //   size_type find_last_of(C c, pos = 0) const;
-    //   size_type find_first_not_of(const string& str, pos = 0) const;
-    //   size_type find_first_not_of(const C *s, pos, n) const;
-    //   size_type find_first_not_of(const C *s, pos = 0) const;
-    //   size_type find_first_not_of(C c, pos = 0) const;
-    //   size_type find_last_not_of(const string& str, pos = 0) const;
-    //   size_type find_last_not_of(const C *s, pos, n) const;
-    //   size_type find_last_not_of(const C *s, pos = 0) const;
-    //   size_type find_last_not_of(C c, pos = 0) const;
-    // --------------------------------------------------------------------
+    // [22] size_type find(const string& str, pos = 0) const;
+    // [22] size_type find(const STRING_VIEW_LIKE_TYPE& str, pos = 0) const;
+    // [22] size_type find(const C *s, pos, n) const;
+    // [22] size_type find(const C *s, pos = 0) const;
+    // [22] size_type find(C c, pos = 0) const;
+    // [22] size_type rfind(const string& str, pos = npos) const;
+    // [22] size_type rfind(const STRING_VIEW_LIKE_TYPE& str, pos) const;
+    // [22] size_type rfind(const C *s, pos, n) const;
+    // [22] size_type rfind(const C *s, pos = npos) const;
+    // [22] size_type rfind(C c, pos = npos) const;
+    // [22] size_type find_first_of(const string& str, pos = 0) const;
+    // [22] size_type find_first_of(const STRING_VIEW_LIKE_TYPE& s, p) const;
+    // [22] size_type find_first_of(const C *s, pos, n) const;
+    // [22] size_type find_first_of(const C *s, pos = 0) const;
+    // [22] size_type find_first_of(C c, pos = 0) const;
+    // [22] size_type find_last_of(const string& str, pos = npos) const;
+    // [22] size_type find_last_of(const STRING_VIEW_LIKE_TYPE& str, p) const;
+    // [22] size_type find_last_of(const C *s, pos, n) const;
+    // [22] size_type find_last_of(const C *s, pos = npos) const;
+    // [22] size_type find_last_of(C c, pos = npos) const;
+    // [22] size_type find_first_not_of(const string& str, pos = 0) const;
+    // [22] size_type find_first_not_of(const STRING_VIEW_LIKE_TYPE&,p) const;
+    // [22] size_type find_first_not_of(const C *s, pos, n) const;
+    // [22] size_type find_first_not_of(const C *s, pos = 0) const;
+    // [22] size_type find_first_not_of(C c, pos = 0) const;
+    // [22] size_type find_last_not_of(const string& str, pos = npos) const;
+    // [22] size_type find_last_not_of(const STRING_VIEW_LIKE_TYPE&, p) const;
+    // [22] size_type find_last_not_of(const C *s, pos, n) const;
+    // [22] size_type find_last_not_of(const C *s, pos = npos) const;
+    // [22] size_type find_last_not_of(C c, pos = npos) const;
+    // ------------------------------------------------------------------------
+
+    typedef bslstl::StringRefImp<TYPE>            StringRefImp;
+    typedef bsl::basic_string_view<TYPE, TRAITS>  StringView;
+    typedef ConvertibleToStringViewOnlyType<TYPE> StringViewOnlyLikeType;
 
     const TYPE         *values     = 0;
     const TYPE *const&  VALUES     = values;
@@ -5773,36 +7107,63 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase22()
 
             const Obj Z;
 
-            LOOP2_ASSERT(LINE, SPEC, 0 == X.find(Z));
-            LOOP2_ASSERT(LINE, SPEC, 0 == X.find(Z.c_str()));
+            const StringRefImp           SRZ( Z.data(), Z.length());
+            const StringView             SVZ( Z.data(), Z.length());
+            const StringViewOnlyLikeType SVLZ(Z.data());
 
-            LOOP2_ASSERT(LINE, SPEC, LENGTH == X.rfind(Z));
-            LOOP2_ASSERT(LINE, SPEC, LENGTH == X.rfind(Z.c_str()));
+            ASSERTV(LINE, SPEC, 0 == X.find(Z        ));
+            ASSERTV(LINE, SPEC, 0 == X.find(SRZ      ));
+            ASSERTV(LINE, SPEC, 0 == X.find(SVZ      ));
+            ASSERTV(LINE, SPEC, 0 == X.find(SVLZ     ));
+            ASSERTV(LINE, SPEC, 0 == X.find(Z.c_str()));
+
+            ASSERTV(LINE, SPEC, LENGTH == X.rfind(Z        ));
+            ASSERTV(LINE, SPEC, LENGTH == X.rfind(SRZ      ));
+            ASSERTV(LINE, SPEC, LENGTH == X.rfind(SVZ      ));
+            ASSERTV(LINE, SPEC, LENGTH == X.rfind(SVLZ     ));
+            ASSERTV(LINE, SPEC, LENGTH == X.rfind(Z.c_str()));
 
             for (size_t j = 0; j <= LENGTH; ++j) {
-                LOOP3_ASSERT(LINE, SPEC, j, j == X.find(Z, j));
-                LOOP3_ASSERT(LINE, SPEC, j, j == X.find(Z.c_str(), j));
-                LOOP3_ASSERT(LINE, SPEC, j, j == X.find(Z.c_str(), j, 0));
+                ASSERTV(LINE, SPEC, j, j == X.find(Z,         j   ));
+                ASSERTV(LINE, SPEC, j, j == X.find(SRZ,       j   ));
+                ASSERTV(LINE, SPEC, j, j == X.find(SVZ,       j   ));
+                ASSERTV(LINE, SPEC, j, j == X.find(SVLZ,      j   ));
+                ASSERTV(LINE, SPEC, j, j == X.find(Z.c_str(), j   ));
+                ASSERTV(LINE, SPEC, j, j == X.find(Z.c_str(), j, 0));
 
-                LOOP3_ASSERT(LINE, SPEC, j, j == X.rfind(Z, j));
-                LOOP3_ASSERT(LINE, SPEC, j, j == X.rfind(Z.c_str(), j));
-                LOOP3_ASSERT(LINE, SPEC, j, j == X.rfind(Z.c_str(), j, 0));
+                ASSERTV(LINE, SPEC, j, j == X.rfind(Z,         j   ));
+                ASSERTV(LINE, SPEC, j, j == X.rfind(SRZ,       j   ));
+                ASSERTV(LINE, SPEC, j, j == X.rfind(SVZ,       j   ));
+                ASSERTV(LINE, SPEC, j, j == X.rfind(SVLZ,      j   ));
+                ASSERTV(LINE, SPEC, j, j == X.rfind(Z.c_str(), j   ));
+                ASSERTV(LINE, SPEC, j, j == X.rfind(Z.c_str(), j, 0));
             }
 
-            LOOP2_ASSERT(LINE, SPEC, npos == X.find(Z, LENGTH + 1));
-            LOOP2_ASSERT(LINE, SPEC, npos == X.find(Z, npos));
-            LOOP2_ASSERT(LINE, SPEC, npos == X.find(Z.c_str(), LENGTH + 1));
-            LOOP2_ASSERT(LINE, SPEC, npos == X.find(Z.c_str(), npos));
-            LOOP2_ASSERT(LINE, SPEC, npos == X.find(Z.c_str(), LENGTH + 1, 0));
-            LOOP2_ASSERT(LINE, SPEC, npos == X.find(Z.c_str(), npos, 0));
+            ASSERTV(LINE, SPEC, npos == X.find(Z,         LENGTH + 1   ));
+            ASSERTV(LINE, SPEC, npos == X.find(SRZ,       LENGTH + 1   ));
+            ASSERTV(LINE, SPEC, npos == X.find(SVZ,       LENGTH + 1   ));
+            ASSERTV(LINE, SPEC, npos == X.find(SVLZ,      LENGTH + 1   ));
+            ASSERTV(LINE, SPEC, npos == X.find(Z,         npos         ));
+            ASSERTV(LINE, SPEC, npos == X.find(SRZ,       npos         ));
+            ASSERTV(LINE, SPEC, npos == X.find(SVZ,       npos         ));
+            ASSERTV(LINE, SPEC, npos == X.find(SVLZ,      npos         ));
+            ASSERTV(LINE, SPEC, npos == X.find(Z.c_str(), LENGTH + 1   ));
+            ASSERTV(LINE, SPEC, npos == X.find(Z.c_str(), npos         ));
+            ASSERTV(LINE, SPEC, npos == X.find(Z.c_str(), LENGTH + 1, 0));
+            ASSERTV(LINE, SPEC, npos == X.find(Z.c_str(), npos,       0));
 
-            LOOP2_ASSERT(LINE, SPEC, LENGTH == X.rfind(Z, LENGTH + 1));
-            LOOP2_ASSERT(LINE, SPEC, LENGTH == X.rfind(Z, npos));
-            LOOP2_ASSERT(LINE, SPEC, LENGTH == X.rfind(Z.c_str(), LENGTH + 1));
-            LOOP2_ASSERT(LINE, SPEC, LENGTH == X.rfind(Z.c_str(), npos));
-            LOOP2_ASSERT(LINE, SPEC, LENGTH == X.rfind(Z.c_str(), LENGTH + 1,
-                                                       0));
-            LOOP2_ASSERT(LINE, SPEC, LENGTH == X.rfind(Z.c_str(), npos, 0));
+            ASSERTV(LINE, SPEC, LENGTH == X.rfind(Z,         LENGTH + 1   ));
+            ASSERTV(LINE, SPEC, LENGTH == X.rfind(SRZ,       LENGTH + 1   ));
+            ASSERTV(LINE, SPEC, LENGTH == X.rfind(SVZ,       LENGTH + 1   ));
+            ASSERTV(LINE, SPEC, LENGTH == X.rfind(SVLZ,      LENGTH + 1   ));
+            ASSERTV(LINE, SPEC, LENGTH == X.rfind(Z,         npos         ));
+            ASSERTV(LINE, SPEC, LENGTH == X.rfind(SRZ,       npos         ));
+            ASSERTV(LINE, SPEC, LENGTH == X.rfind(SVZ,       npos         ));
+            ASSERTV(LINE, SPEC, LENGTH == X.rfind(SVLZ,      npos         ));
+            ASSERTV(LINE, SPEC, LENGTH == X.rfind(Z.c_str(), LENGTH + 1   ));
+            ASSERTV(LINE, SPEC, LENGTH == X.rfind(Z.c_str(), npos         ));
+            ASSERTV(LINE, SPEC, LENGTH == X.rfind(Z.c_str(), LENGTH + 1, 0));
+            ASSERTV(LINE, SPEC, LENGTH == X.rfind(Z.c_str(), npos,       0));
 
             if (veryVerbose) {
                 printf("\tWith SPEC: \"%s\" of length " ZU
@@ -5840,20 +7201,19 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase22()
                                                C == X[REXP[j]]));
                 }
 
-                LOOP2_ASSERT(LINE, SPEC, EXP[0]       == X.find(C));
-                LOOP2_ASSERT(LINE, SPEC, REXP[LENGTH] == X.rfind(C));
+                ASSERTV(LINE, SPEC, EXP[0]       == X.find(C));
+                ASSERTV(LINE, SPEC, REXP[LENGTH] == X.rfind(C));
 
                 for (size_t j = 0; j <= LENGTH; ++j) {
-                        LOOP3_ASSERT(LINE, SPEC, j, EXP[j]  == X.find(C, j));
-                        LOOP3_ASSERT(LINE, SPEC, j, REXP[j] == X.rfind(C, j));
+                        ASSERTV(LINE, SPEC, j, EXP[j]  == X.find(C, j));
+                        ASSERTV(LINE, SPEC, j, REXP[j] == X.rfind(C, j));
                 }
 
-                LOOP2_ASSERT(LINE, SPEC, npos == X.find(C, LENGTH + 1));
-                LOOP2_ASSERT(LINE, SPEC, npos == X.find(C, npos));
+                ASSERTV(LINE, SPEC, npos == X.find(C, LENGTH + 1));
+                ASSERTV(LINE, SPEC, npos == X.find(C, npos      ));
 
-                LOOP2_ASSERT(LINE, SPEC, REXP[LENGTH] == X.rfind(C, LENGTH +
-                                                                           1));
-                LOOP2_ASSERT(LINE, SPEC, REXP[LENGTH] == X.rfind(C, npos));
+                ASSERTV(LINE, SPEC, REXP[LENGTH] == X.rfind(C, LENGTH + 1));
+                ASSERTV(LINE, SPEC, REXP[LENGTH] == X.rfind(C, npos      ));
 
                 delete[] exp;
                 delete[] rExp;
@@ -5873,90 +7233,126 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase22()
 
             const Obj Y(g(PATTERN));
 
-            LOOP4_ASSERT(LINE, SPEC, PATTERN, EXP,  EXP  == X.find(Y));
-            LOOP4_ASSERT(LINE, SPEC, PATTERN, EXP,  EXP  == X.find(Y.c_str()));
+            const StringRefImp           SRY( Y.data(), Y.length());
+            const StringView             SVY( Y.data(), Y.length());
+            const StringViewOnlyLikeType SVLY(Y.data());
 
-            LOOP4_ASSERT(LINE, SPEC, PATTERN, REXP, REXP == X.rfind(Y));
-            LOOP4_ASSERT(LINE, SPEC, PATTERN, REXP,
-                         REXP == X.rfind(Y.c_str()));
+            ASSERTV(LINE, SPEC, PATTERN, EXP,  EXP  == X.find(Y        ));
+            ASSERTV(LINE, SPEC, PATTERN, EXP,  EXP  == X.find(SRY      ));
+            ASSERTV(LINE, SPEC, PATTERN, EXP,  EXP  == X.find(SVY      ));
+            ASSERTV(LINE, SPEC, PATTERN, EXP,  EXP  == X.find(SVLY     ));
+            ASSERTV(LINE, SPEC, PATTERN, EXP,  EXP  == X.find(Y.c_str()));
+
+            ASSERTV(LINE, SPEC, PATTERN, REXP, REXP == X.rfind(Y        ));
+            ASSERTV(LINE, SPEC, PATTERN, REXP, REXP == X.rfind(SRY      ));
+            ASSERTV(LINE, SPEC, PATTERN, REXP, REXP == X.rfind(SVY      ));
+            ASSERTV(LINE, SPEC, PATTERN, REXP, REXP == X.rfind(SVLY     ));
+            ASSERTV(LINE, SPEC, PATTERN, REXP, REXP == X.rfind(Y.c_str()));
 
             if (EXP == npos) {
                 ASSERT(EXP == REXP);
                 for (size_t j = 0; j <= LENGTH + 2; ++j) {
-                    LOOP5_ASSERT(LINE, SPEC, PATTERN, j, EXP,
-                                 EXP == X.find(Y, j));
-                    LOOP5_ASSERT(LINE, SPEC, PATTERN, j, EXP,
-                                 EXP == X.find(Y.c_str(), j, N));
+                    ASSERTV(LINE, SPEC, PATTERN, j, EXP, EXP == X.find(Y, j));
+                    ASSERTV(LINE, SPEC, PATTERN, j, EXP,
+                            EXP == X.find(SRY, j));
+                    ASSERTV(LINE, SPEC, PATTERN, j, EXP,
+                            EXP == X.find(SVY, j));
+                    ASSERTV(LINE, SPEC, PATTERN, j, EXP,
+                            EXP == X.find(SVLY, j));
+                    ASSERTV(LINE, SPEC, PATTERN, j, EXP,
+                            EXP == X.find(Y.c_str(), j, N));
                 }
                 continue;
             }
 
             for (size_t j = 0; j < EXP; ++j) {
-                LOOP5_ASSERT(LINE, SPEC, PATTERN, j, EXP,
-                             EXP == X.find(Y, j));
-                LOOP5_ASSERT(LINE, SPEC, PATTERN, j, EXP,
-                             EXP == X.find(Y.c_str(), j));
-                LOOP5_ASSERT(LINE, SPEC, PATTERN, j, EXP,
-                             EXP == X.find(Y.c_str(), j, N));
+                ASSERTV(LINE, SPEC, PATTERN, j, EXP, EXP == X.find(Y, j));
+                ASSERTV(LINE, SPEC, PATTERN, j, EXP, EXP == X.find(SRY, j));
+                ASSERTV(LINE, SPEC, PATTERN, j, EXP, EXP == X.find(SVY, j));
+                ASSERTV(LINE, SPEC, PATTERN, j, EXP, EXP == X.find(SVLY, j));
+                ASSERTV(LINE, SPEC, PATTERN, j, EXP,
+                        EXP == X.find(Y.c_str(), j));
+                ASSERTV(LINE, SPEC, PATTERN, j, EXP,
+                        EXP == X.find(Y.c_str(), j, N));
 
-                LOOP5_ASSERT(LINE, SPEC, PATTERN, j, REXP,
-                             npos == X.rfind(Y, j));
-                LOOP5_ASSERT(LINE, SPEC, PATTERN, j, REXP,
-                             npos == X.rfind(Y.c_str(), j));
-                LOOP5_ASSERT(LINE, SPEC, PATTERN, j, REXP,
-                             npos == X.rfind(Y.c_str(), j, N));
+                ASSERTV(LINE, SPEC, PATTERN, j, REXP, npos == X.rfind(Y, j));
+                ASSERTV(LINE, SPEC, PATTERN, j, REXP, npos == X.rfind(SRY, j));
+                ASSERTV(LINE, SPEC, PATTERN, j, REXP, npos == X.rfind(SVY, j));
+                ASSERTV(LINE, SPEC, PATTERN, j, REXP,
+                        npos == X.rfind(SVLY, j));
+                ASSERTV(LINE, SPEC, PATTERN, j, REXP,
+                        npos == X.rfind(Y.c_str(), j));
+                ASSERTV(LINE, SPEC, PATTERN, j, REXP,
+                        npos == X.rfind(Y.c_str(), j, N));
             }
 
-            LOOP4_ASSERT(LINE, SPEC, PATTERN, EXP,
-                         EXP  == X.find(Y, EXP));
+            ASSERTV(LINE, SPEC, PATTERN, EXP, EXP  == X.find(Y,    EXP));
+            ASSERTV(LINE, SPEC, PATTERN, EXP, EXP  == X.find(SRY,  EXP));
+            ASSERTV(LINE, SPEC, PATTERN, EXP, EXP  == X.find(SVY,  EXP));
+            ASSERTV(LINE, SPEC, PATTERN, EXP, EXP  == X.find(SVLY, EXP));
 
             for (size_t j = EXP + 1; j <= REXP; ++j) {
-                LOOP5_ASSERT(LINE, SPEC, PATTERN, j, REXP,
-                             REXP == X.find(Y, j));
-                LOOP5_ASSERT(LINE, SPEC, PATTERN, j, REXP,
-                             REXP == X.find(Y.c_str(), j));
-                LOOP5_ASSERT(LINE, SPEC, PATTERN, j, REXP,
-                             REXP == X.find(Y.c_str(), j, N));
+                ASSERTV(LINE, SPEC, PATTERN, j, REXP, REXP == X.find(Y, j));
+                ASSERTV(LINE, SPEC, PATTERN, j, REXP, REXP == X.find(SRY, j));
+                ASSERTV(LINE, SPEC, PATTERN, j, REXP, REXP == X.find(SVY, j));
+                ASSERTV(LINE, SPEC, PATTERN, j, REXP, REXP == X.find(SVLY, j));
+                ASSERTV(LINE, SPEC, PATTERN, j, REXP,
+                        REXP == X.find(Y.c_str(), j));
+                ASSERTV(LINE, SPEC, PATTERN, j, REXP,
+                        REXP == X.find(Y.c_str(), j, N));
             }
             for (size_t j = EXP; j < REXP; ++j) {
-                LOOP5_ASSERT(LINE, SPEC, PATTERN, j, EXP,
-                             EXP == X.rfind(Y, j));
-                LOOP5_ASSERT(LINE, SPEC, PATTERN, j, EXP,
-                             EXP == X.rfind(Y.c_str(), j));
-                LOOP5_ASSERT(LINE, SPEC, PATTERN, j, EXP,
-                             EXP == X.rfind(Y.c_str(), j, N));
+                ASSERTV(LINE, SPEC, PATTERN, j, EXP, EXP == X.rfind(Y, j));
+                ASSERTV(LINE, SPEC, PATTERN, j, EXP, EXP == X.rfind(SRY, j));
+                ASSERTV(LINE, SPEC, PATTERN, j, EXP, EXP == X.rfind(SVY, j));
+                ASSERTV(LINE, SPEC, PATTERN, j, EXP, EXP == X.rfind(SVLY, j));
+                ASSERTV(LINE, SPEC, PATTERN, j, EXP,
+                        EXP == X.rfind(Y.c_str(), j));
+                ASSERTV(LINE, SPEC, PATTERN, j, EXP,
+                        EXP == X.rfind(Y.c_str(), j, N));
             }
 
-            LOOP4_ASSERT(LINE, SPEC, PATTERN, REXP, REXP == X.rfind(Y, REXP));
+            ASSERTV(LINE, SPEC, PATTERN, REXP, REXP == X.rfind(Y,    REXP));
+            ASSERTV(LINE, SPEC, PATTERN, REXP, REXP == X.rfind(SRY,  REXP));
+            ASSERTV(LINE, SPEC, PATTERN, REXP, REXP == X.rfind(SVY,  REXP));
+            ASSERTV(LINE, SPEC, PATTERN, REXP, REXP == X.rfind(SVLY, REXP));
 
             for (size_t j = REXP + 1; j < LENGTH + 2; ++j) {
-                LOOP5_ASSERT(LINE, SPEC, PATTERN, j, EXP,
-                             npos == X.find(Y, j));
-                LOOP5_ASSERT(LINE, SPEC, PATTERN, j, EXP,
-                             npos == X.find(Y.c_str(), j));
-                LOOP5_ASSERT(LINE, SPEC, PATTERN, j, EXP,
-                             npos == X.find(Y.c_str(), j, N));
+                ASSERTV(LINE, SPEC, PATTERN, j, EXP, npos == X.find(Y, j));
+                ASSERTV(LINE, SPEC, PATTERN, j, EXP, npos == X.find(SRY, j));
+                ASSERTV(LINE, SPEC, PATTERN, j, EXP, npos == X.find(SVY, j));
+                ASSERTV(LINE, SPEC, PATTERN, j, EXP, npos == X.find(SVLY, j));
+                ASSERTV(LINE, SPEC, PATTERN, j, EXP,
+                        npos == X.find(Y.c_str(), j));
+                ASSERTV(LINE, SPEC, PATTERN, j, EXP,
+                        npos == X.find(Y.c_str(), j, N));
 
-                LOOP5_ASSERT(LINE, SPEC, PATTERN, j, REXP,
-                             REXP == X.rfind(Y));
-                LOOP5_ASSERT(LINE, SPEC, PATTERN, j, REXP,
-                             REXP == X.rfind(Y.c_str(), j));
-                LOOP5_ASSERT(LINE, SPEC, PATTERN, j, REXP,
-                             REXP == X.rfind(Y.c_str(), j, N));
+                ASSERTV(LINE, SPEC, PATTERN, j, REXP, REXP == X.rfind(Y));
+                ASSERTV(LINE, SPEC, PATTERN, j, REXP, REXP == X.rfind(SRY));
+                ASSERTV(LINE, SPEC, PATTERN, j, REXP, REXP == X.rfind(SVY));
+                ASSERTV(LINE, SPEC, PATTERN, j, REXP, REXP == X.rfind(SVLY));
+                ASSERTV(LINE, SPEC, PATTERN, j, REXP,
+                        REXP == X.rfind(Y.c_str(), j));
+                ASSERTV(LINE, SPEC, PATTERN, j, REXP,
+                        REXP == X.rfind(Y.c_str(), j, N));
             }
-            LOOP4_ASSERT(LINE, SPEC, PATTERN, REXP,
-                         npos == X.find(Y, npos));
-            LOOP4_ASSERT(LINE, SPEC, PATTERN, REXP,
-                         npos == X.find(Y.c_str(), npos));
-            LOOP4_ASSERT(LINE, SPEC, PATTERN, REXP,
-                         npos == X.find(Y.c_str(), npos, N));
+            ASSERTV(LINE, SPEC, PATTERN, REXP, npos == X.find(Y, npos));
+            ASSERTV(LINE, SPEC, PATTERN, REXP, npos == X.find(SRY, npos));
+            ASSERTV(LINE, SPEC, PATTERN, REXP, npos == X.find(SVY, npos));
+            ASSERTV(LINE, SPEC, PATTERN, REXP, npos == X.find(SVLY, npos));
+            ASSERTV(LINE, SPEC, PATTERN, REXP,
+                    npos == X.find(Y.c_str(), npos));
+            ASSERTV(LINE, SPEC, PATTERN, REXP,
+                     npos == X.find(Y.c_str(), npos, N));
 
-            LOOP4_ASSERT(LINE, SPEC, PATTERN, REXP,
-                         REXP == X.rfind(Y, npos));
-            LOOP4_ASSERT(LINE, SPEC, PATTERN, REXP,
-                         REXP == X.rfind(Y.c_str(), npos));
-            LOOP4_ASSERT(LINE, SPEC, PATTERN, REXP,
-                         REXP == X.rfind(Y.c_str(), npos, N));
+            ASSERTV(LINE, SPEC, PATTERN, REXP, REXP == X.rfind(Y, npos));
+            ASSERTV(LINE, SPEC, PATTERN, REXP, REXP == X.rfind(SRY, npos));
+            ASSERTV(LINE, SPEC, PATTERN, REXP, REXP == X.rfind(SVY, npos));
+            ASSERTV(LINE, SPEC, PATTERN, REXP, REXP == X.rfind(SVLY, npos));
+            ASSERTV(LINE, SPEC, PATTERN, REXP,
+                    REXP == X.rfind(Y.c_str(), npos));
+            ASSERTV(LINE, SPEC, PATTERN, REXP,
+                    REXP == X.rfind(Y.c_str(), npos, N));
 
         }
     }
@@ -6020,78 +7416,110 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase22()
 
             const Obj Z;
 
-            LOOP2_ASSERT(LINE, SPEC, npos == X.find_first_of(Z));
-            LOOP2_ASSERT(LINE, SPEC, npos == X.find_first_of(Z.c_str()));
+            const StringRefImp           SRZ( Z.data(), Z.length());
+            const StringView             SVZ( Z.data(), Z.length());
+            const StringViewOnlyLikeType SVLZ(Z.data());
 
-            LOOP2_ASSERT(LINE, SPEC, npos == X.find_last_of(Z));
-            LOOP2_ASSERT(LINE, SPEC, npos == X.find_last_of(Z.c_str()));
+            ASSERTV(LINE, SPEC, npos == X.find_first_of(Z        ));
+            ASSERTV(LINE, SPEC, npos == X.find_first_of(SRZ      ));
+            ASSERTV(LINE, SPEC, npos == X.find_first_of(SVZ      ));
+            ASSERTV(LINE, SPEC, npos == X.find_first_of(SVLZ     ));
+            ASSERTV(LINE, SPEC, npos == X.find_first_of(Z.c_str()));
+
+            ASSERTV(LINE, SPEC, npos == X.find_last_of(Z        ));
+            ASSERTV(LINE, SPEC, npos == X.find_last_of(SRZ      ));
+            ASSERTV(LINE, SPEC, npos == X.find_last_of(SVZ      ));
+            ASSERTV(LINE, SPEC, npos == X.find_last_of(SVLZ     ));
+            ASSERTV(LINE, SPEC, npos == X.find_last_of(Z.c_str()));
 
             if (LENGTH) {
-                LOOP2_ASSERT(LINE, SPEC, 0 == X.find_first_not_of(Z));
-                LOOP2_ASSERT(LINE, SPEC, 0 == X.find_first_not_of(Z.c_str()));
+                ASSERTV(LINE, SPEC, 0 == X.find_first_not_of(Z        ));
+                ASSERTV(LINE, SPEC, 0 == X.find_first_not_of(SRZ      ));
+                ASSERTV(LINE, SPEC, 0 == X.find_first_not_of(SVZ      ));
+                ASSERTV(LINE, SPEC, 0 == X.find_first_not_of(SVLZ     ));
+                ASSERTV(LINE, SPEC, 0 == X.find_first_not_of(Z.c_str()));
 
-                LOOP2_ASSERT(LINE, SPEC, LENGTH - 1 == X.find_last_not_of(Z));
-                LOOP2_ASSERT(LINE, SPEC, LENGTH - 1 == X.find_last_not_of(
+                ASSERTV(LINE, SPEC, LENGTH - 1 == X.find_last_not_of(Z      ));
+                ASSERTV(LINE, SPEC, LENGTH - 1 == X.find_last_not_of(SRZ    ));
+                ASSERTV(LINE, SPEC, LENGTH - 1 == X.find_last_not_of(SVZ    ));
+                ASSERTV(LINE, SPEC, LENGTH - 1 == X.find_last_not_of(SVLZ   ));
+                ASSERTV(LINE, SPEC, LENGTH - 1 == X.find_last_not_of(
                                                                    Z.c_str()));
             }
             else {
-                LOOP2_ASSERT(LINE, SPEC, npos == X.find_first_not_of(Z));
-                LOOP2_ASSERT(LINE, SPEC, npos == X.find_first_not_of(
-                                                                   Z.c_str()));
+                ASSERTV(LINE, SPEC, npos == X.find_first_not_of(Z        ));
+                ASSERTV(LINE, SPEC, npos == X.find_first_not_of(SVZ      ));
+                ASSERTV(LINE, SPEC, npos == X.find_first_not_of(SVLZ     ));
+                ASSERTV(LINE, SPEC, npos == X.find_first_not_of(Z.c_str()));
 
-                LOOP2_ASSERT(LINE, SPEC, npos == X.find_last_not_of(Z));
-                LOOP2_ASSERT(LINE, SPEC, npos == X.find_last_not_of(
-                                                                   Z.c_str()));
+                ASSERTV(LINE, SPEC, npos == X.find_last_not_of(Z        ));
+                ASSERTV(LINE, SPEC, npos == X.find_last_not_of(SVZ      ));
+                ASSERTV(LINE, SPEC, npos == X.find_last_not_of(SVLZ     ));
+                ASSERTV(LINE, SPEC, npos == X.find_last_not_of(Z.c_str()));
             }
 
             for (size_t j = 0; j < LENGTH; ++j) {
-                    LOOP3_ASSERT(LINE, SPEC, j,
-                                 npos == X.find_first_of(Z, j));
-                    LOOP3_ASSERT(LINE, SPEC, j,
-                                 npos == X.find_first_of(Z.c_str(), j));
-                    LOOP3_ASSERT(LINE, SPEC, j,
-                                 npos == X.find_first_of(Z.c_str(), j, 0));
+                    ASSERTV(LINE, SPEC, j, npos == X.find_first_of(Z, j));
+                    ASSERTV(LINE, SPEC, j, npos == X.find_first_of(SRZ, j));
+                    ASSERTV(LINE, SPEC, j, npos == X.find_first_of(SVZ, j));
+                    ASSERTV(LINE, SPEC, j, npos == X.find_first_of(SVLZ, j));
+                    ASSERTV(LINE, SPEC, j,
+                            npos == X.find_first_of(Z.c_str(), j));
+                    ASSERTV(LINE, SPEC, j,
+                            npos == X.find_first_of(Z.c_str(), j, 0));
 
-                    LOOP3_ASSERT(LINE, SPEC, j,
-                                 npos == X.find_last_of(Z, j));
-                    LOOP3_ASSERT(LINE, SPEC, j,
-                                 npos == X.find_last_of(Z.c_str(), j));
-                    LOOP3_ASSERT(LINE, SPEC, j,
-                                 npos == X.find_last_of(Z.c_str(), j, 0));
-                    LOOP3_ASSERT(LINE, SPEC, j,
-                                 j == X.find_first_not_of(Z, j));
-                    LOOP3_ASSERT(LINE, SPEC, j,
-                                 j == X.find_first_not_of(Z.c_str(), j));
-                    LOOP3_ASSERT(LINE, SPEC, j,
-                                 j == X.find_first_not_of(Z.c_str(), j, 0));
+                    ASSERTV(LINE, SPEC, j, npos == X.find_last_of(Z, j));
+                    ASSERTV(LINE, SPEC, j, npos == X.find_last_of(SRZ, j));
+                    ASSERTV(LINE, SPEC, j, npos == X.find_last_of(SVZ, j));
+                    ASSERTV(LINE, SPEC, j, npos == X.find_last_of(SVLZ, j));
+                    ASSERTV(LINE, SPEC, j,
+                            npos == X.find_last_of(Z.c_str(), j));
+                    ASSERTV(LINE, SPEC, j,
+                            npos == X.find_last_of(Z.c_str(), j, 0));
 
-                    LOOP3_ASSERT(LINE, SPEC, j,
-                                 j == X.find_last_not_of(Z, j));
-                    LOOP3_ASSERT(LINE, SPEC, j,
-                                 j == X.find_last_not_of(Z.c_str(), j));
-                    LOOP3_ASSERT(LINE, SPEC, j,
-                                 j == X.find_last_not_of(Z.c_str(), j, 0));
+                    ASSERTV(LINE, SPEC, j, j == X.find_first_not_of(Z, j));
+                    ASSERTV(LINE, SPEC, j, j == X.find_first_not_of(SVZ, j));
+                    ASSERTV(LINE, SPEC, j, j == X.find_first_not_of(SVLZ, j));
+                    ASSERTV(LINE, SPEC, j,
+                            j == X.find_first_not_of(Z.c_str(), j));
+                    ASSERTV(LINE, SPEC, j,
+                            j == X.find_first_not_of(Z.c_str(), j, 0));
+
+                    ASSERTV(LINE, SPEC, j, j == X.find_last_not_of(Z, j));
+                    ASSERTV(LINE, SPEC, j, j == X.find_last_not_of(SRZ, j));
+                    ASSERTV(LINE, SPEC, j, j == X.find_last_not_of(SVZ, j));
+                    ASSERTV(LINE, SPEC, j, j == X.find_last_not_of(SVLZ, j));
+                    ASSERTV(LINE, SPEC, j,
+                            j == X.find_last_not_of(Z.c_str(), j));
+                    ASSERTV(LINE, SPEC, j,
+                            j == X.find_last_not_of(Z.c_str(), j, 0));
             }
 
-            LOOP2_ASSERT(LINE, SPEC,
-                         npos == X.find_first_of(Z, npos));
-            LOOP2_ASSERT(LINE, SPEC,
-                         npos == X.find_first_of(Z.c_str(), npos, 0));
+            ASSERTV(LINE, SPEC, npos == X.find_first_of(Z,         npos   ));
+            ASSERTV(LINE, SPEC, npos == X.find_first_of(SRZ,       npos   ));
+            ASSERTV(LINE, SPEC, npos == X.find_first_of(SVZ,       npos   ));
+            ASSERTV(LINE, SPEC, npos == X.find_first_of(SVLZ,      npos   ));
+            ASSERTV(LINE, SPEC, npos == X.find_first_of(Z.c_str(), npos, 0));
 
-            LOOP2_ASSERT(LINE, SPEC,
-                         npos == X.find_last_of(Z, npos));
-            LOOP2_ASSERT(LINE, SPEC,
-                         npos == X.find_last_of(Z.c_str(), npos, 0));
+            ASSERTV(LINE, SPEC, npos == X.find_last_of(Z,         npos   ));
+            ASSERTV(LINE, SPEC, npos == X.find_last_of(SRZ,       npos   ));
+            ASSERTV(LINE, SPEC, npos == X.find_last_of(SVZ,       npos   ));
+            ASSERTV(LINE, SPEC, npos == X.find_last_of(SVLZ,      npos   ));
+            ASSERTV(LINE, SPEC, npos == X.find_last_of(Z.c_str(), npos, 0));
 
-            LOOP2_ASSERT(LINE, SPEC,
-                         npos == X.find_first_not_of(Z, npos));
-            LOOP2_ASSERT(LINE, SPEC,
-                         npos == X.find_first_not_of(Z.c_str(), npos, 0));
+            ASSERTV(LINE, SPEC, npos == X.find_first_not_of(Z,    npos));
+            ASSERTV(LINE, SPEC, npos == X.find_first_not_of(SRZ,  npos));
+            ASSERTV(LINE, SPEC, npos == X.find_first_not_of(SVZ,  npos));
+            ASSERTV(LINE, SPEC, npos == X.find_first_not_of(SVLZ, npos));
+            ASSERTV(LINE, SPEC,
+                    npos == X.find_first_not_of(Z.c_str(), npos, 0));
 
-            LOOP2_ASSERT(LINE, SPEC,
-                         LENGTH - 1 == X.find_last_not_of(Z, npos));
-            LOOP2_ASSERT(LINE, SPEC,
-                         LENGTH - 1 == X.find_last_not_of(Z.c_str(), npos, 0));
+            ASSERTV(LINE, SPEC, LENGTH - 1 == X.find_last_not_of(Z,    npos));
+            ASSERTV(LINE, SPEC, LENGTH - 1 == X.find_last_not_of(SRZ,  npos));
+            ASSERTV(LINE, SPEC, LENGTH - 1 == X.find_last_not_of(SVZ,  npos));
+            ASSERTV(LINE, SPEC, LENGTH - 1 == X.find_last_not_of(SVLZ, npos));
+            ASSERTV(LINE, SPEC,
+                    LENGTH - 1 == X.find_last_not_of(Z.c_str(), npos, 0));
 
             if (veryVerbose) {
                 printf("\t\tWith 'char' pattern.\n");
@@ -6127,32 +7555,30 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase22()
                                                C != X[REXP[j]]));
                 }
 
-                LOOP2_ASSERT(LINE, SPEC, X.find(C)  == X.find_first_of(C));
-                LOOP2_ASSERT(LINE, SPEC, X.rfind(C) == X.find_last_of(C));
+                ASSERTV(LINE, SPEC, X.find(C)  == X.find_first_of(C));
+                ASSERTV(LINE, SPEC, X.rfind(C) == X.find_last_of(C));
 
-                LOOP2_ASSERT(LINE, SPEC, EXP[0] == X.find_first_not_of(C));
-                LOOP2_ASSERT(LINE, SPEC,
-                             REXP[LENGTH] == X.find_last_not_of(C));
+                ASSERTV(LINE, SPEC, EXP[0]       == X.find_first_not_of(C));
+                ASSERTV(LINE, SPEC, REXP[LENGTH] == X.find_last_not_of(C));
 
                 for (size_t j = 0; j <= LENGTH + 2; ++j) {
-                    LOOP3_ASSERT(LINE, SPEC, j,
-                                 X.find(C, j)  == X.find_first_of(C, j));
-                    LOOP3_ASSERT(LINE, SPEC, j,
-                                 X.rfind(C, j) == X.find_last_of(C, j));
+                    ASSERTV(LINE, SPEC, j,
+                            X.find(C, j)  == X.find_first_of(C, j));
+                    ASSERTV(LINE, SPEC, j,
+                            X.rfind(C, j) == X.find_last_of(C, j));
                 }
 
                 for (size_t j = 0; j <= LENGTH; ++j) {
-                    LOOP3_ASSERT(LINE, SPEC, j,
-                                 EXP[j]  == X.find_first_not_of(C, j));
-                    LOOP3_ASSERT(LINE, SPEC, j,
-                                 REXP[j] == X.find_last_not_of(C, j));
+                    ASSERTV(LINE, SPEC, j,
+                            EXP[j]  == X.find_first_not_of(C, j));
+                    ASSERTV(LINE, SPEC, j,
+                            REXP[j] == X.find_last_not_of(C, j));
                 }
 
-                LOOP2_ASSERT(LINE, SPEC,
-                             npos == X.find_first_not_of(C, LENGTH + 1));
-                LOOP2_ASSERT(LINE, SPEC,
-                             REXP[LENGTH] == X.find_last_not_of(C,
-                                                                LENGTH + 1));
+                ASSERTV(LINE, SPEC,
+                        npos         == X.find_first_not_of(C, LENGTH + 1));
+                ASSERTV(LINE, SPEC,
+                        REXP[LENGTH] == X.find_last_not_of(C, LENGTH + 1));
 
                 delete[] exp;
                 delete[] rExp;
@@ -6162,7 +7588,11 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase22()
                 const int         PLINE   = PATTERNS[k].d_lineNum;
                 const char* const PATTERN = PATTERNS[k].d_pattern;
                 const size_t      N       = strlen(PATTERN);
-                const Obj Y(g(PATTERN));
+                const Obj         Y(g(PATTERN));
+
+                const StringRefImp           SRY( Y.data(), Y.length());
+                const StringView             SVY( Y.data(), Y.length());
+                const StringViewOnlyLikeType SVLY(Y.data());
 
                 if (veryVerbose) {
                     printf("\t\tWith pattern \"%s\".\n", PATTERN);
@@ -6207,47 +7637,81 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase22()
                                                   Y[REXP_N[j]] == X[REXP[j]]));
                 }
 
-                LOOP5_ASSERT(LINE, PLINE, SPEC, PATTERN, EXP[0],
-                             EXP[0]  == X.find_first_of(Y));
-                LOOP5_ASSERT(LINE, PLINE, SPEC, PATTERN, EXP[0],
-                             EXP[0]  == X.find_first_of(Y.c_str()));
+                ASSERTV(LINE, PLINE, SPEC, PATTERN, EXP[0],
+                        EXP[0]  == X.find_first_of(Y));
+                ASSERTV(LINE, PLINE, SPEC, PATTERN, EXP[0],
+                        EXP[0]  == X.find_first_of(SRY));
+                ASSERTV(LINE, PLINE, SPEC, PATTERN, EXP[0],
+                        EXP[0]  == X.find_first_of(SVY));
+                ASSERTV(LINE, PLINE, SPEC, PATTERN, EXP[0],
+                        EXP[0]  == X.find_first_of(SVLY));
+                ASSERTV(LINE, PLINE, SPEC, PATTERN, EXP[0],
+                        EXP[0]  == X.find_first_of(Y.c_str()));
 
-                LOOP5_ASSERT(LINE, PLINE, SPEC, PATTERN, REXP[0],
-                             REXP[LENGTH] == X.find_last_of(Y));
-                LOOP5_ASSERT(LINE, PLINE, SPEC, PATTERN, REXP[0],
-                             REXP[LENGTH] == X.find_last_of(Y.c_str()));
+                ASSERTV(LINE, PLINE, SPEC, PATTERN, REXP[0],
+                        REXP[LENGTH] == X.find_last_of(Y));
+                ASSERTV(LINE, PLINE, SPEC, PATTERN, REXP[0],
+                        REXP[LENGTH] == X.find_last_of(SRY));
+                ASSERTV(LINE, PLINE, SPEC, PATTERN, REXP[0],
+                        REXP[LENGTH] == X.find_last_of(SVY));
+                ASSERTV(LINE, PLINE, SPEC, PATTERN, REXP[0],
+                        REXP[LENGTH] == X.find_last_of(SVLY));
+                ASSERTV(LINE, PLINE, SPEC, PATTERN, REXP[0],
+                        REXP[LENGTH] == X.find_last_of(Y.c_str()));
 
                 for (size_t j = 0; j <= LENGTH; ++j) {
-                    LOOP6_ASSERT(LINE, PLINE, SPEC, PATTERN, j, EXP[j],
-                                 EXP[j] == X.find_first_of(Y, j));
-                    LOOP6_ASSERT(LINE, PLINE, SPEC, PATTERN, j, EXP[j],
-                                 EXP [j]== X.find_first_of(Y.c_str(), j));
-                    LOOP6_ASSERT(LINE, PLINE, SPEC, PATTERN, j, EXP[j],
-                                 EXP [j]== X.find_first_of(Y.c_str(), j, N));
+                    ASSERTV(LINE, PLINE, SPEC, PATTERN, j, EXP[j],
+                            EXP[j] == X.find_first_of(Y, j));
+                    ASSERTV(LINE, PLINE, SPEC, PATTERN, j, EXP[j],
+                            EXP[j] == X.find_first_of(SRY, j));
+                    ASSERTV(LINE, PLINE, SPEC, PATTERN, j, EXP[j],
+                            EXP[j] == X.find_first_of(SVY, j));
+                    ASSERTV(LINE, PLINE, SPEC, PATTERN, j, EXP[j],
+                            EXP[j] == X.find_first_of(SVLY, j));
+                    ASSERTV(LINE, PLINE, SPEC, PATTERN, j, EXP[j],
+                            EXP [j]== X.find_first_of(Y.c_str(), j));
+                    ASSERTV(LINE, PLINE, SPEC, PATTERN, j, EXP[j],
+                            EXP [j]== X.find_first_of(Y.c_str(), j, N));
 
-                    LOOP6_ASSERT(LINE, PLINE, SPEC, PATTERN, j, REXP[j],
-                                 REXP[j] == X.find_last_of(Y, j));
-                    LOOP6_ASSERT(LINE, PLINE, SPEC, PATTERN, j, REXP[j],
-                                 REXP[j] == X.find_last_of(Y.c_str(), j));
-                    LOOP6_ASSERT(LINE, PLINE, SPEC, PATTERN, j, REXP[j],
-                                 REXP[j] == X.find_last_of(Y.c_str(), j, N));
+                    ASSERTV(LINE, PLINE, SPEC, PATTERN, j, REXP[j],
+                            REXP[j] == X.find_last_of(Y, j));
+                    ASSERTV(LINE, PLINE, SPEC, PATTERN, j, REXP[j],
+                            REXP[j] == X.find_last_of(SRY, j));
+                    ASSERTV(LINE, PLINE, SPEC, PATTERN, j, REXP[j],
+                            REXP[j] == X.find_last_of(SVY, j));
+                    ASSERTV(LINE, PLINE, SPEC, PATTERN, j, REXP[j],
+                            REXP[j] == X.find_last_of(SVLY, j));
+                    ASSERTV(LINE, PLINE, SPEC, PATTERN, j, REXP[j],
+                            REXP[j] == X.find_last_of(Y.c_str(), j));
+                    ASSERTV(LINE, PLINE, SPEC, PATTERN, j, REXP[j],
+                            REXP[j] == X.find_last_of(Y.c_str(), j, N));
                 }
 
-                LOOP4_ASSERT(LINE, PLINE, SPEC, PATTERN,
-                             npos == X.find_first_of(Y, npos));
-                LOOP4_ASSERT(LINE, PLINE, SPEC, PATTERN,
-                             npos == X.find_first_of(Y.c_str(), npos));
-                LOOP4_ASSERT(LINE, PLINE, SPEC, PATTERN,
-                             npos == X.find_first_of(Y.c_str(), npos, N));
+                ASSERTV(LINE, PLINE, SPEC, PATTERN,
+                        npos == X.find_first_of(Y, npos));
+                ASSERTV(LINE, PLINE, SPEC, PATTERN,
+                        npos == X.find_first_of(SRY, npos));
+                ASSERTV(LINE, PLINE, SPEC, PATTERN,
+                        npos == X.find_first_of(SVY, npos));
+                ASSERTV(LINE, PLINE, SPEC, PATTERN,
+                        npos == X.find_first_of(SVLY, npos));
+                ASSERTV(LINE, PLINE, SPEC, PATTERN,
+                        npos == X.find_first_of(Y.c_str(), npos));
+                ASSERTV(LINE, PLINE, SPEC, PATTERN,
+                        npos == X.find_first_of(Y.c_str(), npos, N));
 
-                LOOP5_ASSERT(LINE, PLINE, SPEC, PATTERN, REXP[LENGTH],
-                             REXP[LENGTH] == X.find_last_of(Y, npos));
-                LOOP5_ASSERT(LINE, PLINE, SPEC, PATTERN, REXP[LENGTH],
-                             REXP[LENGTH] == X.find_last_of(Y.c_str(), npos));
-                LOOP5_ASSERT(LINE, PLINE, SPEC, PATTERN, REXP[LENGTH],
-                             REXP[LENGTH] == X.find_last_of(Y.c_str(),
-                                                            npos,
-                                                            N));
+                ASSERTV(LINE, PLINE, SPEC, PATTERN, REXP[LENGTH],
+                        REXP[LENGTH] == X.find_last_of(Y, npos));
+                ASSERTV(LINE, PLINE, SPEC, PATTERN, REXP[LENGTH],
+                        REXP[LENGTH] == X.find_last_of(SRY, npos));
+                ASSERTV(LINE, PLINE, SPEC, PATTERN, REXP[LENGTH],
+                        REXP[LENGTH] == X.find_last_of(SVY, npos));
+                ASSERTV(LINE, PLINE, SPEC, PATTERN, REXP[LENGTH],
+                        REXP[LENGTH] == X.find_last_of(SVLY, npos));
+                ASSERTV(LINE, PLINE, SPEC, PATTERN, REXP[LENGTH],
+                        REXP[LENGTH] == X.find_last_of(Y.c_str(), npos));
+                ASSERTV(LINE, PLINE, SPEC, PATTERN, REXP[LENGTH],
+                        REXP[LENGTH] == X.find_last_of(Y.c_str(), npos, N));
 
                 if (veryVerbose)
                     printf("\t\t\tFor 'find_{first,last}_not_of'.\n");
@@ -6281,50 +7745,82 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase22()
                     ASSERT(npos == REXP[j] || REXP[j] <= lastJ);
                 }
 
-                LOOP5_ASSERT(LINE, PLINE, SPEC, PATTERN, EXP[0],
-                             EXP[0]  == X.find_first_not_of(Y));
-                LOOP5_ASSERT(LINE, PLINE, SPEC, PATTERN, EXP[0],
-                             EXP[0]  == X.find_first_not_of(Y.c_str()));
+                ASSERTV(LINE, PLINE, SPEC, PATTERN, EXP[0],
+                        EXP[0]  == X.find_first_not_of(Y));
+                ASSERTV(LINE, PLINE, SPEC, PATTERN, EXP[0],
+                        EXP[0]  == X.find_first_not_of(SRY));
+                ASSERTV(LINE, PLINE, SPEC, PATTERN, EXP[0],
+                        EXP[0]  == X.find_first_not_of(SVY));
+                ASSERTV(LINE, PLINE, SPEC, PATTERN, EXP[0],
+                        EXP[0]  == X.find_first_not_of(SVLY));
+                ASSERTV(LINE, PLINE, SPEC, PATTERN, EXP[0],
+                        EXP[0]  == X.find_first_not_of(Y.c_str()));
 
-                LOOP5_ASSERT(LINE, PLINE, SPEC, PATTERN, REXP[0],
-                             REXP[LENGTH] == X.find_last_not_of(Y));
-                LOOP5_ASSERT(LINE, PLINE, SPEC, PATTERN, REXP[0],
-                             REXP[LENGTH] == X.find_last_not_of(Y.c_str()));
+                ASSERTV(LINE, PLINE, SPEC, PATTERN, REXP[0],
+                        REXP[LENGTH] == X.find_last_not_of(Y));
+                ASSERTV(LINE, PLINE, SPEC, PATTERN, REXP[0],
+                        REXP[LENGTH] == X.find_last_not_of(SRY));
+                ASSERTV(LINE, PLINE, SPEC, PATTERN, REXP[0],
+                        REXP[LENGTH] == X.find_last_not_of(SVY));
+                ASSERTV(LINE, PLINE, SPEC, PATTERN, REXP[0],
+                        REXP[LENGTH] == X.find_last_not_of(SVLY));
+                ASSERTV(LINE, PLINE, SPEC, PATTERN, REXP[0],
+                        REXP[LENGTH] == X.find_last_not_of(Y.c_str()));
 
                 for (size_t j = 0; j <= LENGTH; ++j) {
-                    LOOP6_ASSERT(LINE, PLINE, SPEC, PATTERN, j, EXP[j],
-                                 EXP[j] == X.find_first_not_of(Y, j));
-                    LOOP6_ASSERT(LINE, PLINE, SPEC, PATTERN, j, EXP[j],
-                                 EXP [j]== X.find_first_not_of(Y.c_str(), j));
-                    LOOP6_ASSERT(
-                               LINE, PLINE, SPEC, PATTERN, j, EXP[j],
-                               EXP [j]== X.find_first_not_of(Y.c_str(), j, N));
+                    ASSERTV(LINE, PLINE, SPEC, PATTERN, j, EXP[j],
+                            EXP[j] == X.find_first_not_of(Y, j));
+                    ASSERTV(LINE, PLINE, SPEC, PATTERN, j, EXP[j],
+                            EXP[j] == X.find_first_not_of(SRY, j));
+                    ASSERTV(LINE, PLINE, SPEC, PATTERN, j, EXP[j],
+                            EXP[j] == X.find_first_not_of(SVY, j));
+                    ASSERTV(LINE, PLINE, SPEC, PATTERN, j, EXP[j],
+                            EXP[j] == X.find_first_not_of(SVLY, j));
+                    ASSERTV(LINE, PLINE, SPEC, PATTERN, j, EXP[j],
+                            EXP [j]== X.find_first_not_of(Y.c_str(), j));
+                    ASSERTV(LINE, PLINE, SPEC, PATTERN, j, EXP[j],
+                            EXP [j]== X.find_first_not_of(Y.c_str(), j, N));
 
-                    LOOP6_ASSERT(LINE, PLINE, SPEC, PATTERN, j, REXP[j],
-                                 REXP[j] == X.find_last_not_of(Y, j));
-                    LOOP6_ASSERT(LINE, PLINE, SPEC, PATTERN, j, REXP[j],
-                                 REXP[j] == X.find_last_not_of(Y.c_str(), j));
-                    LOOP6_ASSERT(
-                               LINE, PLINE, SPEC, PATTERN, j, REXP[j],
-                               REXP[j] == X.find_last_not_of(Y.c_str(), j, N));
+                    ASSERTV(LINE, PLINE, SPEC, PATTERN, j, REXP[j],
+                            REXP[j] == X.find_last_not_of(Y, j));
+                    ASSERTV(LINE, PLINE, SPEC, PATTERN, j, REXP[j],
+                            REXP[j] == X.find_last_not_of(SRY, j));
+                    ASSERTV(LINE, PLINE, SPEC, PATTERN, j, REXP[j],
+                            REXP[j] == X.find_last_not_of(SVY, j));
+                    ASSERTV(LINE, PLINE, SPEC, PATTERN, j, REXP[j],
+                            REXP[j] == X.find_last_not_of(SVLY, j));
+                    ASSERTV(LINE, PLINE, SPEC, PATTERN, j, REXP[j],
+                            REXP[j] == X.find_last_not_of(Y.c_str(), j));
+                    ASSERTV(LINE, PLINE, SPEC, PATTERN, j, REXP[j],
+                            REXP[j] == X.find_last_not_of(Y.c_str(), j, N));
                 }
 
-                LOOP4_ASSERT(LINE, PLINE, SPEC, PATTERN,
-                             npos == X.find_first_not_of(Y, npos));
-                LOOP4_ASSERT(LINE, PLINE, SPEC, PATTERN,
-                             npos == X.find_first_not_of(Y.c_str(), npos));
-                LOOP4_ASSERT(LINE, PLINE, SPEC, PATTERN,
-                             npos == X.find_first_not_of(Y.c_str(), npos, N));
+                ASSERTV(LINE, PLINE, SPEC, PATTERN,
+                        npos == X.find_first_not_of(Y, npos));
+                ASSERTV(LINE, PLINE, SPEC, PATTERN,
+                        npos == X.find_first_not_of(SRY, npos));
+                ASSERTV(LINE, PLINE, SPEC, PATTERN,
+                        npos == X.find_first_not_of(SVY, npos));
+                ASSERTV(LINE, PLINE, SPEC, PATTERN,
+                        npos == X.find_first_not_of(SVLY, npos));
+                ASSERTV(LINE, PLINE, SPEC, PATTERN,
+                        npos == X.find_first_not_of(Y.c_str(), npos));
+                ASSERTV(LINE, PLINE, SPEC, PATTERN,
+                        npos == X.find_first_not_of(Y.c_str(), npos, N));
 
-                LOOP5_ASSERT(LINE, PLINE, SPEC, PATTERN, REXP[LENGTH],
-                             REXP[LENGTH] == X.find_last_not_of(Y, npos));
-                LOOP5_ASSERT(LINE, PLINE, SPEC, PATTERN, REXP[LENGTH],
-                             REXP[LENGTH] == X.find_last_not_of(Y.c_str(),
-                                                                npos));
-                LOOP5_ASSERT(LINE, PLINE, SPEC, PATTERN, REXP[LENGTH],
-                             REXP[LENGTH] == X.find_last_not_of(Y.c_str(),
-                                                                npos,
-                                                                N));
+                ASSERTV(LINE, PLINE, SPEC, PATTERN, REXP[LENGTH],
+                        REXP[LENGTH] == X.find_last_not_of(Y, npos));
+                ASSERTV(LINE, PLINE, SPEC, PATTERN, REXP[LENGTH],
+                        REXP[LENGTH] == X.find_last_not_of(SRY, npos));
+                ASSERTV(LINE, PLINE, SPEC, PATTERN, REXP[LENGTH],
+                        REXP[LENGTH] == X.find_last_not_of(SVY, npos));
+                ASSERTV(LINE, PLINE, SPEC, PATTERN, REXP[LENGTH],
+                        REXP[LENGTH] == X.find_last_not_of(SVLY, npos));
+                ASSERTV(LINE, PLINE, SPEC, PATTERN, REXP[LENGTH],
+                        REXP[LENGTH] == X.find_last_not_of(Y.c_str(), npos));
+                ASSERTV(
+                       LINE, PLINE, SPEC, PATTERN, REXP[LENGTH],
+                       REXP[LENGTH] == X.find_last_not_of(Y.c_str(), npos, N));
 
                 delete[] exp;
                 delete[] expN;
@@ -6338,7 +7834,7 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase22()
 template <class TYPE, class TRAITS, class ALLOC>
 void TestDriver<TYPE,TRAITS,ALLOC>::testCase22Negative()
 {
-    // --------------------------------------------------------------------
+    // ------------------------------------------------------------------------
     // NEGATIVE TESTING COPY:
     //
     // Concerns:
@@ -6353,16 +7849,16 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase22Negative()
     //   size_type find(const C *s, pos, n) const;
     //   size_type find(const C *s, pos = 0) const;
     //   size_type rfind(const C *s, pos, n) const;
-    //   size_type rfind(const C *s, pos = 0) const;
+    //   size_type rfind(const C *s, pos = npos) const;
     //   size_type find_first_of(const C *s, pos, n) const;
     //   size_type find_first_of(const C *s, pos = 0) const;
     //   size_type find_last_of(const C *s, pos, n) const;
-    //   size_type find_last_of(const C *s, pos = 0) const;
+    //   size_type find_last_of(const C *s, pos = npos) const;
     //   size_type find_first_not_of(const C *s, pos, n) const;
     //   size_type find_first_not_of(const C *s, pos = 0) const;
     //   size_type find_last_not_of(const C *s, pos, n) const;
-    //   size_type find_last_not_of(const C *s, pos = 0) const;
-    // -----------------------------------------------------------------------
+    //   size_type find_last_not_of(const C *s, pos = npos) const;
+    // ------------------------------------------------------------------------
 
     bsls::AssertTestHandlerGuard guard;
 
@@ -6797,7 +8293,7 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase20()
     //      user-supplied allocator whenever one is specified.
     //
     // Plan:
-    //   The plan is similar to 'insert' (case 17) with two nested loops for
+    //   The plan is similar to 'insert' (case 18) with two nested loops for
     //   the beginning and end of the replace range (instead of only one for
     //   the insert position).  Since both 'erase' and 'insert' have been
     //   tested, and conceptually replace is equivalent to 'erase' followed by
@@ -7086,7 +8582,7 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase20MatchTypes()
     //      user-supplied allocator whenever one is specified.
     //
     // Plan:
-    //   The plan is similar to 'insert' (case 17) with two nested loops
+    //   The plan is similar to 'insert' (case 18) with two nested loops
     //   for the beginning and end of the replace range (instead of only one
     //   for the insert position).  Since both 'erase' and 'insert' have been
     //   tested, and conceptually replace is equivalent to 'erase' followed by
@@ -7370,7 +8866,7 @@ template <class TYPE, class TRAITS, class ALLOC>
 template <class CONTAINER>
 void TestDriver<TYPE,TRAITS,ALLOC>::testCase20Range(const CONTAINER&)
 {
-    // --------------------------------------------------------------------
+    // ------------------------------------------------------------------------
     // TESTING REPLACE:
     //
     // Concerns:
@@ -7388,12 +8884,19 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase20Range(const CONTAINER&)
     //
     // Testing:
     //   string& replace(pos1, n1, const string& str);
+    //   basic_string& replace(pos1, n1, const STRING_VIEW_LIKE_TYPE& str);
     //   string& replace(pos1, n1, const string& str, pos2, n2 = npos);
+    //   basic_string& replace(p1,n1,const STRING_VIEW_LIKE_TYPE& s,p2,n2);
     //   string& replace(pos1, n1, const C *s, n2);
     //   string& replace(pos1, n1, const C *s);
     //   replace(const_iterator first, const_iterator last, const C *s, n2);
     //   replace(const_iterator first, const_iterator last, const C *s);
-    // --------------------------------------------------------------------
+    //   basic_string& replace(const_iterator p,q,const STRING_VIEW_LIKE&);
+    // ------------------------------------------------------------------------
+
+    typedef bslstl::StringRefImp<TYPE>            StringRefImp;
+    typedef bsl::basic_string_view<TYPE, TRAITS>  StringView;
+    typedef ConvertibleToStringViewOnlyType<TYPE> StringViewOnlyLikeType;
 
     bslma::TestAllocator testAllocator(veryVeryVerbose);
 
@@ -7410,17 +8913,30 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase20Range(const CONTAINER&)
                       >::value;
 
     enum {
-        REPLACE_STRING_MODE_FIRST        = 0,
-        REPLACE_SUBSTRING_AT_INDEX       = 0,
-        REPLACE_SUBSTRING_AT_INDEX_NPOS  = 1,
-        REPLACE_STRING_AT_INDEX          = 2,
-        REPLACE_CSTRING_N_AT_INDEX       = 3,
-        REPLACE_CSTRING_AT_INDEX         = 4,
-        REPLACE_STRING_AT_ITERATOR       = 5,
-        REPLACE_CONST_STRING_AT_ITERATOR = 6,
-        REPLACE_CSTRING_N_AT_ITERATOR    = 7,
-        REPLACE_CSTRING_AT_ITERATOR      = 8,
-        REPLACE_STRING_MODE_LAST         = 8
+        REPLACE_STRING_MODE_FIRST                    =  0,
+        REPLACE_SUBSTRING_AT_INDEX                   =  0,
+        REPLACE_SUBSTRINGREF_AT_INDEX                =  1,
+        REPLACE_SUBSTRINGVIEW_AT_INDEX               =  2,
+        REPLACE_SUBSTRINGVIEWLIKE_AT_INDEX           =  3,
+        REPLACE_SUBSTRING_AT_INDEX_NPOS              =  4,
+        REPLACE_SUBSTRINGREF_AT_INDEX_NPOS           =  5,
+        REPLACE_SUBSTRINGVIEW_AT_INDEX_NPOS          =  6,
+        REPLACE_SUBSTRINGVIEWLIKE_AT_INDEX_NPOS      =  7,
+        REPLACE_STRING_AT_INDEX                      =  8,
+        REPLACE_STRINGREF_AT_INDEX                   =  9,
+        REPLACE_STRINGVIEW_AT_INDEX                  = 10,
+        REPLACE_STRINGVIEWLIKE_AT_INDEX              = 11,
+        REPLACE_CSTRING_N_AT_INDEX                   = 12,
+        REPLACE_CSTRING_AT_INDEX                     = 13,
+        REPLACE_STRING_AT_ITERATOR                   = 14,
+        REPLACE_STRINGREF_AT_ITERATOR                = 15,
+        REPLACE_STRINGVIEW_AT_ITERATOR               = 16,
+        REPLACE_STRINGVIEWLIKE_AT_ITERATOR           = 17,
+        REPLACE_STRING_BY_ITERATOR_AT_ITERATOR       = 18,
+        REPLACE_CONST_STRING_BY_ITERATOR_AT_ITERATOR = 19,
+        REPLACE_CSTRING_N_AT_ITERATOR                = 20,
+        REPLACE_CSTRING_AT_ITERATOR                  = 21,
+        REPLACE_STRING_MODE_LAST                     = 21
     };
 
     static const struct {
@@ -7507,6 +9023,10 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase20Range(const CONTAINER&)
 
                     CONTAINER mU(Y);  const CONTAINER& U = mU;
 
+                    const StringRefImp           SR( Y.data(), Y.length());
+                    const StringView             SV( Y.data(), Y.length());
+                    const StringViewOnlyLikeType SVL(Y.data());
+
                     for (size_t b = 0; b <= INIT_LENGTH; ++b) {
                     for (size_t s = 0; s <= INIT_LENGTH; ++s) {
                         const size_t BEGIN = b;
@@ -7554,6 +9074,23 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase20Range(const CONTAINER&)
                             Obj &result = mX.replace(BEGIN, SIZE, Y);
                             ASSERT(&result == &mX);
                           } break;
+                          case REPLACE_STRINGREF_AT_INDEX: {
+                            // string& replace(pos1, n1, const StringRef& s);
+                            Obj &result = mX.replace(BEGIN, SIZE, SR);
+                            ASSERT(&result == &mX);
+                          } break;
+                          case REPLACE_STRINGVIEW_AT_INDEX: {
+                            // string& replace(pos1, n1, const string_view& s);
+                            Obj &result = mX.replace(BEGIN, SIZE, SV);
+                            ASSERT(&result == &mX);
+                          } break;
+                          case REPLACE_STRINGVIEWLIKE_AT_INDEX: {
+                            // string& replace(pos1,
+                            //                 n1,
+                            //                 const StringViewLike& s);
+                            Obj &result = mX.replace(BEGIN, SIZE, SVL);
+                            ASSERT(&result == &mX);
+                          } break;
                           case REPLACE_CSTRING_N_AT_INDEX: {
                             // string& replace(pos1, n1, const C *s, n2);
                             Obj &result = mX.replace(BEGIN,
@@ -7583,6 +9120,38 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase20Range(const CONTAINER&)
                             ASSERT(&result == &mX);
                           } break;
                           case REPLACE_STRING_AT_ITERATOR: {
+                            // string& replace(iterator p,
+                            //                 iterator q,
+                            //                 const string& str);
+                            mX.replace(mX.begin() + BEGIN,
+                                       mX.begin() + END,
+                                       Y);
+                          } break;
+                          case REPLACE_STRINGREF_AT_ITERATOR: {
+                            // string& replace(iterator p,
+                            //                 iterator q,
+                            //                 const StringRef& str);
+                            mX.replace(mX.begin() + BEGIN,
+                                       mX.begin() + END,
+                                       SR);
+                          } break;
+                          case REPLACE_STRINGVIEW_AT_ITERATOR: {
+                            // string& replace(iterator p,
+                            //                 iterator q,
+                            //                 const string_view& str);
+                            mX.replace(mX.begin() + BEGIN,
+                                       mX.begin() + END,
+                                       SV);
+                          } break;
+                          case REPLACE_STRINGVIEWLIKE_AT_ITERATOR: {
+                            // string& replace(iterator p,
+                            //                 iterator q,
+                            //                 const StringViewLike& str);
+                            mX.replace(mX.begin() + BEGIN,
+                                       mX.begin() + END,
+                                       SVL);
+                          } break;
+                          case REPLACE_STRING_BY_ITERATOR_AT_ITERATOR: {
                             // template <class InputIter>
                             //   void replace(iterator p, iterator q,
                             //                InputIter first, last);
@@ -7591,7 +9160,7 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase20Range(const CONTAINER&)
                                        mU.begin(),
                                        mU.end());
                           } break;
-                          case REPLACE_CONST_STRING_AT_ITERATOR: {
+                          case REPLACE_CONST_STRING_BY_ITERATOR_AT_ITERATOR: {
                             // template <class InputIter>
                             //   void replace(iterator p, iterator q,
                             //                InputIter first, last);
@@ -7614,24 +9183,23 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase20Range(const CONTAINER&)
                             T_; T_; T_; T_; P_(X); P(X.capacity());
                         }
 
-                        LOOP5_ASSERT(INIT_LINE, LINE, BEGIN, SIZE, END,
-                                     LENGTH == X.size());
+                        ASSERTV(INIT_LINE, LINE, BEGIN, SIZE, END,
+                                LENGTH == X.size());
                         if (!INPUT_ITERATOR_TAG) {
-                            LOOP5_ASSERT(INIT_LINE, LINE, BEGIN, SIZE, END,
-                                         CAP == X.capacity());
+                            ASSERTV(INIT_LINE, LINE, BEGIN, SIZE, END,
+                                    CAP == X.capacity());
                         }
-                        LOOP5_ASSERT(INIT_LINE, LINE, BEGIN, SIZE, END,
-                                     EXP == X);
+                        ASSERTV(INIT_LINE, LINE, BEGIN, SIZE, END, EXP == X);
 
                         const int REALLOC = X.capacity() > INIT_CAP;
                         const int A_ALLOC =
                             DEFAULT_CAPACITY >= INIT_CAP &&
                             X.capacity() > DEFAULT_CAPACITY;
 
-                        LOOP5_ASSERT(INIT_LINE, INIT_LENGTH, BEGIN, END, SIZE,
-                                     BB + REALLOC <= AA);
-                        LOOP4_ASSERT(INIT_LINE, INIT_LENGTH, INIT_CAP, ti,
-                                     B + A_ALLOC <=  A);
+                        ASSERTV(INIT_LINE, INIT_LENGTH, BEGIN, END, SIZE,
+                                BB + REALLOC <= AA);
+                        ASSERTV(INIT_LINE, INIT_LENGTH, INIT_CAP, ti,
+                                B + A_ALLOC <=  A);
                     }
                     }
                 }
@@ -7643,9 +9211,13 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase20Range(const CONTAINER&)
     ASSERT(0 == testAllocator.numMismatches());
     ASSERT(0 == testAllocator.numBlocksInUse());
 
-    if (verbose) printf("\tUsing string with replaceMode = %d.\n",
-                        REPLACE_SUBSTRING_AT_INDEX);
-    {
+    for (int replaceMode  = REPLACE_SUBSTRING_AT_INDEX;
+             replaceMode <= REPLACE_SUBSTRINGVIEWLIKE_AT_INDEX;
+             ++replaceMode) {
+        const int MODE = replaceMode;
+
+        if (verbose)  printf("\tUsing string with replaceMode = %d\n", MODE);
+
         for (int i = 0; i < NUM_DATA; ++i) {
             const int    INIT_LINE   = DATA[i].d_lineNum;
             const size_t INIT_LENGTH = DATA[i].d_length;
@@ -7667,21 +9239,26 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase20Range(const CONTAINER&)
 
                     Obj mY(g(SPEC));  const Obj& Y = mY;
 
+                    const StringRefImp           SR( Y.data(), Y.length());
+                    const StringView             SV( Y.data(), Y.length());
+                    const StringViewOnlyLikeType SVL(Y.data());
+
                     for (size_t b = 0; b <= INIT_LENGTH; ++b) {
                     for (size_t s = 0; s <= INIT_LENGTH; ++s) {
                     for (size_t k = 0; k <= NUM_ELEMENTS; ++k) {
                         const size_t BEGIN = b;
                         const size_t SIZE  = s;
                         const size_t END   = min(b + s, INIT_LENGTH);
-                        const size_t POS2 = k;
+                        const size_t POS2  = k;
 
                         const size_t NUM_ELEMENTS_INS = NUM_ELEMENTS - POS2;
                         const size_t LENGTH = INIT_LENGTH + NUM_ELEMENTS_INS -
                                                                  (END - BEGIN);
 
-                        Obj mX(INIT_LENGTH,
-                               DEFAULT_VALUE,
-                               AllocType(&testAllocator));  const Obj& X = mX;
+                        Obj        mX(INIT_LENGTH,
+                                      DEFAULT_VALUE,
+                                      AllocType(&testAllocator));
+                        const Obj& X = mX;
                         mX.reserve(INIT_RES);
                         const size_t INIT_CAP = X.capacity();
 
@@ -7712,12 +9289,61 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase20Range(const CONTAINER&)
                         if (veryVerbose) {
                             printf("\t\t\t\tBefore:"); P_(BB); P(B);
                         }
-
-                        // string& replace(pos1, n1, const string& str,
-                        //                 pos2, n2);
-                        Obj &result = mX.replace(BEGIN, SIZE,
-                                                 Y, POS2, NUM_ELEMENTS);
-                        ASSERT(&result == &mX);
+                        switch (MODE) {
+                          case REPLACE_SUBSTRING_AT_INDEX: {
+                            // string& replace(pos1, n1, const string& str,
+                            //                 pos2, n2);
+                            Obj& result = mX.replace(BEGIN,
+                                                     SIZE,
+                                                     Y,
+                                                     POS2,
+                                                     NUM_ELEMENTS);
+                            ASSERT(&result == &mX);
+                          } break;
+                          case REPLACE_SUBSTRINGREF_AT_INDEX: {
+                            // string& replace(pos1,
+                            //                 n1,
+                            //                 const StringRef& str,
+                            //                 pos2,
+                            //                 n2);
+                            Obj& result = mX.replace(BEGIN,
+                                                     SIZE,
+                                                     SR,
+                                                     POS2,
+                                                     NUM_ELEMENTS);
+                            ASSERT(&result == &mX);
+                          } break;
+                          case REPLACE_SUBSTRINGVIEW_AT_INDEX: {
+                            // string& replace(pos1,
+                            //                 n1,
+                            //                 const string_view& str,
+                            //                 pos2,
+                            //                 n2);
+                            Obj& result = mX.replace(BEGIN,
+                                                     SIZE,
+                                                     SV,
+                                                     POS2,
+                                                     NUM_ELEMENTS);
+                            ASSERT(&result == &mX);
+                          } break;
+                          case REPLACE_SUBSTRINGVIEWLIKE_AT_INDEX: {
+                            // string& replace(pos1,
+                            //                 n1,
+                            //                 const StringViewLike& str,
+                            //                 pos2,
+                            //                 n2);
+                            Obj& result = mX.replace(BEGIN,
+                                                     SIZE,
+                                                     SVL,
+                                                     POS2,
+                                                     NUM_ELEMENTS);
+                            ASSERT(&result == &mX);
+                          } break;
+                          default: {
+                            printf("***UNKNOWN REPLACE MODE***\n");
+                            ASSERT(0);
+                          } break;
+                        }
 
                         const Int64 AA = testAllocator.numBlocksTotal();
                         const Int64  A = testAllocator.numBlocksInUse();
@@ -7727,24 +9353,23 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase20Range(const CONTAINER&)
                             T_; T_; T_; T_; P_(X); P(X.capacity());
                         }
 
-                        LOOP5_ASSERT(INIT_LINE, LINE, BEGIN, SIZE, POS2,
-                                     LENGTH == X.size());
+                        ASSERTV(INIT_LINE, LINE, BEGIN, SIZE, POS2,
+                                LENGTH == X.size());
                         if (!INPUT_ITERATOR_TAG) {
-                            LOOP5_ASSERT(INIT_LINE, LINE, BEGIN, SIZE, POS2,
-                                         CAP == X.capacity());
+                            ASSERTV(INIT_LINE, LINE, BEGIN, SIZE, POS2,
+                                    CAP == X.capacity());
                         }
-                        LOOP5_ASSERT(INIT_LINE, LINE, BEGIN, SIZE, END,
-                                     EXP == X);
+                        ASSERTV(INIT_LINE, LINE, BEGIN, SIZE, END, EXP == X);
 
                         const int REALLOC = X.capacity() > INIT_CAP;
                         const int A_ALLOC =
                             DEFAULT_CAPACITY >= INIT_CAP &&
                             X.capacity() > DEFAULT_CAPACITY;
 
-                        LOOP5_ASSERT(INIT_LINE, INIT_LENGTH, INIT_CAP,
-                                     BEGIN, END, BB + REALLOC <= AA);
-                        LOOP5_ASSERT(INIT_LINE, INIT_LENGTH, INIT_CAP,
-                                     BEGIN, END,  B + A_ALLOC <=  A);
+                        ASSERTV(INIT_LINE, INIT_LENGTH, INIT_CAP,
+                                BEGIN, END, BB + REALLOC <= AA);
+                        ASSERTV(INIT_LINE, INIT_LENGTH, INIT_CAP,
+                                BEGIN, END,  B + A_ALLOC <=  A);
                     }
                     }
                     }
@@ -7789,6 +9414,10 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase20Range(const CONTAINER&)
 
                     CONTAINER mU(Y);  const CONTAINER& U = mU;
 
+                    const StringRefImp           SR( Y.data(), Y.length());
+                    const StringView             SV( Y.data(), Y.length());
+                    const StringViewOnlyLikeType SVL(Y.data());
+
                     for (size_t b = 0; b <= INIT_LENGTH; ++b) {
                     for (size_t s = 0; s <= INIT_LENGTH; ++s) {
                         const size_t BEGIN  = b;
@@ -7824,6 +9453,24 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase20Range(const CONTAINER&)
                                 Obj &result = mX.replace(BEGIN, SIZE, Y);
                                 ASSERT(&result == &mX);
                               } break;
+                              case REPLACE_STRINGREF_AT_INDEX: {
+                                // string& replace(pos1, n1,
+                                //                 const StringRef& str);
+                                Obj &result = mX.replace(BEGIN, SIZE, SR);
+                                ASSERT(&result == &mX);
+                              } break;
+                              case REPLACE_STRINGVIEW_AT_INDEX: {
+                                // string& replace(pos1, n1,
+                                //                 const string_view& str);
+                                Obj &result = mX.replace(BEGIN, SIZE, SV);
+                                ASSERT(&result == &mX);
+                              } break;
+                              case REPLACE_STRINGVIEWLIKE_AT_INDEX: {
+                                // string& replace(pos1, n1,
+                                //                 const StringViewLike& str);
+                                Obj &result = mX.replace(BEGIN, SIZE, SVL);
+                                ASSERT(&result == &mX);
+                              } break;
                               case REPLACE_SUBSTRING_AT_INDEX: {
                                 // string& replace(pos1, n1, const string& str,
                                 //                 pos2, n2);
@@ -7834,12 +9481,78 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase20Range(const CONTAINER&)
                                                          NUM_ELEMENTS);
                                 ASSERT(&result == &mX);
                               } break;
+                              case REPLACE_SUBSTRINGREF_AT_INDEX: {
+                                // string& replace(pos1, n1,
+                                //                 const StringRef& str,
+                                //                 pos2, n2);
+                                Obj &result = mX.replace(BEGIN,
+                                                         SIZE,
+                                                         SR,
+                                                         0,
+                                                         NUM_ELEMENTS);
+                                ASSERT(&result == &mX);
+                              } break;
+                              case REPLACE_SUBSTRINGVIEW_AT_INDEX: {
+                                // string& replace(pos1, n1,
+                                //                 const string_view& str,
+                                //                 pos2, n2);
+                                Obj &result = mX.replace(BEGIN,
+                                                         SIZE,
+                                                         SV,
+                                                         0,
+                                                         NUM_ELEMENTS);
+                                ASSERT(&result == &mX);
+                              } break;
+                              case REPLACE_SUBSTRINGVIEWLIKE_AT_INDEX: {
+                                // string& replace(pos1, n1,
+                                //                 const StringViewLike& str,
+                                //                 pos2, n2);
+                                Obj &result = mX.replace(BEGIN,
+                                                         SIZE,
+                                                         SVL,
+                                                         0,
+                                                         NUM_ELEMENTS);
+                                ASSERT(&result == &mX);
+                              } break;
                               case REPLACE_SUBSTRING_AT_INDEX_NPOS: {
                                 // string& replace(pos1, n1, const string& str,
                                 //                 pos2, n2);
                                 Obj &result = mX.replace(BEGIN,
                                                          SIZE,
                                                          Y,
+                                                         0);
+                                                         // 'npos' dflt. arg.
+                                ASSERT(&result == &mX);
+                              } break;
+                              case REPLACE_SUBSTRINGREF_AT_INDEX_NPOS: {
+                                // string& replace(pos1, n1,
+                                //                 const StringRef& str,
+                                //                 pos2, n2);
+                                Obj &result = mX.replace(BEGIN,
+                                                         SIZE,
+                                                         SR,
+                                                         0);
+                                                         // 'npos' dflt. arg.
+                                ASSERT(&result == &mX);
+                              } break;
+                              case REPLACE_SUBSTRINGVIEW_AT_INDEX_NPOS: {
+                                // string& replace(pos1, n1,
+                                //                 const string_view& str,
+                                //                 pos2, n2);
+                                Obj &result = mX.replace(BEGIN,
+                                                         SIZE,
+                                                         SV,
+                                                         0);
+                                                         // 'npos' dflt. arg.
+                                ASSERT(&result == &mX);
+                              } break;
+                              case REPLACE_SUBSTRINGVIEWLIKE_AT_INDEX_NPOS: {
+                                // string& replace(pos1, n1,
+                                //                 const StringViewLike& str,
+                                //                 pos2, n2);
+                                Obj &result = mX.replace(BEGIN,
+                                                         SIZE,
+                                                         SVL,
                                                          0);
                                                          // 'npos' dflt. arg.
                                 ASSERT(&result == &mX);
@@ -7875,6 +9588,38 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase20Range(const CONTAINER&)
                                 ASSERT(&result == &mX);
                               } break;
                               case REPLACE_STRING_AT_ITERATOR: {
+                                // replace(const_iterator p,
+                                //         const_iterator q,
+                                //         const string&  str);
+                                mX.replace(mX.begin() + BEGIN,
+                                           mX.begin() + END,
+                                           Y);
+                              } break;
+                              case REPLACE_STRINGREF_AT_ITERATOR: {
+                                // replace(const_iterator   p,
+                                //         const_iterator   q,
+                                //         const StringRef& str);
+                                mX.replace(mX.begin() + BEGIN,
+                                           mX.begin() + END,
+                                           SR);
+                              } break;
+                              case REPLACE_STRINGVIEW_AT_ITERATOR: {
+                                // replace(const_iterator p,
+                                //         const_iterator q,
+                                //         const string_view& str);
+                                mX.replace(mX.begin() + BEGIN,
+                                           mX.begin() + END,
+                                           SV);
+                              } break;
+                              case REPLACE_STRINGVIEWLIKE_AT_ITERATOR: {
+                                // replace(const_iterator p,
+                                //         const_iterator q,
+                                //         const StringViewLike& str);
+                                mX.replace(mX.begin() + BEGIN,
+                                           mX.begin() + END,
+                                           SVL);
+                              } break;
+                              case REPLACE_STRING_BY_ITERATOR_AT_ITERATOR: {
                                 // template <class InputIter>
                                 // replace(const_iterator p, const_iterator q,
                                 //         InputIter first, last);
@@ -7883,7 +9628,8 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase20Range(const CONTAINER&)
                                            mU.begin(),
                                            mU.end());
                               } break;
-                              case REPLACE_CONST_STRING_AT_ITERATOR: {
+                              case
+                                REPLACE_CONST_STRING_BY_ITERATOR_AT_ITERATOR: {
                                 // template <class InputIter>
                                 // replace(const_iterator p, const_iterator q,
                                 //         InputIter first, last);
@@ -7903,10 +9649,10 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase20Range(const CONTAINER&)
                                 T_; T_; T_; P_(X); P(X.capacity());
                             }
 
-                            LOOP5_ASSERT(INIT_LINE, LINE, BEGIN, SIZE, END,
-                                         LENGTH == X.size());
-                            LOOP5_ASSERT(INIT_LINE, LINE, BEGIN, SIZE, END,
-                                         EXP == X);
+                            ASSERTV(INIT_LINE, LINE, BEGIN, SIZE, END,
+                                    LENGTH == X.size());
+                            ASSERTV(INIT_LINE, LINE, BEGIN, SIZE, END,
+                                    EXP == X);
 
                         } BSLMA_TESTALLOCATOR_EXCEPTION_TEST_END
                     }
@@ -7920,14 +9666,155 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase20Range(const CONTAINER&)
     ASSERT(0 == testAllocator.numMismatches());
     ASSERT(0 == testAllocator.numBlocksInUse());
 
+
+#ifdef BDE_BUILD_TARGET_EXC
+    if (verbose) printf("\tWith 'std::out_of_range' exceptions.\n");
+    {
+        enum {
+            REPLACE_MODE_FIRST                          =  0,
+            REPLACE_MODE_STRING_AT_BAD_INDEX            =  0,
+            REPLACE_MODE_SUBSTRING_AT_BAD_INDEX         =  1,
+            REPLACE_MODE_BAD_SUBSTRING_INDEX            =  2,
+            REPLACE_MODE_CSTRING_N_AT_BAD_INDEX         =  3,
+            REPLACE_MODE_CSTRING_AT_BAD_INDEX           =  4,
+            REPLACE_MODE_CHAR_AT_BAD_INDEX              =  5,
+            REPLACE_MODE_STRINGREF_AT_BAD_INDEX         =  6,
+            REPLACE_MODE_SUBSTRINGREF_AT_BAD_INDEX      =  7,
+            REPLACE_MODE_BAD_SUBSTRINGREF_INDEX         =  8,
+            REPLACE_MODE_STRINGVIEW_AT_BAD_INDEX        =  9,
+            REPLACE_MODE_SUBSTRINGVIEW_AT_BAD_INDEX     = 10,
+            REPLACE_MODE_BAD_SUBSTRINGVIEW_INDEX        = 11,
+            REPLACE_MODE_STRINGVIEWLIKE_AT_BAD_INDEX    = 12,
+            REPLACE_MODE_SUBSTRINGVIEWLIKE_AT_BAD_INDEX = 13,
+            REPLACE_MODE_BAD_SUBSTRINGVIEWLIKE_INDEX    = 14,
+            REPLACE_MODE_LAST                           = 14
+        };
+
+        for (int replaceMode = REPLACE_MODE_FIRST;
+             replaceMode <= REPLACE_MODE_LAST;
+             ++replaceMode) {
+            const int MODE = replaceMode;
+            for (int i = 0; i < NUM_DATA; ++i) {
+                const size_t INIT_LENGTH = DATA[i].d_length;
+
+                for (int l = i; l < NUM_DATA; ++l) {
+                    const size_t INIT_RES = DATA[l].d_length;
+                    ASSERT(INIT_LENGTH <= INIT_RES);
+
+                    if (veryVerbose) {
+                        printf("\t\tWith initial value of ");
+                        P_(INIT_LENGTH); P_(INIT_RES);
+                        printf("using default char value.\n");
+                    }
+
+                    const char *SPEC = "A";
+
+                    // Out of range source position.
+
+                    const size_t SOURCE_POSITION = strlen(SPEC) + 1;
+
+                    Obj                          mY(g(SPEC));
+                    const Obj&                   Y = mY;
+                    const StringRefImp           SR( Y.data(), Y.length());
+                    const StringView             SV( Y.data(), Y.length());
+                    const StringViewOnlyLikeType SVL(Y.data());
+
+                    Obj mX(INIT_LENGTH,
+                           DEFAULT_VALUE,
+                           AllocType(&testAllocator));
+                    mX.reserve(INIT_RES);
+
+                    // Out of range position.
+
+                    const size_t POSITION = INIT_LENGTH + 1;
+
+                    bool outOfRangeCaught = false;
+                    try {
+                        switch (MODE) {
+                          case REPLACE_MODE_STRING_AT_BAD_INDEX: {
+                            mX.replace(POSITION, 0, Y);
+                            ASSERT(0);
+                          } break;
+                          case REPLACE_MODE_SUBSTRING_AT_BAD_INDEX: {
+                            mX.replace(POSITION, 0, Y, 0, 0);
+                            ASSERT(0);
+                          } break;
+                          case REPLACE_MODE_BAD_SUBSTRING_INDEX: {
+                            mX.replace(0, 0, Y, SOURCE_POSITION, 0);
+                            ASSERT(0);
+                          } break;
+                          case REPLACE_MODE_CSTRING_N_AT_BAD_INDEX: {
+                            mX.replace(POSITION, 0, Y.data(), 0);
+                            ASSERT(0);
+                          } break;
+                          case REPLACE_MODE_CSTRING_AT_BAD_INDEX: {
+                            mX.replace(POSITION, 0, Y.data());
+                            ASSERT(0);
+                          } break;
+                          case REPLACE_MODE_CHAR_AT_BAD_INDEX: {
+                            mX.replace(POSITION, 0, 0, Y[0]);
+                            ASSERT(0);
+                          } break;
+                          case REPLACE_MODE_STRINGREF_AT_BAD_INDEX: {
+                            mX.replace(POSITION, 0, SR);
+                            ASSERT(0);
+                          } break;
+                          case REPLACE_MODE_SUBSTRINGREF_AT_BAD_INDEX: {
+                            mX.replace(POSITION, 0, SR, 0, 0);
+                            ASSERT(0);
+                          } break;
+                          case REPLACE_MODE_BAD_SUBSTRINGREF_INDEX: {
+                            mX.replace(0, 0, SR, SOURCE_POSITION, 0);
+                            ASSERT(0);
+                          } break;
+                          case REPLACE_MODE_STRINGVIEW_AT_BAD_INDEX: {
+                            mX.replace(POSITION, 0, SV);
+                            ASSERT(0);
+                          } break;
+                          case REPLACE_MODE_SUBSTRINGVIEW_AT_BAD_INDEX: {
+                            mX.replace(POSITION, 0, SV, 0, 0);
+                            ASSERT(0);
+                          } break;
+                          case REPLACE_MODE_BAD_SUBSTRINGVIEW_INDEX: {
+                            mX.replace(0, 0, SV, SOURCE_POSITION, 0);
+                            ASSERT(0);
+                          } break;
+                          case REPLACE_MODE_STRINGVIEWLIKE_AT_BAD_INDEX: {
+                            mX.replace(POSITION, 0, SVL);
+                            ASSERT(0);
+                          } break;
+                          case REPLACE_MODE_SUBSTRINGVIEWLIKE_AT_BAD_INDEX: {
+                            mX.replace(POSITION, 0, SVL, 0, 0);
+                            ASSERT(0);
+                          } break;
+                          case REPLACE_MODE_BAD_SUBSTRINGVIEWLIKE_INDEX: {
+                            mX.replace(0, 0, SVL, SOURCE_POSITION, 0);
+                            ASSERT(0);
+                          } break;
+                          default: {
+                            printf("***UNKNOWN REPLACE MODE***\n");
+                            ASSERT(0);
+                          } break;
+                        }
+                    }
+                    catch (const std::out_of_range&) {
+                         outOfRangeCaught = true;
+                    }
+                    ASSERTV(MODE, i, l, outOfRangeCaught);
+                }
+            }
+        }
+    }
+#endif
+
     if (verbose) printf("\tTesting aliasing concerns.\n");
 
     for (int replaceMode  = REPLACE_STRING_MODE_FIRST;
              replaceMode <= REPLACE_STRING_MODE_LAST;
-             ++replaceMode)
-    {
+             ++replaceMode) {
+        const int MODE = replaceMode;
         if (verbose)
-            printf("\t\tUsing string with replaceMode = %d.\n", replaceMode);
+            printf("\t\tUsing string with replaceMode = %d.\n", MODE);
 
         for (int i = 0; i < NUM_DATA; ++i) {
             const int    INIT_LINE   = DATA[i].d_lineNum;
@@ -7944,98 +9831,204 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase20Range(const CONTAINER&)
                 }
 
                 for (size_t b = 0; b <= INIT_LENGTH; ++b) {
-                for (size_t s = 0; s <= INIT_LENGTH; ++s) {
-                    const size_t BEGIN = b;
-                    const size_t SIZE  = s;
-                    const size_t END   = min(b + s, INIT_LENGTH);
+                    for (size_t s = 0; s <= INIT_LENGTH; ++s) {
+                        const size_t BEGIN = b;
+                        const size_t SIZE  = s;
+                        const size_t END   = min(b + s, INIT_LENGTH);
 
-                    Obj mX(INIT_LENGTH,
-                           DEFAULT_VALUE,
-                           AllocType(&testAllocator));
-                    const Obj& X = mX;
-                    mX.reserve(INIT_RES);
-                    const size_t INIT_CAP = X.capacity();
+                        Obj        mX(INIT_LENGTH,
+                                      DEFAULT_VALUE,
+                                      AllocType(&testAllocator));
+                        const Obj& X = mX;
+                        mX.reserve(INIT_RES);
+                        const size_t INIT_CAP = X.capacity();
 
-                    for (size_t k = 0; k < INIT_LENGTH; ++k) {
-                        mX[k] = VALUES[k % NUM_VALUES];
+                        const StringRefImp           SR( X.data(), X.length());
+                        const StringView             SV( X.data(), X.length());
+                        const StringViewOnlyLikeType SVL(X.data());
+
+                        for (size_t k = 0; k < INIT_LENGTH; ++k) {
+                            mX[k] = VALUES[k % NUM_VALUES];
+                        }
+
+                        Obj mY(X); const Obj& Y = mY;  // control
+
+                        if (veryVerbose) {
+                            printf("\t\t\tReplace with "); P_(Y);
+                            printf(" between "); P_(BEGIN); P_(END);
+                        }
+
+                        switch (replaceMode) {
+                          case REPLACE_STRING_AT_INDEX: {
+                            // string& replace(pos1, n1, const string& str);
+                            mY.replace(BEGIN, SIZE, X);
+                            mX.replace(BEGIN, SIZE, X);
+                          } break;
+                          case REPLACE_STRINGREF_AT_INDEX: {
+                            // string& replace(pos1, n1, const StringRef& s);
+                            mY.replace(BEGIN, SIZE, SR);
+                            mX.replace(BEGIN, SIZE, SR);
+                          } break;
+                          case REPLACE_STRINGVIEW_AT_INDEX: {
+                            // string& replace(pos1, n1, const string_view& s);
+                            mY.replace(BEGIN, SIZE, SV);
+                            mX.replace(BEGIN, SIZE, SV);
+                          } break;
+                          case REPLACE_STRINGVIEWLIKE_AT_INDEX: {
+                            // string& replace(pos1,
+                            //                 n1,
+                            //                 const StringViewLike& str);
+                            mY.replace(BEGIN, SIZE, SVL);
+                            mX.replace(BEGIN, SIZE, SVL);
+                          } break;
+                          case REPLACE_CSTRING_N_AT_INDEX: {
+                            // string& replace(pos1, n1, const C *s, n);
+                            mY.replace(BEGIN, SIZE, X.data(), INIT_LENGTH);
+                            mX.replace(BEGIN, SIZE, X.data(), INIT_LENGTH);
+                          } break;
+                          case REPLACE_CSTRING_AT_INDEX: {
+                            // string& replace(pos1, n1, const C *s);
+                            mY.replace(BEGIN, SIZE, X.c_str());
+                            mX.replace(BEGIN, SIZE, X.c_str());
+                          } break;
+                          case REPLACE_SUBSTRING_AT_INDEX: {
+                            // string& replace(pos1, n1, const string& str,
+                            //                 pos2, n);
+                            mY.replace(BEGIN, SIZE, X, 0, INIT_LENGTH);
+                            mX.replace(BEGIN, SIZE, X, 0, INIT_LENGTH);
+                          } break;
+                          case REPLACE_SUBSTRINGREF_AT_INDEX: {
+                            // string& replace(pos1, n1, const StringRef& str,
+                            //                 pos2, n);
+                            mY.replace(BEGIN, SIZE, SR, 0, INIT_LENGTH);
+                            mX.replace(BEGIN, SIZE, SR, 0, INIT_LENGTH);
+                          } break;
+                          case REPLACE_SUBSTRINGVIEW_AT_INDEX: {
+                            // string& replace(pos1, n1,
+                            //                 const string_view& str,
+                            //                 pos2, n);
+                            mY.replace(BEGIN, SIZE, SV, 0, INIT_LENGTH);
+                            mX.replace(BEGIN, SIZE, SV, 0, INIT_LENGTH);
+                          } break;
+                          case REPLACE_SUBSTRINGVIEWLIKE_AT_INDEX: {
+                            // string& replace(pos1, n1,
+                            //                 const StringViewLike& str,
+                            //                 pos2, n);
+                            mY.replace(BEGIN, SIZE, SVL, 0, INIT_LENGTH);
+                            mX.replace(BEGIN, SIZE, SVL, 0, INIT_LENGTH);
+                          } break;
+                          case REPLACE_SUBSTRING_AT_INDEX_NPOS: {
+                            // string& replace(pos1, n1, const string& str,
+                            //                 pos2, n);
+                            mY.replace(BEGIN, SIZE, X, 0);  // 'npos' default
+                            mX.replace(BEGIN, SIZE, X, 0);  // 'npos' default
+                          } break;
+                          case REPLACE_SUBSTRINGREF_AT_INDEX_NPOS: {
+                            // string& replace(pos1, n1, const StringRef& str,
+                            //                 pos2, n);
+                            mY.replace(BEGIN, SIZE, SR, 0);  // 'npos' default
+                            mX.replace(BEGIN, SIZE, SR, 0);  // 'npos' default
+                          } break;
+                          case REPLACE_SUBSTRINGVIEW_AT_INDEX_NPOS: {
+                            // string& replace(pos1, n1,
+                            //                 const string_view& str,
+                            //                 pos2, n);
+                            mY.replace(BEGIN, SIZE, SV, 0);  // 'npos' default
+                            mX.replace(BEGIN, SIZE, SV, 0);  // 'npos' default
+                          } break;
+                          case REPLACE_SUBSTRINGVIEWLIKE_AT_INDEX_NPOS: {
+                            // string& replace(pos1, n1,
+                            //                 const StringViewLike& str,
+                            //                 pos2, n);
+                            mY.replace(BEGIN, SIZE, SVL, 0);  // 'npos' default
+                            mX.replace(BEGIN, SIZE, SVL, 0);  // 'npos' default
+                          } break;
+                          case REPLACE_STRING_AT_ITERATOR: {
+                            // string& replace(iterator p,
+                            //                 iterator q,
+                            //                 const string& str);
+                            mY.replace(mY.begin() + BEGIN,
+                                       mY.begin() + END,
+                                       X);
+                            mX.replace(mX.begin() + BEGIN,
+                                       mX.begin() + END,
+                                       X);
+                          } break;
+                          case REPLACE_STRINGREF_AT_ITERATOR: {
+                            // string& replace(iterator p,
+                            //                 iterator q,
+                            //                 const StringRef& str);
+                            mY.replace(mY.begin() + BEGIN,
+                                       mY.begin() + END,
+                                       SR);
+                            mX.replace(mX.begin() + BEGIN,
+                                       mX.begin() + END,
+                                       SR);
+                          } break;
+                          case REPLACE_STRINGVIEW_AT_ITERATOR: {
+                            // string& replace(iterator p,
+                            //                 iterator q,
+                            //                 const string_view& str);
+                            mY.replace(mY.begin() + BEGIN,
+                                       mY.begin() + END,
+                                       SV);
+                            mX.replace(mX.begin() + BEGIN,
+                                       mX.begin() + END,
+                                       SV);
+                          } break;
+                          case REPLACE_STRINGVIEWLIKE_AT_ITERATOR: {
+                            // string& replace(iterator p,
+                            //                 iterator q,
+                            //                 const StringViewLike& str);
+                            mY.replace(mY.begin() + BEGIN,
+                                       mY.begin() + END,
+                                       SVL);
+                            mX.replace(mX.begin() + BEGIN,
+                                       mX.begin() + END,
+                                       SVL);
+                          } break;
+                          case REPLACE_STRING_BY_ITERATOR_AT_ITERATOR: {
+                            // replace(const_iterator p, q, InputIter f, l);
+                            mY.replace(mY.begin() + BEGIN, mY.begin() + END,
+                                       mX.begin(), mX.end());
+                            mX.replace(mX.begin() + BEGIN, mX.begin() + END,
+                                       mX.begin(), mX.end());
+                          } break;
+                          case REPLACE_CONST_STRING_BY_ITERATOR_AT_ITERATOR: {
+                            // replace(const_iterator p, q, InputIter f, l);
+                            mY.replace(mY.begin() + BEGIN, mY.begin() + END,
+                                       X.begin(), X.end());
+                            mX.replace(mX.begin() + BEGIN, mX.begin() + END,
+                                       X.begin(), X.end());
+                          } break;
+                          case REPLACE_CSTRING_N_AT_ITERATOR: {
+                            // replace(const_iterator p, q, const C *s, n);
+                            mY.replace(mY.begin() + BEGIN, mY.begin() + END,
+                                       X.data(), INIT_LENGTH);
+                            mX.replace(mX.begin() + BEGIN, mX.begin() + END,
+                                       X.data(), INIT_LENGTH);
+                          } break;
+                          case REPLACE_CSTRING_AT_ITERATOR: {
+                            // string& replace(pos, const C *s);
+                            mY.replace(mY.begin() + BEGIN, mY.begin() + END,
+                                       X.c_str());
+                            mX.replace(mX.begin() + BEGIN, mX.begin() + END,
+                                       X.c_str());
+                          } break;
+                          default: {
+                            printf("***UNKNOWN REPLACE MODE***\n");
+                            ASSERT(0);
+                          } break;
+                        }
+
+                        if (veryVerbose) {
+                            T_; T_; T_; T_; P(X);
+                            T_; T_; T_; T_; P(Y);
+                        }
+
+                        ASSERTV(MODE, INIT_LINE, INIT_CAP, BEGIN, SIZE,
+                                X == Y);
                     }
-
-                    Obj mY(X); const Obj& Y = mY;  // control
-
-                    if (veryVerbose) {
-                        printf("\t\t\tReplace with "); P_(Y);
-                        printf(" between "); P_(BEGIN); P_(END);
-                    }
-
-                    switch (replaceMode) {
-                      case REPLACE_STRING_AT_INDEX: {
-                        // string& replace(pos1, n1, const string& str);
-                        mX.replace(BEGIN, SIZE, Y);
-                        mY.replace(BEGIN, SIZE, Y);
-                      } break;
-                      case REPLACE_CSTRING_N_AT_INDEX: {
-                        // string& replace(pos1, n1, const C *s, n);
-                        mX.replace(BEGIN, SIZE, Y.data(), INIT_LENGTH);
-                        mY.replace(BEGIN, SIZE, Y.data(), INIT_LENGTH);
-                      } break;
-                      case REPLACE_CSTRING_AT_INDEX: {
-                        // string& replace(pos1, n1, const C *s);
-                        mX.replace(BEGIN, SIZE, Y.c_str());
-                        mY.replace(BEGIN, SIZE, Y.c_str());
-                      } break;
-                      case REPLACE_SUBSTRING_AT_INDEX: {
-                        // string& replace(pos1, n1, const string& str,
-                        //                 pos2, n);
-                        mX.replace(BEGIN, SIZE, Y, 0, INIT_LENGTH);
-                        mY.replace(BEGIN, SIZE, Y, 0, INIT_LENGTH);
-                      } break;
-                      case REPLACE_SUBSTRING_AT_INDEX_NPOS: {
-                        // string& replace(pos1, n1, const string& str,
-                        //                 pos2, n);
-                        mX.replace(BEGIN, SIZE, Y, 0);  // 'npos' default arg.
-                        mY.replace(BEGIN, SIZE, Y, 0);
-                      } break;
-                      case REPLACE_STRING_AT_ITERATOR: {
-                        // replace(const_iterator p, q, InputIter first, last);
-                        mX.replace(mX.begin() + BEGIN, mX.begin() + END,
-                                   mY.begin(), mY.end());
-                        mY.replace(mY.begin() + BEGIN, mY.begin() + END,
-                                   mY.begin(), mY.end());
-                      } break;
-                      case REPLACE_CONST_STRING_AT_ITERATOR: {
-                        // replace(const_iterator p, q, InputIter first, last);
-                        mX.replace(mX.begin() + BEGIN, mX.begin() + END,
-                                   Y.begin(), Y.end());
-                        mY.replace(mY.begin() + BEGIN, mY.begin() + END,
-                                   Y.begin(), Y.end());
-                      } break;
-                      case REPLACE_CSTRING_N_AT_ITERATOR: {
-                        // replace(const_iterator p, q, const C *s, n);
-                        mX.replace(mX.begin() + BEGIN, mX.begin() + END,
-                                   Y.data(), INIT_LENGTH);
-                        mY.replace(mY.begin() + BEGIN, mY.begin() + END,
-                                   Y.data(), INIT_LENGTH);
-                      } break;
-                      case REPLACE_CSTRING_AT_ITERATOR: {
-                        // string& replace(pos, const C *s);
-                        mX.replace(mX.begin() + BEGIN, mX.begin() + END,
-                                   Y.c_str());
-                        mY.replace(mY.begin() + BEGIN, mY.begin() + END,
-                                   Y.c_str());
-                      } break;
-                      default: {
-                        printf("***UNKNOWN REPLACE MODE***\n");
-                        ASSERT(0);
-                      } break;
-                    }
-
-                    if (veryVerbose) {
-                        T_; T_; T_; T_; P(X);
-                        T_; T_; T_; T_; P(Y);
-                    }
-
-                    LOOP4_ASSERT(INIT_LINE, INIT_CAP, BEGIN, SIZE, X == Y);
-                }
                 }
             }
         }
@@ -8043,10 +10036,13 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase20Range(const CONTAINER&)
     ASSERT(0 == testAllocator.numMismatches());
     ASSERT(0 == testAllocator.numBlocksInUse());
 
-    {
-        if (verbose)
-            printf("\t\tUsing string with replaceMode = %d (complete).\n",
-                   REPLACE_SUBSTRING_AT_INDEX);
+
+    for (int replaceMode  = REPLACE_SUBSTRING_AT_INDEX;
+             replaceMode <= REPLACE_SUBSTRINGVIEWLIKE_AT_INDEX;
+             ++replaceMode) {
+        const int MODE = replaceMode;
+
+        if (verbose) printf("\t\tUsing string with replaceMode = %d.\n", MODE);
 
         for (int i = 0; i < NUM_DATA; ++i) {
             const int    INIT_LINE   = DATA[i].d_lineNum;
@@ -8063,55 +10059,141 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase20Range(const CONTAINER&)
                 }
 
                 for (size_t b = 0; b <= INIT_LENGTH; ++b) {
-                for (size_t s = 0; s <= INIT_LENGTH; ++s) {
-                    const size_t BEGIN = b;
-                    const size_t SIZE  = s;
-                    const size_t END   = min(b + s, INIT_LENGTH);
+                    for (size_t s = 0; s <= INIT_LENGTH; ++s) {
+                        const size_t BEGIN = b;
+                        const size_t SIZE  = s;
+                        const size_t END   = min(b + s, INIT_LENGTH);
 
-                    for (size_t h = 0; h < INIT_LENGTH; ++h) {
-                        for (size_t m = 0; m < INIT_LENGTH; ++m) {
-                            const size_t INDEX        = h;
-                            const size_t NUM_ELEMENTS = m;
+                        for (size_t h = 0; h < INIT_LENGTH; ++h) {
+                            for (size_t m = 0; m < INIT_LENGTH; ++m) {
+                                const size_t INDEX        = h;
+                                const size_t NUM_ELEMENTS = m;
 
-                            Obj mX(INIT_LENGTH,
-                                   DEFAULT_VALUE,
-                                   AllocType(&testAllocator));
-                            const Obj& X = mX;
-                            mX.reserve(INIT_RES);
-                            const size_t INIT_CAP = X.capacity();
+                                Obj        mX(INIT_LENGTH,
+                                              DEFAULT_VALUE,
+                                              AllocType(&testAllocator));
+                                const Obj& X = mX;
+                                mX.reserve(INIT_RES);
+                                const size_t INIT_CAP = X.capacity();
 
-                            for (size_t k = 0; k < INIT_LENGTH; ++k) {
-                                mX[k] = VALUES[k % NUM_VALUES];
+                                const StringRefImp           SR( X.data(),
+                                                                 X.length());
+                                const StringView             SV( X.data(),
+                                                                 X.length());
+                                const StringViewOnlyLikeType SVL(X.data());
+
+                                for (size_t k = 0; k < INIT_LENGTH; ++k) {
+                                    mX[k] = VALUES[k % NUM_VALUES];
+                                }
+
+                                Obj mY(X); const Obj& Y = mY;  // control
+
+                                if (veryVerbose) {
+                                    printf("\t\t\tInsert substring of itself");
+                                    printf(" with ");
+                                    P_(INDEX);
+                                    P(NUM_ELEMENTS);
+                                    printf("between ");
+                                    P_(BEGIN);
+                                    P(END);
+                                }
+                                switch (MODE) {
+                                  case REPLACE_SUBSTRING_AT_INDEX: {
+                                    if (INDEX + NUM_ELEMENTS >= X.length()) {
+                                        // 'npos' default argument
+                                        mY.replace(BEGIN, SIZE, X, INDEX);
+                                        mX.replace(BEGIN, SIZE, X, INDEX);
+                                    }
+                                    else {
+                                        mY.replace(BEGIN,
+                                                   SIZE,
+                                                   X,
+                                                   INDEX,
+                                                   NUM_ELEMENTS);
+                                        mX.replace(BEGIN,
+                                                   SIZE,
+                                                   X,
+                                                   INDEX,
+                                                   NUM_ELEMENTS);
+                                    }
+                                  } break;
+                                  case REPLACE_SUBSTRINGREF_AT_INDEX: {
+                                    if (INDEX + NUM_ELEMENTS >= X.length()) {
+                                        // 'npos' default argument
+                                        mY.replace(BEGIN, SIZE, SR, INDEX);
+                                        mX.replace(BEGIN, SIZE, SR, INDEX);
+                                    }
+                                    else {
+                                        mY.replace(BEGIN,
+                                                   SIZE,
+                                                   SR,
+                                                   INDEX,
+                                                   NUM_ELEMENTS);
+                                        mX.replace(BEGIN,
+                                                   SIZE,
+                                                   SR,
+                                                   INDEX,
+                                                   NUM_ELEMENTS);
+                                    }
+                                  } break;
+                                  case REPLACE_SUBSTRINGVIEW_AT_INDEX: {
+                                    if (INDEX + NUM_ELEMENTS >= X.length()) {
+                                        // 'npos' default argument
+                                        mY.replace(BEGIN, SIZE, SV, INDEX);
+                                        mX.replace(BEGIN, SIZE, SV, INDEX);
+                                    }
+                                    else {
+                                        mY.replace(BEGIN,
+                                                   SIZE,
+                                                   SV,
+                                                   INDEX,
+                                                   NUM_ELEMENTS);
+                                        mX.replace(BEGIN,
+                                                   SIZE,
+                                                   SV,
+                                                   INDEX,
+                                                   NUM_ELEMENTS);
+                                    }
+                                  } break;
+                                  case REPLACE_SUBSTRINGVIEWLIKE_AT_INDEX: {
+                                    if (INDEX + NUM_ELEMENTS >= X.length()) {
+                                        // 'npos' default argument
+                                        mY.replace(BEGIN, SIZE, SVL, INDEX);
+                                        mX.replace(BEGIN, SIZE, SVL, INDEX);
+                                    }
+                                    else {
+                                        mY.replace(BEGIN,
+                                                   SIZE,
+                                                   SVL,
+                                                   INDEX,
+                                                   NUM_ELEMENTS);
+                                        mX.replace(BEGIN,
+                                                   SIZE,
+                                                   SVL,
+                                                   INDEX,
+                                                   NUM_ELEMENTS);
+                                    }
+                                  } break;
+                                  default: {
+                                    printf("***UNKNOWN REPLACE MODE***\n");
+                                    ASSERT(0);
+                                  } break;
+                                }
+
+                                if (veryVerbose) {
+                                    T_; T_; T_; T_; P(X);
+                                    T_; T_; T_; T_; P(Y);
+                                }
+
+                                ASSERTV(INIT_LINE,
+                                        INIT_CAP,
+                                        BEGIN,
+                                        SIZE,
+                                        INDEX,
+                                        NUM_ELEMENTS,
+                                        X == Y);
                             }
-
-                            Obj mY(X); const Obj& Y = mY;  // control
-
-                            if (veryVerbose) {
-                                printf("\t\t\tInsert substring of itself");
-                                printf(" with "); P_(INDEX); P(NUM_ELEMENTS);
-                                printf("between "); P_(BEGIN); P(END);
-                            }
-
-                            if (INDEX + NUM_ELEMENTS >= Y.length()) {
-                                mX.replace(BEGIN, SIZE, Y, INDEX);  // 'npos'
-                                                                    // default
-                                                                    // argument
-                                mY.replace(BEGIN, SIZE, Y, INDEX);
-                            }
-                            else {
-                                mX.replace(BEGIN, SIZE, Y, INDEX,NUM_ELEMENTS);
-                                mY.replace(BEGIN, SIZE, Y, INDEX,NUM_ELEMENTS);
-                            }
-
-                            if (veryVerbose) {
-                                T_; T_; T_; T_; P(X);
-                                T_; T_; T_; T_; P(Y);
-                            }
-
-                            LOOP6_ASSERT(INIT_LINE, INIT_CAP, BEGIN, SIZE,
-                                         INDEX, NUM_ELEMENTS, X == Y);
                         }
-                    }
                     }
                 }
             }
@@ -8138,6 +10220,8 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase20Negative()
     // Testing:
     //   replace(const_iterator first, const_iterator last, size_type n2, C c);
     //   replace(const_iterator first, const_iterator last, const string& str);
+    //   replace(const_iterator f, const_iterator l, const string_view& s);
+    //   replace(const_iterator f, const_iterator l, const STRING_VIEW_LIKE&);
     //   replace(const_iterator first, const_iterator last, InputIter f, l);
     //   replace(pos1, n1, const C *s);
     //   replace(pos1, n1, const C *s, n2);
@@ -8145,12 +10229,16 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase20Negative()
     //   replace(const_iterator first, const_iterator last, const C *s, n2);
     // -----------------------------------------------------------------------
 
+    typedef bslstl::StringRefImp<TYPE>            StringRefImp;
+    typedef bsl::basic_string_view<TYPE, TRAITS>  StringView;
+    typedef ConvertibleToStringViewOnlyType<TYPE> StringViewOnlyLikeType;
+
     bsls::AssertTestHandlerGuard guard;
 
-    if (veryVerbose) printf("\treplase(first, last, n, c)\n");
+    if (veryVerbose) printf("\treplace(first, last, n, c)\n");
 
     {
-        Obj mX(g("ABCDE"));
+        Obj        mX(g("ABCDE"));
         const Obj& X = mX;
 
         // first < begin()
@@ -8175,7 +10263,7 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase20Negative()
     if (veryVerbose) printf("\treplace(first, last, str)\n");
 
     {
-        Obj mX(g("ABCDE"));
+        Obj        mX(g("ABCDE"));
         const Obj& X = mX;
 
         Obj mY(g("AB"));    // replacement
@@ -8199,13 +10287,100 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase20Negative()
         ASSERT_SAFE_PASS(mX.replace(X.begin(), X.end(), mY));
     }
 
+    if (veryVerbose) printf("\treplace(first, last, StringRef)\n");
+
+    {
+        Obj        mX(g("ABCDE"));
+        const Obj& X = mX;
+
+        Obj                mY(g("AB"));
+        const Obj&         Y = mY;
+        const StringRefImp SR( Y.data(), Y.length());  // replacement
+
+        // first < begin()
+        ASSERT_SAFE_FAIL(mX.replace(X.begin() - 1, X.end(), SR));
+
+        // first > end()
+        ASSERT_SAFE_FAIL(mX.replace(X.end() + 1, X.end(), SR));
+
+        // last < begin()
+        ASSERT_SAFE_FAIL(mX.replace(X.begin(), X.begin() - 1, SR));
+
+        // last > end()
+        ASSERT_SAFE_FAIL(mX.replace(X.begin(), X.end() + 1, SR));
+
+        // first > last
+        ASSERT_SAFE_FAIL(mX.replace(X.begin() + 1, X.begin(), SR));
+
+        // pass
+        ASSERT_SAFE_PASS(mX.replace(X.begin(), X.end(), SR));
+    }
+
+    if (veryVerbose) printf("\treplace(first, last, strView)\n");
+
+    {
+        Obj        mX(g("ABCDE"));
+        const Obj& X = mX;
+
+        Obj              mY(g("AB"));
+        const Obj&       Y = mY;
+        const StringView SV( Y.data(), Y.length());  // replacement
+
+        // first < begin()
+        ASSERT_SAFE_FAIL(mX.replace(X.begin() - 1, X.end(), SV));
+
+        // first > end()
+        ASSERT_SAFE_FAIL(mX.replace(X.end() + 1, X.end(), SV));
+
+        // last < begin()
+        ASSERT_SAFE_FAIL(mX.replace(X.begin(), X.begin() - 1, SV));
+
+        // last > end()
+        ASSERT_SAFE_FAIL(mX.replace(X.begin(), X.end() + 1, SV));
+
+        // first > last
+        ASSERT_SAFE_FAIL(mX.replace(X.begin() + 1, X.begin(), SV));
+
+        // pass
+        ASSERT_SAFE_PASS(mX.replace(X.begin(), X.end(), SV));
+    }
+
+    if (veryVerbose) printf("\treplace(first, last, strViewLike)\n");
+
+    {
+        Obj        mX(g("ABCDE"));
+        const Obj& X = mX;
+
+        Obj                          mY(g("AB"));
+        const Obj&                   Y = mY;
+        const StringViewOnlyLikeType SVL(Y.data());  // replacement
+
+        // first < begin()
+        ASSERT_SAFE_FAIL(mX.replace(X.begin() - 1, X.end(), SVL));
+
+        // first > end()
+        ASSERT_SAFE_FAIL(mX.replace(X.end() + 1, X.end(), SVL));
+
+        // last < begin()
+        ASSERT_SAFE_FAIL(mX.replace(X.begin(), X.begin() - 1, SVL));
+
+        // last > end()
+        ASSERT_SAFE_FAIL(mX.replace(X.begin(), X.end() + 1, SVL));
+
+        // first > last
+        ASSERT_SAFE_FAIL(mX.replace(X.begin() + 1, X.begin(), SVL));
+
+        // pass
+        ASSERT_SAFE_PASS(mX.replace(X.begin(), X.end(), SVL));
+    }
+
     if (veryVerbose) printf("\treplace(first, last, f, l)\n");
 
     {
-        Obj mX(g("ABCDE"));
+        Obj        mX(g("ABCDE"));
         const Obj& X = mX;
 
-        Obj mY(g("AB"));    // replacement
+        Obj        mY(g("AB"));  // replacement
         const Obj& Y = mY;
 
         // first < begin()
@@ -8248,7 +10423,7 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase20Negative()
     if (veryVerbose) printf("\treplace(pos1, n1, s)\n");
 
     {
-        Obj mX(g("ABCDE"));
+        Obj        mX(g("ABCDE"));
         const Obj& X = mX;
 
         // characterString == NULL
@@ -8261,7 +10436,7 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase20Negative()
     if (veryVerbose) printf("\treplace(pos1, n1, s, n2)\n");
 
     {
-        Obj mX(g("ABCDE"));
+        Obj        mX(g("ABCDE"));
         const Obj& X = mX;
 
         const TYPE *nullStr = NULL;
@@ -8278,7 +10453,7 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase20Negative()
     if (veryVerbose) printf("\treplace(first, last, s)\n");
 
     {
-        Obj mX(g("ABCDE"));
+        Obj        mX(g("ABCDE"));
         const Obj& X = mX;
 
         const TYPE *nullStr = NULL;
@@ -8310,7 +10485,7 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase20Negative()
     if (veryVerbose) printf("\treplace(first, last, s, n2)\n");
 
     {
-        Obj mX(g("ABCDE"));
+        Obj        mX(g("ABCDE"));
         const Obj& X = mX;
 
         const TYPE *nullStr = NULL;
@@ -9537,9 +11712,13 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase18Range(const CONTAINER&)
     //   basic_string& insert(size_type pos, const CHAR_TYPE *s);
     //   basic_string& insert(size_type pos1, const string& str, pos2, n=npos);
     //   basic_string& insert(size_type pos1, const string& str, pos2, n=npos);
-    //   basic_string& insert(pos1, const string_view& strView, pos2, n=npos);
-    //   basic_string& insert(pos1, const string_view& strView, pos2, n=npos);
+    //   basic_string& insert(size_type pos1, const STRING_VIEW_LIKE_TYPE& s);
+    //   basic_string& insert(p1, const STRING_VIEW_LIKE_TYPE& s, p2, n=npos);
     // --------------------------------------------------------------------
+
+    typedef bslstl::StringRefImp<TYPE>            StringRefImp;
+    typedef bsl::basic_string_view<TYPE, TRAITS>  StringView;
+    typedef ConvertibleToStringViewOnlyType<TYPE> StringViewOnlyLikeType;
 
     bslma::TestAllocator testAllocator(veryVeryVerbose);
 
@@ -9556,18 +11735,24 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase18Range(const CONTAINER&)
                    >::value;
 
     enum {
-        INSERT_STRING_MODE_FIRST           = 0,
-        INSERT_SUBSTRING_AT_INDEX          = 0,
-        INSERT_SUBSTRING_AT_INDEX_NPOS     = 1,
-        INSERT_SUBSTRINGVIEW_AT_INDEX      = 2,
-        INSERT_SUBSTRINGVIEW_AT_INDEX_NPOS = 3,
-        INSERT_STRING_AT_INDEX             = 4,
-        INSERT_STRINGVIEW_AT_INDEX         = 5,
-        INSERT_CSTRING_N_AT_INDEX          = 6,
-        INSERT_CSTRING_AT_INDEX            = 7,
-        INSERT_STRING_AT_ITERATOR          = 8,
-        INSERT_STRING_AT_CONST_ITERATOR    = 9,
-        INSERT_STRING_MODE_LAST            = 9
+        INSERT_STRING_MODE_FIRST               =  0,
+        INSERT_SUBSTRING_AT_INDEX              =  0,
+        INSERT_SUBSTRING_AT_INDEX_NPOS         =  1,
+        INSERT_SUBSTRINGREF_AT_INDEX           =  2,
+        INSERT_SUBSTRINGVIEW_AT_INDEX          =  3,
+        INSERT_SUBSTRINGVIEWLIKE_AT_INDEX      =  4,
+        INSERT_SUBSTRINGREF_AT_INDEX_NPOS      =  5,
+        INSERT_SUBSTRINGVIEW_AT_INDEX_NPOS     =  6,
+        INSERT_SUBSTRINGVIEWLIKE_AT_INDEX_NPOS =  7,
+        INSERT_STRING_AT_INDEX                 =  8,
+        INSERT_STRINGREF_AT_INDEX              =  9,
+        INSERT_STRINGVIEW_AT_INDEX             = 10,
+        INSERT_STRINGVIEWLIKE_AT_INDEX         = 11,
+        INSERT_CSTRING_N_AT_INDEX              = 12,
+        INSERT_CSTRING_AT_INDEX                = 13,
+        INSERT_STRING_AT_ITERATOR              = 14,
+        INSERT_STRING_AT_CONST_ITERATOR        = 15,
+        INSERT_STRING_MODE_LAST                = 15
     };
 
     static const struct {
@@ -9655,9 +11840,9 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase18Range(const CONTAINER&)
 
                     CONTAINER mU(Y);  const CONTAINER& U = mU;
 
-                    bsl::basic_string_view<TYPE>        mV(Y.begin(),
-                                                           Y.length());
-                    const bsl::basic_string_view<TYPE>& V = mV;
+                    const StringRefImp           SR( Y.data(), Y.length());
+                    const StringView             SV( Y.data(), Y.length());
+                    const StringViewOnlyLikeType SVL(Y.data());
 
                     for (size_t j = 0; j <= INIT_LENGTH; ++j) {
                         const size_t POS = j;
@@ -9698,9 +11883,19 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase18Range(const CONTAINER&)
                             Obj &result = mX.insert(POS, Y);
                             ASSERT(&result == &mX);
                           } break;
+                          case INSERT_STRINGREF_AT_INDEX: {
+                            // string& insert(pos1, const string_view& s);
+                            Obj &result = mX.insert(POS, SR);
+                            ASSERT(&result == &mX);
+                          } break;
                           case INSERT_STRINGVIEW_AT_INDEX: {
-                            // string& insert(pos1, string_view<C,CT,A> s);
-                            Obj &result = mX.insert(POS, V);
+                            // string& insert(pos1, const string_view& s);
+                            Obj &result = mX.insert(POS, SV);
+                            ASSERT(&result == &mX);
+                          } break;
+                          case INSERT_STRINGVIEWLIKE_AT_INDEX: {
+                            // string& insert(pos1, const StrViewLike& s);
+                            Obj &result = mX.insert(POS, SVL);
                             ASSERT(&result == &mX);
                           } break;
                           case INSERT_CSTRING_N_AT_INDEX: {
@@ -9739,25 +11934,23 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase18Range(const CONTAINER&)
                             T_; T_; T_; T_; P_(X); P(X.capacity());
                         }
 
-                        LOOP4_ASSERT(INIT_LINE, LINE, i, j,
-                                     LENGTH == X.size());
+                        ASSERTV(INIT_LINE, LINE, i, j, LENGTH == X.size());
                         if (!INPUT_ITERATOR_TAG) {
-                            LOOP4_ASSERT(INIT_LINE, LINE, i, j,
-                                         CAP == X.capacity());
+                            ASSERTV(INIT_LINE, LINE, i, j,
+                                    CAP == X.capacity());
                         }
 
                         size_t m = 0;
                         for (k = 0; k < POS; ++k, ++m) {
-                            LOOP4_ASSERT(INIT_LINE, LINE, j, k,
-                                         VALUES[m % NUM_VALUES] == X[k]);
+                            ASSERTV(INIT_LINE, LINE, j, k,
+                                    VALUES[m % NUM_VALUES] == X[k]);
                         }
                         for (m = 0; k < POS + NUM_ELEMENTS; ++k, ++m) {
-                            LOOP5_ASSERT(INIT_LINE, LINE, j, k, m,
-                                         Y[m] == X[k]);
+                            ASSERTV(INIT_LINE, LINE, j, k, m, Y[m] == X[k]);
                         }
                         for (m = POS; k < LENGTH; ++k, ++m) {
-                            LOOP5_ASSERT(INIT_LINE, LINE, j, k, m,
-                                         VALUES[m % NUM_VALUES] == X[k]);
+                            ASSERTV(INIT_LINE, LINE, j, k, m,
+                                    VALUES[m % NUM_VALUES] == X[k]);
                         }
 
                         const int REALLOC = X.capacity() > INIT_CAP;
@@ -9765,10 +11958,10 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase18Range(const CONTAINER&)
                             DEFAULT_CAPACITY >= INIT_CAP &&
                             X.capacity() > DEFAULT_CAPACITY;
 
-                        LOOP4_ASSERT(INIT_LINE, INIT_LENGTH, INIT_CAP, j,
-                                     BB + REALLOC <= AA);
-                        LOOP4_ASSERT(INIT_LINE, INIT_LENGTH, INIT_CAP, j,
-                                     B + A_ALLOC <=  A);
+                        ASSERTV(INIT_LINE, INIT_LENGTH, INIT_CAP, j,
+                                BB + REALLOC <= AA);
+                        ASSERTV(INIT_LINE, INIT_LENGTH, INIT_CAP, j,
+                                B + A_ALLOC <=  A);
                     }
                 }
                 ASSERT(0 == testAllocator.numMismatches());
@@ -9780,7 +11973,7 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase18Range(const CONTAINER&)
     ASSERT(0 == testAllocator.numBlocksInUse());
 
     for (int insertMode  = INSERT_SUBSTRING_AT_INDEX;
-         insertMode <= INSERT_SUBSTRINGVIEW_AT_INDEX_NPOS;
+         insertMode <= INSERT_SUBSTRINGVIEWLIKE_AT_INDEX_NPOS;
          ++insertMode) {
         const int MODE = insertMode;
 
@@ -9808,123 +12001,171 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase18Range(const CONTAINER&)
 
                     Obj mY(g(SPEC));  const Obj& Y = mY;
 
-                    bsl::basic_string_view<TYPE>        mV(Y.begin(),
-                                                           Y.length());
-                    const bsl::basic_string_view<TYPE>& V = mV;
+                    const StringRefImp           SR( Y.data(), Y.length());
+                    const StringView             SV( Y.data(), Y.length());
+                    const StringViewOnlyLikeType SVL(Y.data());
 
                     for (size_t j = 0; j <= INIT_LENGTH; ++j) {
-                    for (size_t k = 0; k <= NUM_ELEMENTS; ++k) {
-                        const size_t POS  = j;
-                        const size_t POS2 = k;
+                        for (size_t k = 0; k <= NUM_ELEMENTS; ++k) {
+                            const size_t POS  = j;
+                            const size_t POS2 = k;
 
-                        const size_t NUM_ELEMENTS_INS = NUM_ELEMENTS - POS2;
-                        const size_t LENGTH = INIT_LENGTH + NUM_ELEMENTS_INS;
+                            const size_t NUM_ELEMENTS_INS =
+                                                           NUM_ELEMENTS - POS2;
+                            const size_t LENGTH =
+                                                INIT_LENGTH + NUM_ELEMENTS_INS;
 
-                        Obj mX(INIT_LENGTH,
-                               DEFAULT_VALUE,
-                               AllocType(&testAllocator));
-                        const Obj& X = mX;
-                        mX.reserve(INIT_RES);
-                        const size_t INIT_CAP = X.capacity();
+                            Obj mX(INIT_LENGTH,
+                                   DEFAULT_VALUE,
+                                   AllocType(&testAllocator));
+                            const Obj& X = mX;
+                            mX.reserve(INIT_RES);
+                            const size_t INIT_CAP = X.capacity();
 
-                        size_t n;
-                        for (n = 0; n < INIT_LENGTH; ++n) {
-                            mX[n] =  VALUES[n % NUM_VALUES];
+                            size_t n;
+                            for (n = 0; n < INIT_LENGTH; ++n) {
+                                mX[n] =  VALUES[n % NUM_VALUES];
+                            }
+
+                            const size_t CAP = computeNewCapacity(
+                                                                 LENGTH,
+                                                                 INIT_LENGTH,
+                                                                 INIT_CAP,
+                                                                 X.max_size());
+
+                            if (veryVerbose) {
+                                printf("\t\t\tInsert "); P_(NUM_ELEMENTS_INS);
+                                printf("at "); P_(POS);
+                                printf("using "); P_(SPEC);
+                                printf("starting at "); P(POS2);
+                            }
+
+                            const Int64 BB = testAllocator.numBlocksTotal();
+                            const Int64  B = testAllocator.numBlocksInUse();
+
+                            if (veryVerbose) {
+                                printf("\t\t\t\tBefore:"); P_(BB); P(B);
+                            }
+                            switch (MODE) {
+                              case INSERT_SUBSTRING_AT_INDEX: {
+                                // string& insert(p1, const string& s, p2, n);
+                                Obj &result = mX.insert(POS,
+                                                        Y,
+                                                        POS2,
+                                                        NUM_ELEMENTS);
+                                ASSERT(&result == &mX);
+                              } break;
+                              case INSERT_SUBSTRING_AT_INDEX_NPOS: {
+                                // string& insert(p1, const string& s, p2, n);
+                                Obj &result = mX.insert(POS,
+                                                        Y,
+                                                        POS2);  // 'npos'
+                                ASSERT(&result == &mX);
+                              } break;
+                              case INSERT_SUBSTRINGREF_AT_INDEX: {
+                                // string& insert(pos1,
+                                //                const StringRef& s,
+                                //                pos2,
+                                //                n);
+                                Obj &result = mX.insert(POS,
+                                                        SR,
+                                                        POS2,
+                                                        NUM_ELEMENTS);
+                                ASSERT(&result == &mX);
+                              } break;
+                              case INSERT_SUBSTRINGVIEW_AT_INDEX: {
+                                // string& insert(pos1,
+                                //                const string_view& s,
+                                //                pos2,
+                                //                n);
+                                Obj &result = mX.insert(POS,
+                                                        SV,
+                                                        POS2,
+                                                        NUM_ELEMENTS);
+                                ASSERT(&result == &mX);
+                              } break;
+                              case INSERT_SUBSTRINGVIEWLIKE_AT_INDEX: {
+                                // string& insert(pos1,
+                                //                const StrViewLike& s,
+                                //                pos2,
+                                //                n);
+                                Obj &result = mX.insert(POS,
+                                                        SVL,
+                                                        POS2,
+                                                        NUM_ELEMENTS);
+                                ASSERT(&result == &mX);
+                              } break;
+                                case INSERT_SUBSTRINGREF_AT_INDEX_NPOS: {
+                                 // string& insert(pos1,
+                                 //                const StringRef& s,
+                                 //                pos2);
+                                 Obj &result = mX.insert(POS,
+                                                         SR,
+                                                         POS2);  // 'npos'
+                                 ASSERT(&result == &mX);
+                               } break;
+                                case INSERT_SUBSTRINGVIEW_AT_INDEX_NPOS: {
+                                 // string& insert(pos1,
+                                 //                const string_view& s,
+                                 //                pos2);
+                                 Obj &result = mX.insert(POS,
+                                                         SV,
+                                                         POS2);  // 'npos'
+                                 ASSERT(&result == &mX);
+                               } break;
+                               case INSERT_SUBSTRINGVIEWLIKE_AT_INDEX_NPOS: {
+                                 // string& insert(pos1,
+                                 //                const StrViewLike& s,
+                                 //                pos2,
+                                 //                n);
+                                 Obj &result = mX.insert(POS,
+                                                         SVL,
+                                                         POS2);  // 'npos'
+                                 ASSERT(&result == &mX);
+                               } break;
+                               default: {
+                                 ASSERTV(MODE, !"Bad insert mode.");
+                               } return;                              // RETURN
+                            }
+
+                            const Int64 AA = testAllocator.numBlocksTotal();
+                            const Int64  A = testAllocator.numBlocksInUse();
+
+                            if (veryVerbose) {
+                                printf("\t\t\t\tAfter :"); P_(AA); P(A);
+                                T_; T_; T_; T_; P_(X); P(X.capacity());
+                            }
+
+                            ASSERTV(INIT_LINE, LINE, i, j, LENGTH == X.size());
+                            if (!INPUT_ITERATOR_TAG) {
+                                ASSERTV(INIT_LINE, LINE, i, j,
+                                        CAP == X.capacity());
+                            }
+
+                            size_t m;
+                            for (n = 0; n < POS; ++n) {
+                                ASSERTV(INIT_LINE, LINE, j, n,
+                                        VALUES[n % NUM_VALUES] == X[n]);
+                            }
+                            for (m = 0; m < NUM_ELEMENTS_INS; ++m, ++n) {
+                                ASSERTV(INIT_LINE, LINE, j, m, n,
+                                        Y[POS2 + m] == X[n]);
+                            }
+                            for (m = POS; n < LENGTH; ++m, ++n) {
+                                ASSERTV(INIT_LINE, LINE, j, m, n,
+                                        VALUES[m % NUM_VALUES] == X[n]);
+                            }
+
+                            const int REALLOC = X.capacity() > INIT_CAP;
+                            const int A_ALLOC =
+                                DEFAULT_CAPACITY >= INIT_CAP &&
+                                X.capacity() > DEFAULT_CAPACITY;
+
+                            ASSERTV(INIT_LINE, INIT_LENGTH, INIT_CAP, j,
+                                    BB + REALLOC <= AA);
+                            ASSERTV(INIT_LINE, INIT_LENGTH, INIT_CAP, j,
+                                    B + A_ALLOC <=  A);
                         }
-
-                        const size_t CAP = computeNewCapacity(LENGTH,
-                                                              INIT_LENGTH,
-                                                              INIT_CAP,
-                                                              X.max_size());
-
-                        if (veryVerbose) {
-                            printf("\t\t\tInsert "); P_(NUM_ELEMENTS_INS);
-                            printf("at "); P_(POS);
-                            printf("using "); P_(SPEC);
-                            printf("starting at "); P(POS2);
-                        }
-
-                        const Int64 BB = testAllocator.numBlocksTotal();
-                        const Int64  B = testAllocator.numBlocksInUse();
-
-                        if (veryVerbose) {
-                            printf("\t\t\t\tBefore:"); P_(BB); P(B);
-                        }
-                        switch (MODE) {
-                          case INSERT_SUBSTRING_AT_INDEX: {
-                            // string& insert(p1, const string& s, p2, n);
-                            Obj &result = mX.insert(POS,
-                                                    Y,
-                                                    POS2,
-                                                    NUM_ELEMENTS);
-                            ASSERT(&result == &mX);
-                          } break;
-                          case INSERT_SUBSTRING_AT_INDEX_NPOS: {
-                            // string& insert(p1, const string& s, p2, n);
-                            Obj &result = mX.insert(POS,
-                                                    Y,
-                                                    POS2);  // 'npos'
-                            ASSERT(&result == &mX);
-                          } break;
-                          case INSERT_SUBSTRINGVIEW_AT_INDEX: {
-                            // string& insert(p1, string_view s, p2, n);
-                            Obj &result = mX.insert(POS,
-                                                    V,
-                                                    POS2,
-                                                    NUM_ELEMENTS);
-                            ASSERT(&result == &mX);
-                           } break;
-                           case INSERT_SUBSTRINGVIEW_AT_INDEX_NPOS: {
-                            // string& insert(p1, string_view s, p2, n);
-                            Obj &result = mX.insert(POS,
-                                                    V,
-                                                    POS2);  // 'npos'
-                            ASSERT(&result == &mX);
-                           } break;
-                           default: {
-                             ASSERTV(MODE, !"Bad insert mode.");
-                           } return;                                  // RETURN
-                        }
-
-                        const Int64 AA = testAllocator.numBlocksTotal();
-                        const Int64  A = testAllocator.numBlocksInUse();
-
-                        if (veryVerbose) {
-                            printf("\t\t\t\tAfter :"); P_(AA); P(A);
-                            T_; T_; T_; T_; P_(X); P(X.capacity());
-                        }
-
-                        LOOP4_ASSERT(INIT_LINE, LINE, i, j,
-                                     LENGTH == X.size());
-                        if (!INPUT_ITERATOR_TAG) {
-                            LOOP4_ASSERT(INIT_LINE, LINE, i, j,
-                                         CAP == X.capacity());
-                        }
-
-                        size_t m;
-                        for (n = 0; n < POS; ++n) {
-                            LOOP4_ASSERT(INIT_LINE, LINE, j, n,
-                                         VALUES[n % NUM_VALUES] == X[n]);
-                        }
-                        for (m = 0; m < NUM_ELEMENTS_INS; ++m, ++n) {
-                            LOOP5_ASSERT(INIT_LINE, LINE, j, m, n,
-                                         Y[POS2 + m] == X[n]);
-                        }
-                        for (m = POS; n < LENGTH; ++m, ++n) {
-                            LOOP5_ASSERT(INIT_LINE, LINE, j, m, n,
-                                         VALUES[m % NUM_VALUES] == X[n]);
-                        }
-
-                        const int REALLOC = X.capacity() > INIT_CAP;
-                        const int A_ALLOC =
-                            DEFAULT_CAPACITY >= INIT_CAP &&
-                            X.capacity() > DEFAULT_CAPACITY;
-
-                        LOOP4_ASSERT(INIT_LINE, INIT_LENGTH, INIT_CAP, j,
-                                     BB + REALLOC <= AA);
-                        LOOP4_ASSERT(INIT_LINE, INIT_LENGTH, INIT_CAP, j,
-                                     B + A_ALLOC <=  A);
-                    }
                     }
                 }
                 ASSERT(0 == testAllocator.numMismatches());
@@ -9966,9 +12207,9 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase18Range(const CONTAINER&)
 
                     CONTAINER mU(Y);  const CONTAINER& U = mU;
 
-                    bsl::basic_string_view<TYPE>        mV(Y.begin(),
-                                                           Y.length());
-                    const bsl::basic_string_view<TYPE>& V = mV;
+                    const StringRefImp           SR( Y.data(), Y.length());
+                    const StringView             SV( Y.data(), Y.length());
+                    const StringViewOnlyLikeType SVL(Y.data());
 
                     for (size_t j = 0; j <= INIT_LENGTH; ++j) {
                         const size_t POS = j;
@@ -9978,9 +12219,9 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase18Range(const CONTAINER&)
                             const Int64 AL = testAllocator.allocationLimit();
                             testAllocator.setAllocationLimit(-1);
 
-                            Obj mX(INIT_LENGTH,
-                                   DEFAULT_VALUE,
-                                   AllocType(&testAllocator));
+                            Obj        mX(INIT_LENGTH,
+                                          DEFAULT_VALUE,
+                                          AllocType(&testAllocator));
                             const Obj& X = mX;
                             mX.reserve(INIT_RES);
                             const size_t INIT_CAP = X.capacity();
@@ -10010,19 +12251,49 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase18Range(const CONTAINER&)
                                 Obj &result = mX.insert(POS, Y, 0);  // 'npos'
                                 ASSERT(&result == &mX);
                               } break;
-                              case INSERT_SUBSTRINGVIEW_AT_INDEX: {
-                            // string& insert(pos1, string_view<C,CT,A> s,
+                              case INSERT_SUBSTRINGREF_AT_INDEX: {
+                            // string& insert(pos1, const StringRef& s,
                             //                pos2, n);
                                 Obj &result = mX.insert(POS,
-                                                        V,
+                                                        SR,
                                                         0,
                                                         NUM_ELEMENTS);
                                 ASSERT(&result == &mX);
                               } break;
-                              case INSERT_SUBSTRINGVIEW_AT_INDEX_NPOS: {
-                            // string& insert(pos1, string_view<C,CT,A> s,
+                              case INSERT_SUBSTRINGVIEW_AT_INDEX: {
+                            // string& insert(pos1, const string_view& s,
                             //                pos2, n);
-                                Obj &result = mX.insert(POS, V, 0);  // 'npos'
+                                Obj &result = mX.insert(POS,
+                                                        SV,
+                                                        0,
+                                                        NUM_ELEMENTS);
+                                ASSERT(&result == &mX);
+                              } break;
+                              case INSERT_SUBSTRINGVIEWLIKE_AT_INDEX: {
+                            // string& insert(pos1, const StrViewLike& s,
+                            //                pos2, n);
+                                Obj &result = mX.insert(POS,
+                                                        SVL,
+                                                        0,
+                                                        NUM_ELEMENTS);
+                                ASSERT(&result == &mX);
+                              } break;
+                              case INSERT_SUBSTRINGREF_AT_INDEX_NPOS: {
+                            // string& insert(pos1, const StringRef& s,
+                            //                pos2, n);
+                                Obj &result = mX.insert(POS, SR, 0);  // 'npos'
+                                ASSERT(&result == &mX);
+                              } break;
+                              case INSERT_SUBSTRINGVIEW_AT_INDEX_NPOS: {
+                            // string& insert(pos1, const string_view& s,
+                            //                pos2, n);
+                                Obj &result = mX.insert(POS, SV, 0);  // 'npos'
+                                ASSERT(&result == &mX);
+                              } break;
+                              case INSERT_SUBSTRINGVIEWLIKE_AT_INDEX_NPOS: {
+                            // string& insert(pos1, const StrViewLike& s,
+                            //                pos2, n);
+                                Obj &result = mX.insert(POS, SVL, 0); // 'npos'
                                 ASSERT(&result == &mX);
                               } break;
                               case INSERT_STRING_AT_INDEX: {
@@ -10030,9 +12301,19 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase18Range(const CONTAINER&)
                                 Obj &result = mX.insert(POS, Y);
                                 ASSERT(&result == &mX);
                               } break;
+                              case INSERT_STRINGREF_AT_INDEX: {
+                            // string& insert(pos1, const StringRef& s);
+                                Obj &result = mX.insert(POS, SR);
+                                ASSERT(&result == &mX);
+                              } break;
                               case INSERT_STRINGVIEW_AT_INDEX: {
-                            // string& insert(pos1, string_view<C,CT,A> s);
-                                Obj &result = mX.insert(POS, V);
+                            // string& insert(pos1, const string_view& s);
+                                Obj &result = mX.insert(POS, SV);
+                                ASSERT(&result == &mX);
+                              } break;
+                              case INSERT_STRINGVIEWLIKE_AT_INDEX: {
+                            // string& insert(pos1, const StrViewLike& s);
+                                Obj &result = mX.insert(POS, SVL);
                                 ASSERT(&result == &mX);
                               } break;
                               case INSERT_CSTRING_N_AT_INDEX: {
@@ -10072,25 +12353,24 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase18Range(const CONTAINER&)
                                 T_; T_; T_; P_(X); P(X.capacity());
                             }
 
-                            LOOP4_ASSERT(INIT_LINE, LINE, i, j,
-                                         LENGTH == X.size());
+                            ASSERTV(INIT_LINE, LINE, i, j, LENGTH == X.size());
                             if (!INPUT_ITERATOR_TAG) {
-                                LOOP4_ASSERT(INIT_LINE, LINE, i, j,
-                                             CAP == X.capacity());
+                                ASSERTV(INIT_LINE, LINE, i, j,
+                                        CAP == X.capacity());
                             }
 
                             size_t k, m;
                             for (k = 0; k < POS; ++k) {
-                                LOOP5_ASSERT(INIT_LINE, LINE, i, j, k,
-                                             DEFAULT_VALUE == X[k]);
+                                ASSERTV(INIT_LINE, LINE, i, j, k,
+                                        DEFAULT_VALUE == X[k]);
                             }
                             for (m = 0; m < NUM_ELEMENTS; ++k, ++m) {
-                                LOOP5_ASSERT(INIT_LINE, LINE, i, j, k,
-                                             Y[m] == X[k]);
+                                ASSERTV(INIT_LINE, LINE, i, j, k,
+                                        Y[m] == X[k]);
                             }
                             for (m = POS; k < LENGTH; ++k) {
-                                LOOP5_ASSERT(INIT_LINE, LINE, i, j, k,
-                                             DEFAULT_VALUE == X[k]);
+                                ASSERTV(INIT_LINE, LINE, i, j, k,
+                                        DEFAULT_VALUE == X[k]);
                             }
                         } BSLMA_TESTALLOCATOR_EXCEPTION_TEST_END
                     }
@@ -10102,6 +12382,146 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase18Range(const CONTAINER&)
     }
     ASSERT(0 == testAllocator.numMismatches());
     ASSERT(0 == testAllocator.numBlocksInUse());
+
+#ifdef BDE_BUILD_TARGET_EXC
+    if (verbose) printf("\tWith 'std::out_of_range' exceptions.\n");
+    {
+        enum {
+            INSERT_MODE_FIRST                          =  0,
+            INSERT_MODE_STRING_AT_BAD_INDEX            =  0,
+            INSERT_MODE_SUBSTRING_AT_BAD_INDEX         =  1,
+            INSERT_MODE_BAD_SUBSTRING_INDEX            =  2,
+            INSERT_MODE_CSTRING_N_AT_BAD_INDEX         =  3,
+            INSERT_MODE_CSTRING_AT_BAD_INDEX           =  4,
+            INSERT_MODE_CHAR_AT_BAD_INDEX              =  5,
+            INSERT_MODE_STRINGREF_AT_BAD_INDEX         =  6,
+            INSERT_MODE_SUBSTRINGREF_AT_BAD_INDEX      =  7,
+            INSERT_MODE_BAD_SUBSTRINGREF_INDEX         =  8,
+            INSERT_MODE_STRINGVIEW_AT_BAD_INDEX        =  9,
+            INSERT_MODE_SUBSTRINGVIEW_AT_BAD_INDEX     = 10,
+            INSERT_MODE_BAD_SUBSTRINGVIEW_INDEX        = 11,
+            INSERT_MODE_STRINGVIEWLIKE_AT_BAD_INDEX    = 12,
+            INSERT_MODE_SUBSTRINGVIEWLIKE_AT_BAD_INDEX = 13,
+            INSERT_MODE_BAD_SUBSTRINGVIEWLIKE_INDEX    = 14,
+            INSERT_MODE_LAST                           = 14
+        };
+
+        for (int insertMode = INSERT_MODE_FIRST;
+             insertMode <= INSERT_MODE_LAST;
+             ++insertMode) {
+            const int MODE = insertMode;
+            for (int i = 0; i < NUM_DATA; ++i) {
+                const size_t INIT_LENGTH = DATA[i].d_length;
+
+                for (int l = i; l < NUM_DATA; ++l) {
+                    const size_t INIT_RES = DATA[l].d_length;
+                    ASSERT(INIT_LENGTH <= INIT_RES);
+
+                    if (veryVerbose) {
+                        printf("\t\tWith initial value of ");
+                        P_(INIT_LENGTH); P_(INIT_RES);
+                        printf("using default char value.\n");
+                    }
+
+                    const char *SPEC = "A";
+
+                    // Out of range source position.
+
+                    const size_t SOURCE_POSITION = strlen(SPEC) + 1;
+
+                    Obj                          mY(g(SPEC));
+                    const Obj&                   Y = mY;
+                    const StringRefImp           SR( Y.data(), Y.length());
+                    const StringView             SV( Y.data(), Y.length());
+                    const StringViewOnlyLikeType SVL(Y.data());
+
+                    Obj mX(INIT_LENGTH,
+                           DEFAULT_VALUE,
+                           AllocType(&testAllocator));
+                    mX.reserve(INIT_RES);
+
+                    // Out of range position.
+
+                    const size_t POSITION = INIT_LENGTH + 1;
+
+                    bool outOfRangeCaught = false;
+                    try {
+                        switch (MODE) {
+                          case INSERT_MODE_STRING_AT_BAD_INDEX: {
+                            mX.insert(POSITION, Y);
+                            ASSERT(0);
+                          } break;
+                          case INSERT_MODE_SUBSTRING_AT_BAD_INDEX: {
+                            mX.insert(POSITION, Y, 0, 0);
+                            ASSERT(0);
+                          } break;
+                          case INSERT_MODE_BAD_SUBSTRING_INDEX: {
+                            mX.insert(0, Y, SOURCE_POSITION, 0);
+                            ASSERT(0);
+                          } break;
+                          case INSERT_MODE_CSTRING_N_AT_BAD_INDEX: {
+                            mX.insert(POSITION, Y.data(), 0);
+                            ASSERT(0);
+                          } break;
+                          case INSERT_MODE_CSTRING_AT_BAD_INDEX: {
+                            mX.insert(POSITION, Y.data());
+                            ASSERT(0);
+                          } break;
+                          case INSERT_MODE_CHAR_AT_BAD_INDEX: {
+                            mX.insert(POSITION, 0, Y[0]);
+                            ASSERT(0);
+                          } break;
+                          case INSERT_MODE_STRINGREF_AT_BAD_INDEX: {
+                            mX.insert(POSITION, SR);
+                            ASSERT(0);
+                          } break;
+                          case INSERT_MODE_SUBSTRINGREF_AT_BAD_INDEX: {
+                            mX.insert(POSITION, SR, 0, 0);
+                            ASSERT(0);
+                          } break;
+                          case INSERT_MODE_BAD_SUBSTRINGREF_INDEX: {
+                            mX.insert(0, SR, SOURCE_POSITION, 0);
+                            ASSERT(0);
+                          } break;
+                          case INSERT_MODE_STRINGVIEW_AT_BAD_INDEX: {
+                            mX.insert(POSITION, SV);
+                            ASSERT(0);
+                          } break;
+                          case INSERT_MODE_SUBSTRINGVIEW_AT_BAD_INDEX: {
+                            mX.insert(POSITION, SV, 0, 0);
+                            ASSERT(0);
+                          } break;
+                          case INSERT_MODE_BAD_SUBSTRINGVIEW_INDEX: {
+                            mX.insert(0, SV, SOURCE_POSITION, 0);
+                            ASSERT(0);
+                          } break;
+                          case INSERT_MODE_STRINGVIEWLIKE_AT_BAD_INDEX: {
+                            mX.insert(POSITION, SVL);
+                            ASSERT(0);
+                          } break;
+                          case INSERT_MODE_SUBSTRINGVIEWLIKE_AT_BAD_INDEX: {
+                            mX.insert(POSITION, SVL, 0, 0);
+                            ASSERT(0);
+                          } break;
+                          case INSERT_MODE_BAD_SUBSTRINGVIEWLIKE_INDEX: {
+                            mX.insert(0, SVL, SOURCE_POSITION, 0);
+                            ASSERT(0);
+                          } break;
+                          default: {
+                            printf("***UNKNOWN INSERT MODE***\n");
+                            ASSERT(0);
+                          } break;
+                        }
+                    }
+                    catch (const std::out_of_range&) {
+                         outOfRangeCaught = true;
+                    }
+                    ASSERTV(MODE, i, l, outOfRangeCaught);
+                }
+            }
+        }
+    }
+#endif
 
     if (verbose) printf("\tTesting aliasing concerns.\n");
 
@@ -10126,9 +12546,9 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase18Range(const CONTAINER&)
                 for (size_t j = 0; j <= INIT_LENGTH; ++j) {
                     const size_t POS = j;
 
-                    Obj mX(INIT_LENGTH,
-                           DEFAULT_VALUE,
-                           AllocType(&testAllocator));
+                    Obj        mX(INIT_LENGTH,
+                                  DEFAULT_VALUE,
+                                  AllocType(&testAllocator));
                     const Obj& X = mX;
                     mX.reserve(INIT_RES);
                     const size_t INIT_CAP = X.capacity();
@@ -10139,9 +12559,9 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase18Range(const CONTAINER&)
 
                     Obj mY(X); const Obj& Y = mY;  // control
 
-                    bsl::basic_string_view<TYPE>        mV(Y.begin(),
-                                                           Y.length());
-                    const bsl::basic_string_view<TYPE>& V = mV;
+                    const StringRefImp           SR( Y.data(), Y.length());
+                    const StringView             SV( Y.data(), Y.length());
+                    const StringViewOnlyLikeType SVL(Y.data());
 
                     if (veryVerbose) {
                         printf("\t\t\tInsert itself");
@@ -10159,25 +12579,55 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase18Range(const CONTAINER&)
                         mX.insert(POS, Y, 0);  // 'npos' default arg.
                         mY.insert(POS, Y, 0);
                       } break;
+                      case INSERT_SUBSTRINGREF_AT_INDEX: {
+                    // string& insert(pos1, const StringRef& s, pos2, n)
+                        mX.insert(POS, SR, 0, INIT_LENGTH);
+                        mY.insert(POS, SR, 0, INIT_LENGTH);
+                      } break;
                       case INSERT_SUBSTRINGVIEW_AT_INDEX: {
-                    // string& insert(pos1, string_view<C,CT,A> s, pos2, n)
-                        mX.insert(POS, V, 0, INIT_LENGTH);
-                        mY.insert(POS, V, 0, INIT_LENGTH);
+                    // string& insert(pos1, const string_view& s, pos2, n)
+                        mX.insert(POS, SV, 0, INIT_LENGTH);
+                        mY.insert(POS, SV, 0, INIT_LENGTH);
+                      } break;
+                      case INSERT_SUBSTRINGVIEWLIKE_AT_INDEX: {
+                    // string& insert(pos1, const StrViewLike& s, pos2, n)
+                        mX.insert(POS, SVL, 0, INIT_LENGTH);
+                        mY.insert(POS, SVL, 0, INIT_LENGTH);
+                      } break;
+                      case INSERT_SUBSTRINGREF_AT_INDEX_NPOS: {
+                    // string& insert(pos1, const StringRef& s, pos2, n)
+                        mX.insert(POS, SR, 0);  // 'npos' default arg.
+                        mY.insert(POS, SR, 0);
                       } break;
                       case INSERT_SUBSTRINGVIEW_AT_INDEX_NPOS: {
-                    // string& insert(pos1, string_view<C,CT,A> s, pos2, n)
-                        mX.insert(POS, V, 0);  // 'npos' default arg.
-                        mY.insert(POS, V, 0);
+                    // string& insert(pos1, const string_view& s, pos2, n)
+                        mX.insert(POS, SV, 0);  // 'npos' default arg.
+                        mY.insert(POS, SV, 0);
+                      } break;
+                      case INSERT_SUBSTRINGVIEWLIKE_AT_INDEX_NPOS: {
+                    // string& insert(pos1, const StrViewLike& s, pos2, n)
+                        mX.insert(POS, SVL, 0);  // 'npos' default arg.
+                        mY.insert(POS, SVL, 0);
                       } break;
                       case INSERT_STRING_AT_INDEX: {
                     // string& insert(pos1, const string<C,CT,A>& str);
                         mX.insert(POS, Y);
                         mY.insert(POS, Y);
                       } break;
+                      case INSERT_STRINGREF_AT_INDEX: {
+                    // string& insert(pos1, const StringRef& s);
+                        mX.insert(POS, SR);
+                        mY.insert(POS, SR);
+                      } break;
                       case INSERT_STRINGVIEW_AT_INDEX: {
-                    // string& insert(pos1, string_view<C,CT,A> s);
-                        mX.insert(POS, V);
-                        mY.insert(POS, V);
+                    // string& insert(pos1, const string_view& s);
+                        mX.insert(POS, SV);
+                        mY.insert(POS, SV);
+                      } break;
+                      case INSERT_STRINGVIEWLIKE_AT_INDEX: {
+                    // string& insert(pos1, const StrViewLike& s);
+                        mX.insert(POS, SVL);
+                        mY.insert(POS, SVL);
                       } break;
                       case INSERT_CSTRING_N_AT_INDEX: {
                     // string& insert(pos, const C *s, n);
@@ -10210,7 +12660,7 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase18Range(const CONTAINER&)
                         T_; T_; T_; T_; P(Y);
                     }
 
-                    LOOP4_ASSERT(INIT_LINE, i, INIT_CAP, POS, X == Y);
+                    ASSERTV(INIT_LINE, i, INIT_CAP, POS, X == Y);
                 }
             }
         }
@@ -10243,12 +12693,14 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase18Range(const CONTAINER&)
                             const size_t NUM_ELEMENTS = m;
 
                             enum {
-                                INSERT_MODE_STRING     = 0,
-                                INSERT_MODE_STRINGVIEW = 1
+                                INSERT_MODE_STRING         = 0,
+                                INSERT_MODE_STRINGREF      = 1,
+                                INSERT_MODE_STRINGVIEW     = 2,
+                                INSERT_MODE_STRINGVIEWLIKE = 3
                             };
 
                             for (int mode = INSERT_MODE_STRING;
-                                 mode <= INSERT_MODE_STRINGVIEW;
+                                 mode <= INSERT_MODE_STRINGVIEWLIKE;
                                  ++mode) {
                                 const int MODE = mode;
 
@@ -10265,10 +12717,11 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase18Range(const CONTAINER&)
 
                                 Obj mY(X); const Obj& Y = mY;  // source
 
-                                bsl::basic_string_view<TYPE>        mV(
-                                                                   Y.begin(),
-                                                                   Y.length());
-                                const bsl::basic_string_view<TYPE>& V = mV;
+                                const StringRefImp           SR( Y.data(),
+                                                                 Y.length());
+                                const StringView             SV( Y.data(),
+                                                                 Y.length());
+                                const StringViewOnlyLikeType SVL(Y.data());
 
                                 if (veryVerbose) {
                                     printf("\t\t\tInsert substring of itself");
@@ -10290,15 +12743,55 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase18Range(const CONTAINER&)
                                         mY.insert(POS, Y, INDEX, NUM_ELEMENTS);
                                     }
                                    } break;
+                                  case INSERT_MODE_STRINGREF: {
+                                    // string& insert(p1, StringRef s, p2, n);
+                                    if (INDEX + NUM_ELEMENTS >= Y.length()) {
+                                        mX.insert(POS, SR, INDEX);  // default
+                                        mY.insert(POS, SR, INDEX);
+                                    }
+                                    else {
+                                        mX.insert(POS,
+                                                  SR,
+                                                  INDEX,
+                                                  NUM_ELEMENTS);
+                                        mY.insert(POS,
+                                                  SR,
+                                                  INDEX,
+                                                  NUM_ELEMENTS);
+                                    }
+                                  } break;
                                   case INSERT_MODE_STRINGVIEW: {
                                     // string& insert(p1,string_view s, p2, n);
                                     if (INDEX + NUM_ELEMENTS >= Y.length()) {
-                                        mX.insert(POS, V, INDEX);  // default
-                                        mY.insert(POS, V, INDEX);
+                                        mX.insert(POS, SV, INDEX);  // default
+                                        mY.insert(POS, SV, INDEX);
                                     }
                                     else {
-                                        mX.insert(POS, V, INDEX, NUM_ELEMENTS);
-                                        mY.insert(POS, V, INDEX, NUM_ELEMENTS);
+                                        mX.insert(POS,
+                                                  SV,
+                                                  INDEX,
+                                                  NUM_ELEMENTS);
+                                        mY.insert(POS,
+                                                  SV,
+                                                  INDEX,
+                                                  NUM_ELEMENTS);
+                                    }
+                                  } break;
+                                  case INSERT_MODE_STRINGVIEWLIKE: {
+                                    // string& insert(p1,StrViewLike s, p2, n);
+                                    if (INDEX + NUM_ELEMENTS >= Y.length()) {
+                                        mX.insert(POS, SVL, INDEX);  // default
+                                        mY.insert(POS, SVL, INDEX);
+                                    }
+                                    else {
+                                        mX.insert(POS,
+                                                  SVL,
+                                                  INDEX,
+                                                  NUM_ELEMENTS);
+                                        mY.insert(POS,
+                                                  SVL,
+                                                  INDEX,
+                                                  NUM_ELEMENTS);
                                     }
                                   } break;
                                   default: {
@@ -10311,12 +12804,8 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase18Range(const CONTAINER&)
                                     T_; T_; T_; T_; P(Y);
                                 }
 
-                                LOOP5_ASSERT(INIT_LINE,
-                                             i,
-                                             INIT_CAP,
-                                             POS,
-                                             INDEX,
-                                             X == Y);
+                                ASSERTV(INIT_LINE, i, INIT_CAP, POS, INDEX,
+                                        X == Y);
                             }
                         }
                     }
@@ -10822,13 +13311,17 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase17Range(const CONTAINER&)
     //   basic_string& append(const basic_string& str, pos, n = npos);
     //   basic_string& append(const CHAR_TYPE *s, size_type n);
     //   basic_string& append(const CHAR_TYPE *s);
-    //   basic_string& append(const basic_string_view& strView);
-    //   basic_string& append(const basic_string_view& strView, pos, n = npos);
+    //   basic_string& append(const STRING_VIEW_LIKE_TYPE& strView);
+    //   basic_string& append(const STRING_VIEW_LIKE_TYPE& strView, pos, n);
     //   template <class Iter> basic_string& append(Iter first, Iter last);
     //   basic_string& operator+=(const basic_string& str);
-    //   basic_string& operator+=(const basic_string_view& strView);
+    //   basic_string& operator+=(const STRING_VIEW_LIKE_TYPE& rhs);
     //   basic_string& operator+=(const CHAR_TYPE *rhs);
     // --------------------------------------------------------------------
+
+    typedef bslstl::StringRefImp<TYPE>            StringRefImp;
+    typedef bsl::basic_string_view<TYPE, TRAITS>  StringView;
+    typedef ConvertibleToStringViewOnlyType<TYPE> StringViewOnlyLikeType;
 
     bslma::TestAllocator  testAllocator(veryVeryVerbose);
 
@@ -10844,23 +13337,30 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase17Range(const CONTAINER&)
                      >::value;
 
     enum {
-        APPEND_STRING_MODE_FIRST  = 0,
-        APPEND_SUBSTRING          = 0,
-        APPEND_SUBSTRING_NPOS     = 1,
-        APPEND_SUBSTRINGVIEW      = 2,
-        APPEND_SUBSTRINGVIEW_NPOS = 3,
-        APPEND_STRING             = 4,
-        APPEND_STRINGVIEW         = 5,
-        APPEND_CSTRING            = 6,
-        APPEND_CSTRING_N          = 7,
-        APPEND_CSTRING_NULL_0     = 8,
-        APPEND_RANGE              = 9,
-        APPEND_CONST_RANGE        = 10,
-        OPERATOR_STRING           = 11,
-        OPERATOR_CSTRING          = 12,
-        OPERATOR_STRINGVIEW       = 13,
-        APPEND_STRING_MODE_LAST   = 13
-
+        APPEND_STRING_MODE_FIRST      =  0,
+        APPEND_SUBSTRING              =  0,
+        APPEND_SUBSTRING_NPOS         =  1,
+        APPEND_SUBSTRINGREF           =  2,
+        APPEND_SUBSTRINGVIEW          =  3,
+        APPEND_SUBSTRINGVIEWLIKE      =  4,
+        APPEND_SUBSTRINGREF_NPOS      =  5,
+        APPEND_SUBSTRINGVIEW_NPOS     =  6,
+        APPEND_SUBSTRINGVIEWLIKE_NPOS =  7,
+        APPEND_STRING                 =  8,
+        APPEND_STRINGREF              =  9,
+        APPEND_STRINGVIEW             = 10,
+        APPEND_STRINGVIEWLIKE         = 11,
+        APPEND_CSTRING                = 12,
+        APPEND_CSTRING_N              = 13,
+        APPEND_CSTRING_NULL_0         = 14,
+        APPEND_RANGE                  = 15,
+        APPEND_CONST_RANGE            = 16,
+        OPERATOR_STRING               = 17,
+        OPERATOR_CSTRING              = 18,
+        OPERATOR_STRINGREF            = 19,
+        OPERATOR_STRINGVIEW           = 20,
+        OPERATOR_STRINGVIEWLIKE       = 21,
+        APPEND_STRING_MODE_LAST       = 21
     };
 
     static const struct {
@@ -10949,13 +13449,14 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase17Range(const CONTAINER&)
 
                     CONTAINER mU(Y);  const CONTAINER& U = mU;
 
-                    bsl::basic_string_view<TYPE>        mV(Y.begin(),
-                                                           Y.length());
-                    const bsl::basic_string_view<TYPE>& V = mV;
+                    const StringRefImp           SR(Y.data(), Y.length());
+                    const StringView             SV(Y.data(), Y.length());
+                    const StringViewOnlyLikeType SVL(Y.data());;
 
-                    Obj mX(INIT_LENGTH,
-                           DEFAULT_VALUE,
-                           AllocType(&testAllocator));  const Obj& X = mX;
+                    Obj        mX(INIT_LENGTH,
+                                  DEFAULT_VALUE,
+                                  AllocType(&testAllocator));
+                    const Obj& X = mX;
                     mX.reserve(INIT_RES);
                     const size_t INIT_CAP = X.capacity();
 
@@ -10990,9 +13491,19 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase17Range(const CONTAINER&)
                             Obj &result = mX.append(Y);
                             ASSERT(&result == &mX);
                           } break;
+                          case APPEND_STRINGREF: {
+                            // string& append(const StringRef& strView);
+                            Obj &result = mX.append(SR);
+                            ASSERT(&result == &mX);
+                          } break;
                           case APPEND_STRINGVIEW: {
                             // string& append(const string_view& strView);
-                            Obj &result = mX.append(V);
+                            Obj &result = mX.append(SV);
+                            ASSERT(&result == &mX);
+                          } break;
+                          case APPEND_STRINGVIEWLIKE: {
+                            // string& append(const StringViewLike& svl);
+                            Obj &result = mX.append(SVL);
                             ASSERT(&result == &mX);
                           } break;
                           case APPEND_CSTRING: {
@@ -11030,9 +13541,19 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase17Range(const CONTAINER&)
                             Obj &result = mX += Y.c_str();
                             ASSERT(&result == &mX);
                           } break;
+                          case OPERATOR_STRINGREF: {
+                        // string& operator+=(const StringRef& strView);
+                            Obj &result = mX += SR;
+                            ASSERT(&result == &mX);
+                          } break;
                           case OPERATOR_STRINGVIEW: {
                         // string& operator+=(const string_view& strView);
-                            Obj &result = mX += V;
+                            Obj &result = mX += SV;
+                            ASSERT(&result == &mX);
+                          } break;
+                          case OPERATOR_STRINGVIEWLIKE: {
+                        // string& operator+=(const StringViewLike& svl);
+                            Obj &result = mX += SVL;
                             ASSERT(&result == &mX);
                           } break;
                           default: {
@@ -11051,30 +13572,28 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase17Range(const CONTAINER&)
                         T_; T_; T_; T_; P_(X); P(X.capacity());
                     }
 
-                    LOOP2_ASSERT(INIT_LINE, LINE, LENGTH == X.size());
+                    ASSERTV(INIT_LINE, LINE, LENGTH == X.size());
                     if (!INPUT_ITERATOR_TAG) {
-                        LOOP2_ASSERT(INIT_LINE, LINE, CAP == X.capacity());
+                        ASSERTV(INIT_LINE, LINE, CAP == X.capacity());
                     }
 
                     size_t m = 0;
                     for (k = 0; k < INIT_LENGTH; ++k, ++m) {
-                        LOOP3_ASSERT(INIT_LINE, LINE, k,
-                                     VALUES[m % NUM_VALUES] == X[k]);
+                        ASSERTV(INIT_LINE, LINE, k,
+                                VALUES[m % NUM_VALUES] == X[k]);
                     }
                     for (m = 0; k < LENGTH; ++k, ++m) {
-                        LOOP4_ASSERT(INIT_LINE, LINE, k, m,
-                                     Y[m] == X[k]);
+                        ASSERTV(INIT_LINE, LINE, k, m, Y[m] == X[k]);
                     }
 
                     const int REALLOC = X.capacity() > INIT_CAP;
-                    const int A_ALLOC =
-                            DEFAULT_CAPACITY >= INIT_CAP &&
-                            X.capacity() > DEFAULT_CAPACITY;
+                    const int A_ALLOC = DEFAULT_CAPACITY >= INIT_CAP &&
+                                        X.capacity() > DEFAULT_CAPACITY;
 
-                    LOOP4_ASSERT(INIT_LINE, INIT_LENGTH, INIT_CAP, CAP,
-                                 BB + REALLOC <= AA);
-                    LOOP4_ASSERT(INIT_LINE, INIT_LENGTH, INIT_CAP, CAP,
-                                 B + A_ALLOC <=  A);
+                    ASSERTV(INIT_LINE, INIT_LENGTH, INIT_CAP, CAP,
+                            BB + REALLOC <= AA);
+                    ASSERTV(INIT_LINE, INIT_LENGTH, INIT_CAP, CAP,
+                            B + A_ALLOC <=  A);
                 }
                 ASSERT(0 == testAllocator.numMismatches());
                 ASSERT(0 == testAllocator.numBlocksInUse());
@@ -11085,9 +13604,11 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase17Range(const CONTAINER&)
     ASSERT(0 == testAllocator.numBlocksInUse());
 
     if (verbose)
-        printf("\tUsing string with appendMode = %d and appendMode = %d.\n",
+        printf("\tUsing string with appendMode = %d, appendMode = %d and "
+               "appendMode = %d.\n",
                APPEND_SUBSTRING,
-               APPEND_SUBSTRINGVIEW);
+               APPEND_SUBSTRINGVIEW,
+               APPEND_SUBSTRINGVIEWLIKE);
     {
 
         for (int i = 0; i < NUM_DATA; ++i) {
@@ -11109,11 +13630,11 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase17Range(const CONTAINER&)
                     const char   *SPEC         = U_DATA[ti].d_spec;
                     const size_t  NUM_ELEMENTS = strlen(SPEC);
 
-                    Obj                                mY(g(SPEC));
-                    const Obj&                         Y = mY;
-                    bsl::basic_string_view<TYPE>        mV(Y.begin(),
-                                                           Y.length());
-                    const bsl::basic_string_view<TYPE>& V = mV;
+                    Obj                           mY(g(SPEC));
+                    const Obj&                    Y = mY;
+                    const StringRefImp            SR(Y.data(), Y.length());
+                    const StringView              SV(Y.data(), Y.length());
+                    const StringViewOnlyLikeType  SVL(Y.data());
 
                     for (size_t k = 0; k <= NUM_ELEMENTS; ++k) {
                         const size_t POS = k;
@@ -11121,13 +13642,9 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase17Range(const CONTAINER&)
                             const size_t NUM_ELEMENTS_INS = l;
                             const size_t LENGTH =
                                                 INIT_LENGTH + NUM_ELEMENTS_INS;
-                            enum {
-                                INSERT_MODE_STRING     = 0,
-                                INSERT_MODE_STRINGVIEW = 1
-                            };
 
-                            for (int mode = INSERT_MODE_STRING;
-                                 mode <= INSERT_MODE_STRINGVIEW;
+                            for (int mode = APPEND_STRING;
+                                 mode <= APPEND_STRINGVIEWLIKE;
                                  ++mode) {
                                 const int MODE = mode;
 
@@ -11147,9 +13664,9 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase17Range(const CONTAINER&)
                                                                  INIT_LENGTH,
                                                                  INIT_CAP,
                                                                  X.max_size());
-                                const int REALLOC     =
+                                const int    REALLOC  =
                                                        X.capacity() > INIT_CAP;
-                                const int A_ALLOC     =
+                                const int    A_ALLOC  =
                                                DEFAULT_CAPACITY >= INIT_CAP &&
                                                X.capacity() > DEFAULT_CAPACITY;
 
@@ -11170,22 +13687,48 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase17Range(const CONTAINER&)
                                     P_(MODE) P_(BB); P(B);
                                 }
                                 switch (MODE) {
-                                  case INSERT_MODE_STRING: {
+                                  case APPEND_STRING: {
                                     // string& append(const string& str, p, n);
 
                                     AllocatorUseGuard gag(globalAllocator_p);
                                     AllocatorUseGuard dag(defaultAllocator_p);
+
                                     Obj &result = mX.append(Y,
                                                             POS,
                                                             NUM_ELEMENTS_INS);
                                     ASSERT(&result == &mX);
                                   } break;
-                                  case INSERT_MODE_STRINGVIEW: {
+                                  case APPEND_STRINGREF: {
+                                    // string& append(const StringRef&,p, n);
+
+                                    AllocatorUseGuard gag(globalAllocator_p);
+                                    AllocatorUseGuard dag(defaultAllocator_p);
+
+                                    Obj &result = mX.append(SR,
+                                                            POS,
+                                                            NUM_ELEMENTS_INS);
+                                    ASSERT(&result == &mX);
+                                  } break;
+                                  case APPEND_STRINGVIEW: {
                                     // string& append(const string_view&,p, n);
 
                                     AllocatorUseGuard gag(globalAllocator_p);
                                     AllocatorUseGuard dag(defaultAllocator_p);
-                                    Obj &result = mX.append(V,
+
+                                    Obj &result = mX.append(SV,
+                                                            POS,
+                                                            NUM_ELEMENTS_INS);
+                                    ASSERT(&result == &mX);
+                                  } break;
+                                  case APPEND_STRINGVIEWLIKE: {
+                                    // string& append(const StringViewLike&,
+                                    //                p,
+                                    //                n);
+
+                                    AllocatorUseGuard gag(globalAllocator_p);
+                                    AllocatorUseGuard dag(defaultAllocator_p);
+
+                                    Obj &result = mX.append(SVL,
                                                             POS,
                                                             NUM_ELEMENTS_INS);
                                     ASSERT(&result == &mX);
@@ -11206,32 +13749,28 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase17Range(const CONTAINER&)
                                     T_; T_; T_; T_; P_(X); P(X.capacity());
                                 }
 
-                                LOOP4_ASSERT(
-                                         INIT_LINE, INIT_LENGTH, INIT_CAP, CAP,
-                                         BB + REALLOC <= AA);
-                                LOOP4_ASSERT(
-                                         INIT_LINE, INIT_LENGTH, INIT_CAP, CAP,
-                                         B + A_ALLOC <=  A);
+                                ASSERTV(INIT_LINE, INIT_LENGTH, INIT_CAP, CAP,
+                                        BB + REALLOC <= AA);
+                                ASSERTV(INIT_LINE, INIT_LENGTH, INIT_CAP, CAP,
+                                        B + A_ALLOC <=  A);
 
-                                LOOP2_ASSERT(INIT_LINE, LINE,
-                                             LENGTH == X.size());
+                                ASSERTV(INIT_LINE, LINE, LENGTH == X.size());
                                 if (!INPUT_ITERATOR_TAG) {
-                                    LOOP2_ASSERT(INIT_LINE, LINE,
-                                                 CAP == X.capacity());
+                                    ASSERTV(INIT_LINE, LINE,
+                                            CAP == X.capacity());
                                 }
 
                                 size_t n = 0;
                                 for (; n < INIT_LENGTH; ++n) {
-                                    LOOP3_ASSERT(
-                                               INIT_LINE, LINE, n,
-                                               VALUES[n % NUM_VALUES] == X[n]);
+                                    ASSERTV(INIT_LINE, LINE, n,
+                                            VALUES[n % NUM_VALUES] == X[n]);
                                 }
 
                                 for (size_t m = 0;
                                      m < NUM_ELEMENTS_INS;
                                      ++m, ++n) {
-                                    LOOP4_ASSERT(INIT_LINE, LINE, m, n,
-                                                 Y[POS + m] == X[n]);
+                                    ASSERTV(INIT_LINE, LINE, m, n,
+                                            Y[POS + m] == X[n]);
                                 }
                             }
                         }
@@ -11241,13 +13780,9 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase17Range(const CONTAINER&)
                             const size_t NUM_ELEMENTS_INS = NUM_ELEMENTS - POS;
                             const size_t LENGTH =
                                                 INIT_LENGTH + NUM_ELEMENTS_INS;
-                            enum {
-                                INSERT_MODE_STRING     = 0,
-                                INSERT_MODE_STRINGVIEW = 1
-                            };
 
-                            for (int mode = INSERT_MODE_STRING;
-                                 mode <= INSERT_MODE_STRINGVIEW;
+                            for (int mode = APPEND_STRING;
+                                 mode <= APPEND_STRINGVIEWLIKE;
                                  ++mode) {
                                 const int MODE = mode;
 
@@ -11267,9 +13802,9 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase17Range(const CONTAINER&)
                                                                  INIT_LENGTH,
                                                                  INIT_CAP,
                                                                  X.max_size());
-                                const int REALLOC     =
+                                const int    REALLOC  =
                                                        X.capacity() > INIT_CAP;
-                                const int A_ALLOC     =
+                                const int    A_ALLOC  =
                                                DEFAULT_CAPACITY >= INIT_CAP &&
                                                X.capacity() > DEFAULT_CAPACITY;
 
@@ -11291,19 +13826,41 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase17Range(const CONTAINER&)
                                     P_(MODE) P_(BB); P(B);
                                 }
                                 switch (MODE) {
-                                  case INSERT_MODE_STRING: {
+                                  case APPEND_STRING: {
                                     // string& append(const string& str, p, n);
                                     AllocatorUseGuard gag(globalAllocator_p);
                                     AllocatorUseGuard dag(defaultAllocator_p);
+
                                     Obj &result = mX.append(Y, POS);
                                     ASSERT(&result == &mX);
                                   } break;
-                                  case INSERT_MODE_STRINGVIEW: {
+                                  case APPEND_STRINGREF: {
+                                    // string& append(const StringRef&,p, n);
+
+                                    AllocatorUseGuard gag(globalAllocator_p);
+                                    AllocatorUseGuard dag(defaultAllocator_p);
+
+                                    Obj &result = mX.append(SR, POS);
+                                    ASSERT(&result == &mX);
+                                  } break;
+                                  case APPEND_STRINGVIEW: {
                                     // string& append(const string_view&,p, n);
 
                                     AllocatorUseGuard gag(globalAllocator_p);
                                     AllocatorUseGuard dag(defaultAllocator_p);
-                                    Obj &result = mX.append(V, POS);
+
+                                    Obj &result = mX.append(SV, POS);
+                                    ASSERT(&result == &mX);
+                                  } break;
+                                  case APPEND_STRINGVIEWLIKE: {
+                                    // string& append(const StringViewLike&,
+                                    //                p,
+                                    //                n);
+
+                                    AllocatorUseGuard gag(globalAllocator_p);
+                                    AllocatorUseGuard dag(defaultAllocator_p);
+
+                                    Obj &result = mX.append(SVL, POS);
                                     ASSERT(&result == &mX);
                                   } break;
                                   default: {
@@ -11322,32 +13879,28 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase17Range(const CONTAINER&)
                                     T_; T_; T_; T_; P_(X); P(X.capacity());
                                 }
 
-                                LOOP4_ASSERT(INIT_LINE, INIT_LENGTH,
-                                             INIT_CAP, CAP,
-                                             BB + REALLOC <= AA);
-                                LOOP4_ASSERT(INIT_LINE, INIT_LENGTH,
-                                             INIT_CAP, CAP,
-                                             B + A_ALLOC <=  A);
+                                ASSERTV(INIT_LINE, INIT_LENGTH, INIT_CAP, CAP,
+                                        BB + REALLOC <= AA);
+                                ASSERTV(INIT_LINE, INIT_LENGTH, INIT_CAP, CAP,
+                                        B + A_ALLOC <=  A);
 
-                                LOOP2_ASSERT(INIT_LINE, LINE,
-                                             LENGTH == X.size());
+                                ASSERTV(INIT_LINE, LINE, LENGTH == X.size());
                                 if (!INPUT_ITERATOR_TAG) {
-                                    LOOP2_ASSERT(INIT_LINE, LINE,
-                                                 CAP == X.capacity());
+                                    ASSERTV(INIT_LINE, LINE,
+                                            CAP == X.capacity());
                                 }
 
                                 size_t n = 0;
                                 for (; n < INIT_LENGTH; ++n) {
-                                    LOOP3_ASSERT(
-                                               INIT_LINE, LINE, n,
-                                               VALUES[n % NUM_VALUES] == X[n]);
+                                    ASSERTV(INIT_LINE, LINE, n,
+                                            VALUES[n % NUM_VALUES] == X[n]);
                                 }
 
                                 for (size_t m = 0;
                                      m < NUM_ELEMENTS_INS;
                                      ++m, ++n) {
-                                    LOOP4_ASSERT(INIT_LINE, LINE, m, n,
-                                                 Y[POS + m] == X[n]);
+                                    ASSERTV(INIT_LINE, LINE, m, n,
+                                            Y[POS + m] == X[n]);
                                 }
                             }
                         }
@@ -11392,17 +13945,18 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase17Range(const CONTAINER&)
 
                     CONTAINER mU(Y);  const CONTAINER& U = mU;
 
-                    bsl::basic_string_view<TYPE>        mV(Y.begin(),
-                                                           Y.length());
-                    const bsl::basic_string_view<TYPE>& V = mV;
+                    const StringRefImp           SR(Y.data(), Y.length());
+                    const StringView             SV(Y.data(), Y.length());
+                    const StringViewOnlyLikeType SVL(Y.data());
 
                     BSLMA_TESTALLOCATOR_EXCEPTION_TEST_BEGIN(testAllocator) {
                         const Int64 AL = testAllocator.allocationLimit();
                         testAllocator.setAllocationLimit(-1);
 
-                        Obj mX(INIT_LENGTH,
-                               DEFAULT_VALUE,
-                               AllocType(&testAllocator));  const Obj& X = mX;
+                        Obj        mX(INIT_LENGTH,
+                                      DEFAULT_VALUE,
+                                      AllocType(&testAllocator));
+                        const Obj& X = mX;
                         mX.reserve(INIT_RES);
                         const size_t INIT_CAP = X.capacity();
 
@@ -11425,14 +13979,34 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase17Range(const CONTAINER&)
                             Obj &result = mX.append(Y, 0); // 'npos' dflt. arg.
                             ASSERT(&result == &mX);
                           } break;
+                          case APPEND_SUBSTRINGREF: {
+                        // string& append(const StringRef& strRef, pos, n);
+                            Obj &result = mX.append(SR, 0, NUM_ELEMENTS);
+                            ASSERT(&result == &mX);
+                          } break;
                           case APPEND_SUBSTRINGVIEW: {
-                        // string& append(string_view strView, pos, n);
-                            Obj &result = mX.append(V, 0, NUM_ELEMENTS);
+                        // string& append(const string_view& strView, pos, n);
+                            Obj &result = mX.append(SV, 0, NUM_ELEMENTS);
+                            ASSERT(&result == &mX);
+                          } break;
+                          case APPEND_SUBSTRINGVIEWLIKE: {
+                        // string& append(const StringViewLike&, pos, n);
+                            Obj &result = mX.append(SVL, 0, NUM_ELEMENTS);
+                            ASSERT(&result == &mX);
+                          } break;
+                          case APPEND_SUBSTRINGREF_NPOS: {
+                        // string& append(const StringRef& strRef, pos);
+                            Obj &result = mX.append(SR, 0); // 'npos' dflt arg
                             ASSERT(&result == &mX);
                           } break;
                           case APPEND_SUBSTRINGVIEW_NPOS: {
-                        // string& append(string_view strView, pos, n);
-                            Obj &result = mX.append(V, 0); // 'npos' dflt. arg.
+                        // string& append(const string_view& strView, pos);
+                            Obj &result = mX.append(SV, 0); // 'npos' dflt arg
+                            ASSERT(&result == &mX);
+                          } break;
+                          case APPEND_SUBSTRINGVIEWLIKE_NPOS: {
+                        // string& append(const StringViewLike&, pos);
+                            Obj &result = mX.append(SVL, 0); // 'npos' dflt arg
                             ASSERT(&result == &mX);
                           } break;
                           case APPEND_STRING: {
@@ -11440,9 +14014,19 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase17Range(const CONTAINER&)
                             Obj &result = mX.append(Y);
                             ASSERT(&result == &mX);
                           } break;
+                          case APPEND_STRINGREF: {
+                        // string& append(const StringRef&);
+                            Obj &result = mX.append(SR);
+                            ASSERT(&result == &mX);
+                          } break;
                           case APPEND_STRINGVIEW: {
-                        // string& append(string_view strView);
-                            Obj &result = mX.append(Y);
+                        // string& append(const string_view&);
+                            Obj &result = mX.append(SV);
+                            ASSERT(&result == &mX);
+                          } break;
+                          case APPEND_STRINGVIEWLIKE: {
+                        // string& append(const StringViewLike&);
+                            Obj &result = mX.append(SVL);
                             ASSERT(&result == &mX);
                           } break;
                           case APPEND_CSTRING: {
@@ -11480,9 +14064,19 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase17Range(const CONTAINER&)
                             Obj &result = mX += Y.c_str();
                             ASSERT(&result == &mX);
                           } break;
+                          case OPERATOR_STRINGREF: {
+                        // string& operator+=(const StringRef&);
+                            Obj &result = mX += SR;
+                            ASSERT(&result == &mX);
+                          } break;
                           case OPERATOR_STRINGVIEW: {
-                        // string& operator+=(string_view strView);
-                            Obj &result = mX += V;
+                        // string& operator+=(const string_view&);
+                            Obj &result = mX += SV;
+                            ASSERT(&result == &mX);
+                          } break;
+                          case OPERATOR_STRINGVIEWLIKE: {
+                        // string& operator+=(const StringViewLike&);
+                            Obj &result = mX += SVL;
                             ASSERT(&result == &mX);
                           } break;
                           default: {
@@ -11498,19 +14092,18 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase17Range(const CONTAINER&)
                             T_; T_; T_; P_(X); P(X.capacity());
                         }
 
-                        LOOP2_ASSERT(INIT_LINE, LINE, LENGTH == X.size());
+                        ASSERTV(INIT_LINE, LINE, LENGTH == X.size());
                         if (!INPUT_ITERATOR_TAG) {
-                            LOOP2_ASSERT(INIT_LINE, LINE, CAP == X.capacity());
+                            ASSERTV(INIT_LINE, LINE, CAP == X.capacity());
                         }
 
                         size_t k, m;
                         for (k = 0; k < INIT_LENGTH; ++k) {
-                            LOOP4_ASSERT(INIT_LINE, LINE, i, k,
-                                         DEFAULT_VALUE == X[k]);
+                            ASSERTV(INIT_LINE, LINE, i, k,
+                                    DEFAULT_VALUE == X[k]);
                         }
                         for (m = 0; m < NUM_ELEMENTS; ++k, ++m) {
-                            LOOP4_ASSERT(INIT_LINE, LINE, i, k,
-                                         Y[m] == X[k]);
+                            ASSERTV(INIT_LINE, LINE, i, k, Y[m] == X[k]);
                         }
                     } BSLMA_TESTALLOCATOR_EXCEPTION_TEST_END
                 }
@@ -11521,6 +14114,79 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase17Range(const CONTAINER&)
     }
     ASSERT(0 == testAllocator.numMismatches());
     ASSERT(0 == testAllocator.numBlocksInUse());
+
+#ifdef BDE_BUILD_TARGET_EXC
+    if (verbose) printf("\tWith 'std::out_of_range' exceptions.\n");
+    {
+        for (int appendMode  = APPEND_STRING;
+                 appendMode <= APPEND_STRINGVIEWLIKE;
+                 ++appendMode)
+        {
+            const int MODE = appendMode;
+            for (int i = 0; i < NUM_DATA; ++i) {
+                const size_t INIT_LENGTH = DATA[i].d_length;
+
+                for (int l = i; l < NUM_DATA; ++l) {
+                    const size_t INIT_RES = DATA[l].d_length;
+                    ASSERT(INIT_LENGTH <= INIT_RES);
+
+                    if (veryVerbose) {
+                        printf("\t\tWith initial value of ");
+                        P_(INIT_LENGTH); P_(INIT_RES);
+                        printf("using default char value.\n");
+                    }
+
+                    const char *SPEC = "A";
+
+                    // Out of range source position.
+
+                    const size_t SOURCE_POSITION = strlen(SPEC) + 1;
+
+                    Obj                          mY(g(SPEC));
+                    const Obj&                   Y = mY;
+                    const StringRefImp           SR( Y.data(), Y.length());
+                    const StringView             SV( Y.data(), Y.length());
+                    const StringViewOnlyLikeType SVL(Y.data());
+
+                    Obj mX(INIT_LENGTH,
+                           DEFAULT_VALUE,
+                           AllocType(&testAllocator));
+                    mX.reserve(INIT_RES);
+
+                    bool outOfRangeCaught = false;
+                    try {
+                        switch (MODE) {
+                          case APPEND_STRING: {
+                            mX.append(Y, SOURCE_POSITION, 0);
+                            ASSERT(0);
+                          } break;
+                          case APPEND_STRINGREF: {
+                            mX.append(SR, SOURCE_POSITION, 0);
+                            ASSERT(0);
+                          } break;
+                          case APPEND_STRINGVIEW: {
+                            mX.append(SV, SOURCE_POSITION, 0);
+                            ASSERT(0);
+                          } break;
+                          case APPEND_STRINGVIEWLIKE: {
+                            mX.append(SVL, SOURCE_POSITION, 0);
+                            ASSERT(0);
+                          } break;
+                          default: {
+                            printf("***UNKNOWN INSERT MODE***\n");
+                            ASSERT(0);
+                          } break;
+                        }
+                    }
+                    catch (const std::out_of_range&) {
+                         outOfRangeCaught = true;
+                    }
+                    ASSERTV(MODE, i, l, outOfRangeCaught);
+                }
+            }
+        }
+    }
+#endif
 
     if (verbose) printf("\tTesting aliasing concerns.\n");
 
@@ -11545,21 +14211,22 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase17Range(const CONTAINER&)
                     printf("using distinct (cyclic) values.\n");
                 }
 
-                Obj mX(INIT_LENGTH,
-                       DEFAULT_VALUE,
-                       AllocType(&testAllocator));  const Obj& X = mX;
+                Obj        mX(INIT_LENGTH,
+                              DEFAULT_VALUE,
+                              AllocType(&testAllocator));
+                const Obj& X = mX;
                 mX.reserve(INIT_RES);
 
                 for (size_t k = 0; k < INIT_LENGTH; ++k) {
                     mX[k] = VALUES[k % NUM_VALUES];
                 }
 
-                Obj mY(X, AllocType(&testAllocator)); const Obj& Y = mY;
-                                                                 // ^-- control
+                Obj        mY(X, AllocType(&testAllocator));  // control
+                const Obj& Y = mY;
 
-                bsl::basic_string_view<TYPE>        mV(Y.begin(),
-                                                       Y.length());
-                const bsl::basic_string_view<TYPE>& V = mV;
+                const StringRefImp           SR(Y.data(), Y.length());
+                const StringView             SV(Y.data(), Y.length());
+                const StringViewOnlyLikeType SVL(Y.data());
 
                 if (veryVerbose) {
                     printf("\t\t\tAppend itself.\n");
@@ -11579,25 +14246,55 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase17Range(const CONTAINER&)
                         mX.append(Y, 0);  // 'npos' default argument
                         mY.append(Y, 0);
                       } break;
+                      case APPEND_SUBSTRINGREF: {
+                    // string& append(const StringRef&);
+                        mX.append(SR, 0, INIT_LENGTH);
+                        mY.append(SR, 0, INIT_LENGTH);
+                      } break;
                       case APPEND_SUBSTRINGVIEW: {
-                    // string& append(string_view strView);
-                        mX.append(V, 0, INIT_LENGTH);
-                        mY.append(V, 0, INIT_LENGTH);
+                    // string& append(const string_view&);
+                        mX.append(SV, 0, INIT_LENGTH);
+                        mY.append(SV, 0, INIT_LENGTH);
+                      } break;
+                      case APPEND_SUBSTRINGVIEWLIKE: {
+                    // string& append(const StringViewLike&);
+                        mX.append(SVL, 0, INIT_LENGTH);
+                        mY.append(SVL, 0, INIT_LENGTH);
+                      } break;
+                      case APPEND_SUBSTRINGREF_NPOS: {
+                    // string& append(const StringRef&, pos, n);
+                        mX.append(SR, 0);  // 'npos' default argument
+                        mY.append(SR, 0);
                       } break;
                       case APPEND_SUBSTRINGVIEW_NPOS: {
-                    // string& append(string_view strView, pos, n);
-                        mX.append(V, 0);  // 'npos' default argument
-                        mY.append(V, 0);
+                    // string& append(const string_view&, pos, n);
+                        mX.append(SV, 0);  // 'npos' default argument
+                        mY.append(SV, 0);
+                      } break;
+                      case APPEND_SUBSTRINGVIEWLIKE_NPOS: {
+                    // string& append(const StringViewLike&, pos, n);
+                        mX.append(SVL, 0);  // 'npos' default argument
+                        mY.append(SVL, 0);
                       } break;
                       case APPEND_STRING: {
                     // string& append(const string<C,CT,A>& str);
                         mX.append(Y);
                         mY.append(Y);
                       } break;
+                      case APPEND_STRINGREF: {
+                    // string& append(const StringRef&);
+                        mX.append(SR);
+                        mY.append(SR);
+                      } break;
                       case APPEND_STRINGVIEW: {
-                    // string& append(string_view strView);
-                        mX.append(V);
-                        mY.append(V);
+                    // string& append(const string_view&);
+                        mX.append(SV);
+                        mY.append(SV);
+                      } break;
+                      case APPEND_STRINGVIEWLIKE: {
+                    // string& append(const StringViewLike&);
+                        mX.append(SVL);
+                        mY.append(SVL);
                       } break;
                       case APPEND_CSTRING: {
                     // string& append(const C *s);
@@ -11634,10 +14331,20 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase17Range(const CONTAINER&)
                         mX += Y.c_str();
                         mY += Y.c_str();
                       } break;
+                      case OPERATOR_STRINGREF: {
+                    // string& operator+=(const StringRef&);
+                        mX += SR;
+                        mY += SR;
+                      } break;
                       case OPERATOR_STRINGVIEW: {
-                    // string& operator+=(string_view strView);
-                        mX += V;
-                        mY += V;
+                    // string& operator+=(const string_view&);
+                        mX += SV;
+                        mY += SV;
+                      } break;
+                      case OPERATOR_STRINGVIEWLIKE: {
+                    // string& operator+=(const StringViewLike&);
+                        mX += SVL;
+                        mY += SVL;
                       } break;
                       default: {
                         printf("***UNKNOWN APPEND MODE***\n");
@@ -11659,9 +14366,13 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase17Range(const CONTAINER&)
     ASSERT(0 == testAllocator.numBlocksInUse());
 
     {
-        if (verbose) printf("\tUsing string with appendMode = %d (complete)."
-                            "\n",
-                            APPEND_SUBSTRING);
+        if (verbose)
+            printf("\tUsing string with appendMode = %d,  appendMode = %d and "
+                   " appendMode = %d  (complete)."
+                   "\n",
+                   APPEND_SUBSTRING,
+                   APPEND_SUBSTRINGVIEW,
+                   APPEND_SUBSTRINGVIEWLIKE);
 
         for (int i = 0; i < NUM_DATA; ++i) {
             const int    INIT_LINE   = DATA[i].d_lineNum;
@@ -11681,13 +14392,9 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase17Range(const CONTAINER&)
                     for (size_t m = 0; m < INIT_LENGTH; ++m) {
                         const size_t INDEX        = h;
                         const size_t NUM_ELEMENTS = m;
-                        enum {
-                            INSERT_MODE_STRING     = 0,
-                            INSERT_MODE_STRINGVIEW = 1
-                        };
 
-                        for (int mode = INSERT_MODE_STRING;
-                             mode <= INSERT_MODE_STRINGVIEW;
+                        for (int mode = APPEND_STRING;
+                             mode <= APPEND_STRINGVIEWLIKE;
                              ++mode) {
                             const int MODE = mode;
 
@@ -11711,44 +14418,75 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase17Range(const CONTAINER&)
                             }
 
                             switch (MODE) {
-                              case INSERT_MODE_STRING: {
-                                 // string& append(const string& str, pos, n);
+                              case APPEND_STRING: {
+                                // string& append(const string& str, pos, n);
 
-                                 AllocatorUseGuard guardG(globalAllocator_p);
-                                 AllocatorUseGuard guardD(defaultAllocator_p);
+                                AllocatorUseGuard guardG(globalAllocator_p);
+                                AllocatorUseGuard guardD(defaultAllocator_p);
 
-                                 if (INDEX + NUM_ELEMENTS >= Y.length()) {
-                                     mX.append(Y, INDEX);  // 'npos' is default
-                                     mY.append(Y, INDEX);
-                                 }
-                                 else {
-                                     mX.append(Y, INDEX, NUM_ELEMENTS);
-                                     mY.append(Y, INDEX, NUM_ELEMENTS);
-                                 }
+                                if (INDEX + NUM_ELEMENTS >= Y.length()) {
+                                    mX.append(Y, INDEX);  // 'npos' is default
+                                    mY.append(Y, INDEX);
+                                }
+                                else {
+                                    mX.append(Y, INDEX, NUM_ELEMENTS);
+                                    mY.append(Y, INDEX, NUM_ELEMENTS);
+                                }
                               } break;
-                              case INSERT_MODE_STRINGVIEW: {
-                                 // string& append(const string_view s, p, n);
+                              case APPEND_STRINGREF: {
+                                // string& append(const StringRef&, p, n);
 
-                                 bsl::basic_string_view<TYPE>        mV(
-                                                                   Y.begin(),
-                                                                   Y.length());
-                                 const bsl::basic_string_view<TYPE>& V = mV;
+                                const StringRefImp SR(Y.data(), Y.length());
 
-                                 AllocatorUseGuard guardG(globalAllocator_p);
-                                 AllocatorUseGuard guardD(defaultAllocator_p);
+                                AllocatorUseGuard guardG(globalAllocator_p);
+                                AllocatorUseGuard guardD(defaultAllocator_p);
 
-                                 if (INDEX + NUM_ELEMENTS >= Y.length()) {
-                                     mX.append(V, INDEX);  // 'npos' is default
-                                     mY.append(V, INDEX);
-                                 }
-                                 else {
-                                     mX.append(V, INDEX, NUM_ELEMENTS);
-                                     mY.append(V, INDEX, NUM_ELEMENTS);
-                                 }
-                               } break;
-                               default: {
-                                 ASSERTV(MODE, !"Bad append mode.");
-                               } return;                              // RETURN
+                                if (INDEX + NUM_ELEMENTS >= Y.length()) {
+                                    mX.append(SR, INDEX);  // 'npos' is dflt
+                                    mY.append(SR, INDEX);
+                                }
+                                else {
+                                    mX.append(SR, INDEX, NUM_ELEMENTS);
+                                    mY.append(SR, INDEX, NUM_ELEMENTS);
+                                }
+                              } break;
+                              case APPEND_STRINGVIEW: {
+                                // string& append(const string_view&, p, n);
+
+                                const StringView SV(Y.data(), Y.length());
+
+                                AllocatorUseGuard guardG(globalAllocator_p);
+                                AllocatorUseGuard guardD(defaultAllocator_p);
+
+                                if (INDEX + NUM_ELEMENTS >= Y.length()) {
+                                    mX.append(SV, INDEX);  // 'npos' is dflt
+                                    mY.append(SV, INDEX);
+                                }
+                                else {
+                                    mX.append(SV, INDEX, NUM_ELEMENTS);
+                                    mY.append(SV, INDEX, NUM_ELEMENTS);
+                                }
+                              } break;
+                              case APPEND_STRINGVIEWLIKE: {
+                                // string& append(const StringViewLike&,p, n);
+
+                                const StringViewOnlyLikeType SVL(Y.data());
+
+                                AllocatorUseGuard guardG(globalAllocator_p);
+                                AllocatorUseGuard guardD(defaultAllocator_p);
+
+                                if (INDEX + NUM_ELEMENTS >= Y.length()) {
+                                    mX.append(SVL, INDEX);  // 'npos' is dflt
+                                    mY.append(SVL, INDEX);
+                                }
+                                else {
+                                    mX.append(SVL, INDEX, NUM_ELEMENTS);
+                                    mY.append(SVL, INDEX, NUM_ELEMENTS);
+                                }
+                              } break;
+                              default: {
+                                ASSERTV(MODE, !"Bad append mode.");
+                              } return;                               // RETURN
                             }
 
                             if (veryVerbose) {
@@ -11756,13 +14494,8 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase17Range(const CONTAINER&)
                                 T_; T_; T_; T_; P(Y);
                             }
 
-                            LOOP6_ASSERT(INIT_LINE,
-                                         INIT_RES,
-                                         INDEX,
-                                         MODE,
-                                         X,
-                                         Y,
-                                         X == Y);
+                            ASSERTV(INIT_LINE, INIT_RES, INDEX, MODE, X, Y,
+                                    X == Y);
                         }
                     }
                 }
@@ -12592,8 +15325,8 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase13()
     //   basic_string& assign(size_type n, CHAR_TYPE c);
     // --------------------------------------------------------------------
 
-    bslma::TestAllocator         testAllocator(veryVeryVerbose);
-    bslma::Allocator            *Z = &testAllocator;
+    bslma::TestAllocator  testAllocator(veryVeryVerbose);
+    bslma::Allocator     *Z = &testAllocator;
 
     const TYPE         *values     = 0;
     const TYPE *const&  VALUES     = values;
@@ -12945,7 +15678,7 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase13()
 
             try
             {
-                // the assignment will require to allocate more memory
+                // the assignment will require more memory to be allocated
                 dst.assign(src);
             }
             catch (const bslma::TestAllocatorException &)
@@ -13080,34 +15813,61 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase13()
 }
 
 template <class TYPE, class TRAITS, class ALLOC>
-void TestDriver<TYPE,TRAITS,ALLOC>::testCase13StrRefData()
+void TestDriver<TYPE,TRAITS,ALLOC>::testCase13StrViewLike()
 {
-    // --------------------------------------------------------------------
-    // TESTING 'assign' FROM STRING REF
-    // The concerns are the same as for the constructor with the same
-    // signature (case 12), except that the implementation is different,
-    // and in addition the previous value must be freed properly.
+    // ------------------------------------------------------------------------
+    // TESTING 'assign' FROM 'STRING_VIEW_LIKE' TYPE
+    //
+    // Concerns:
+    //: 1 The 'assign' method operator can change the value of any modifiable
+    //:   target object to that of any source object.
+    //:
+    //: 2 The reference returned is to the target object (i.e., '*this').
+    //:
+    //: 3 Memory allocation occurs only when necessary.
+    //:
+    //: 4 Assigning an object to itself behaves as expected (alias-safety).
+    //:
+    //: 5 The 'assign' throws 'std::out_of_range' exception when passed an
+    //:   out-of-bound position (e.g. 'position > length()').
     //
     // Plan:
-    //   For the assignment we will create objects of varying sizes containing
-    //   default values for type T, and then assign different 'value' as
-    //   argument.  Perform the above tests:
-    //    - From the 'bslstl::StringRefData' object.
-    //    - In the presence of exceptions during memory allocations using
-    //        a 'bslma::TestAllocator' and varying its *allocation* *limit*.
-    //   and use basic accessors to verify
-    //      - size
-    //      - capacity
-    //      - element value at each index position { 0 .. length - 1 }.
-    //   Note that we relax the concerns about memory consumption, since this
-    //   is implemented as 'erase + insert', and insert will be tested more
-    //   completely in test case 17.
+    //: 1 Using a loop-based approach, construct a set 'S1' of objects, with
+    //:   substantial and varied differences in value.
+    //:
+    //: 2 For each object 's1' in the 'S1' set create a 'string_view'-like
+    //:   object 'sv' pointing to the underlying character sequence of 's1'.
+    //:
+    //: 3 Using the 'assign' method assign the 'sv' to the 's1'.  Verify that
+    //:   the value of the 's' remains the same and there is no additional
+    //:   memory allocation.  (C-4)
+    //:
+    //: 4 Using the table-driven technique, specify a set 'SVL' of (unique)
+    //:   'string_view'-like objects with substantial and varied differences in
+    //:   value.
+    //:
+    //: 5 Using the table-driven technique, for each object 'svl' in the 'SVL'
+    //:   set specify a set 'S2' of objects, with substantial and varied
+    //:   differences in value.
+    //:
+    //: 6 Using the 'assign' method assign the 'svl' object to each object 's2'
+    //:   in the 'S2' set.  Verify that the 's2' object gets the expected value
+    //:   and that memory allocation occurs only if the previous capacity of
+    //:   the 's2' is not enough to store the new value.  (C-1..3)
+    //:
+    //: 7 Using 'try-catch' block, verify that 'std::out_of_range' exception is
+    //:   thrown by the 'copy' when 'position > length()'.  (C-5)
     //
     // Testing:
-    //   basic_string& assign(const StringRefData<CHAR_TYPE>& strRef);
-    // --------------------------------------------------------------------
+    //   basic_string& assign(const STRING_VIEW_LIKE_TYPE& s);
+    //   basic_string& assign(const STRING_VIEW_LIKE_TYPE& s, p, n = npos);
+    // ------------------------------------------------------------------------
 
-    bslma::TestAllocator  testAllocator(veryVeryVerbose);
+    typedef bslstl::StringRefImp<TYPE>            StringRefImp;
+    typedef bsl::basic_string_view<TYPE, TRAITS>  StringView;
+    typedef ConvertibleToStringViewOnlyType<TYPE> StringViewOnlyLikeType;
+
+    bslma::TestAllocator ta("test", veryVeryVerbose);
 
     const TYPE         *values     = 0;
     const TYPE *const&  VALUES     = values;
@@ -13135,7 +15895,7 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase13StrRefData()
 
     static const struct {
         int         d_lineNum;  // source line number
-        const char *d_spec;     // container spec
+        const char *d_spec_p;   // container spec
     } U_DATA[] = {
         //line  spec                                   length
         //----  ----                                    ------
@@ -13153,15 +15913,481 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase13StrRefData()
     };
     enum { NUM_U_DATA = sizeof U_DATA / sizeof *U_DATA };
 
+    enum {
+        ASSIGN_SUBSTRINGREF      = 0,
+        ASSIGN_SUBSTRINGVIEW     = 1,
+        ASSIGN_SUBSTRINGVIEWLIKE = 2
+    };
+
     {
         const Obj dummy;
         ASSERT(dummy.capacity() < DATA[NUM_DATA - 1].d_length);
     }
 
-    if (verbose) printf("\tUsing 'bslstl::StringRefData'.\n");
+    {
+        for (int insertMode  = ASSIGN_SUBSTRINGREF;
+                 insertMode <= ASSIGN_SUBSTRINGVIEWLIKE;
+                 ++insertMode)
+        {
+            const int MODE = insertMode;
+
+            for (int i = 0; i < NUM_DATA; ++i) {
+                const int    INIT_LINE   = DATA[i].d_lineNum;
+                const size_t INIT_LENGTH = DATA[i].d_length;
+
+                if (veryVerbose) {
+                    printf("\t\tWith initial value of "); P_(INIT_LENGTH);
+                    printf("using default char value.\n");
+                }
+
+                // Self-assignment.
+                {
+                    // assign(const STRING_VIEW_LIKE_TYPE& replacement)
+                    {
+                        Obj        mX(INIT_LENGTH,
+                                      VALUES[i % NUM_VALUES],
+                                      AllocType(&ta));
+                        const Obj& X = mX;
+                        Obj        mY(X);  // control object
+                        const Obj& Y = mY;
+
+                        const StringRefImp           SR( X.data(), X.length());
+                        const StringView             SV( X.data(), X.length());
+                        const StringViewOnlyLikeType SVL(X.data());
+
+                        const bsls::Types::Int64 numAllocs =
+                                                           ta.numAllocations();
+
+                        {
+                            AllocatorUseGuard guardG(globalAllocator_p);
+                            AllocatorUseGuard guardD(defaultAllocator_p);
+
+                            Obj *mR = 0;
+
+                            switch (MODE) {
+                              case ASSIGN_SUBSTRINGREF: {
+                                mR = &mX.assign(SR);
+                              } break;
+                              case ASSIGN_SUBSTRINGVIEW: {
+                                mR = &mX.assign(SV);
+                              } break;
+                              case ASSIGN_SUBSTRINGVIEWLIKE: {
+                                mR = &mX.assign(SVL);
+                              } break;
+                              default: {
+                                printf("***UNKNOWN ASSIGN MODE***\n");
+                                ASSERT(0);
+                              } break;
+                            }
+
+                            ASSERTV (INIT_LINE, i, &mX == mR);
+                        }
+
+
+                        ASSERTV(numAllocs,   ta.numAllocations(),
+                                numAllocs == ta.numAllocations());
+
+                        if (veryVerbose) {
+                            T_; T_; T_; P_(X); P(X.capacity());
+                        }
+
+                        ASSERTV(INIT_LINE, i, INIT_LENGTH, X.size(),
+                                INIT_LENGTH == X.size());
+
+                        for (size_t j = 0; j < INIT_LENGTH; ++j) {
+                            ASSERTV(INIT_LINE, i, j, Y[j] == X[j]);
+                        }
+                    }
+
+                    // assign(const STRING_VIEW_LIKE_TYPE& r, pos,  n);
+
+                    for (size_t tj = 0; tj <= INIT_LENGTH; ++tj) {
+                        const size_t POSITION = tj;
+
+                        for (size_t tk = 0; tk < INIT_LENGTH; ++tk) {
+                            const size_t NUM_CHARS  = tk;
+                            const size_t EXP_LENGTH =
+                                             INIT_LENGTH - POSITION > NUM_CHARS
+                                                 ? NUM_CHARS
+                                                 : INIT_LENGTH - POSITION;
+
+                            Obj        mX(INIT_LENGTH,
+                                          VALUES[i % NUM_VALUES],
+                                          AllocType(&ta));
+                            const Obj& X = mX;
+                            Obj        mY(X);  // control object
+                            const Obj& Y = mY;
+
+                            const StringRefImp           SR( X.data(),
+                                                             X.length());
+                            const StringView             SV( X.data(),
+                                                             X.length());
+                            const StringViewOnlyLikeType SVL(X.data());
+
+                            const bsls::Types::Int64 numAllocs   =
+                                                           ta.numAllocations();
+
+                            {
+                                AllocatorUseGuard guardG(globalAllocator_p);
+                                AllocatorUseGuard guardD(defaultAllocator_p);
+
+                                Obj *mR = 0;
+
+                                switch (MODE) {
+                                  case ASSIGN_SUBSTRINGREF: {
+                                    mR = &mX.assign(SR, POSITION, NUM_CHARS);
+                                  } break;
+                                  case ASSIGN_SUBSTRINGVIEW: {
+                                    mR = &mX.assign(SV, POSITION, NUM_CHARS);
+                                  } break;
+                                  case ASSIGN_SUBSTRINGVIEWLIKE: {
+                                    mR = &mX.assign(SVL, POSITION, NUM_CHARS);
+                                  } break;
+                                  default: {
+                                    printf("***UNKNOWN ASSIGN MODE***\n");
+                                    ASSERT(0);
+                                  } break;
+                                }
+
+                                ASSERTV (INIT_LINE, i, POSITION, NUM_CHARS,
+                                       &mX == mR);
+                            }
+
+
+                            ASSERTV(numAllocs,   ta.numAllocations(),
+                                    numAllocs == ta.numAllocations());
+
+
+                            if (veryVerbose) {
+                                T_; T_; T_; P_(X); P(X.capacity());
+                            }
+
+                            ASSERTV(INIT_LINE, i, POSITION,
+                                    NUM_CHARS, EXP_LENGTH, X.size(),
+                                    EXP_LENGTH == X.size());
+
+                            for (size_t j = 0; j < EXP_LENGTH; ++j) {
+                                ASSERTV(INIT_LINE, i, POSITION, NUM_CHARS, j,
+                                        Y[j+ POSITION] == X[j]);
+                            }
+                        }
+                    }
+                }
+
+                for (int ti = 0; ti < NUM_U_DATA; ++ti) {
+                    const int     LINE   = U_DATA[ti].d_lineNum;
+                    const char   *SPEC   = U_DATA[ti].d_spec_p;
+                    const size_t  LENGTH = strlen(SPEC);
+
+                    Obj mY(g(SPEC)); const Obj& Y = mY;
+
+                    const StringRefImp           SR( Y.data(), Y.length());
+                    const StringView             SV( Y.data(), Y.length());
+                    const StringViewOnlyLikeType SVL(Y.data());
+
+                    if (veryVerbose) {
+                        printf("\t\tAssign "); P_(LENGTH);
+                        printf(" using "); P(SPEC);
+                    }
+
+                    // assign(const STRING_VIEW_LIKE_TYPE& replacement)
+                    {
+                        Obj        mX(INIT_LENGTH,
+                                      VALUES[i % NUM_VALUES],
+                                      AllocType(&ta));
+                        const Obj& X = mX;
+
+                        const size_t             preCapacity = X.capacity();
+                        const bsls::Types::Int64 numAllocs =
+                                                           ta.numAllocations();
+
+                        {
+                            AllocatorUseGuard guardG(globalAllocator_p);
+                            AllocatorUseGuard guardD(defaultAllocator_p);
+
+                            Obj *mR = 0;
+
+                            switch (MODE) {
+                              case ASSIGN_SUBSTRINGREF: {
+                                mR = &mX.assign(SV);
+                              } break;
+                              case ASSIGN_SUBSTRINGVIEW: {
+                                mR = &mX.assign(SV);
+                              } break;
+                              case ASSIGN_SUBSTRINGVIEWLIKE: {
+                                mR = &mX.assign(SVL);
+                              } break;
+                              default: {
+                                printf("***UNKNOWN ASSIGN MODE***\n");
+                                ASSERT(0);
+                              } break;
+                            }
+
+                            ASSERTV (INIT_LINE, LINE, i, ti, &mX == mR);
+                        }
+
+                        if (LENGTH <= preCapacity) {
+                            ASSERTV(numAllocs,   ta.numAllocations(),
+                                    numAllocs == ta.numAllocations());
+                        }
+                        else {
+                            ASSERTV(numAllocs + 1,   ta.numAllocations(),
+                                    numAllocs + 1 == ta.numAllocations());
+                        }
+
+                        if (veryVerbose) {
+                            T_; T_; T_; P_(X); P(X.capacity());
+                        }
+
+                        ASSERTV(INIT_LINE, LINE, i, ti, LENGTH, X.size(),
+                                LENGTH == X.size());
+
+                        for (size_t j = 0; j < LENGTH; ++j) {
+                            ASSERTV(INIT_LINE, LINE, i, ti, j, Y[j] == X[j]);
+                        }
+                    }
+
+                    // assign(const STRING_VIEW_LIKE_TYPE& r, pos,  n);
+
+                    for (size_t tj = 0; tj <= LENGTH; ++tj) {
+                        const size_t POSITION = tj;
+
+                        for (size_t tk = 0; tk < LENGTH; ++tk) {
+                            const size_t NUM_CHARS  = tk;
+                            const size_t EXP_LENGTH =
+                                                  LENGTH - POSITION > NUM_CHARS
+                                                      ? NUM_CHARS
+                                                      : LENGTH - POSITION;
+
+                            Obj        mX(INIT_LENGTH,
+                                          VALUES[i % NUM_VALUES],
+                                          AllocType(&ta));
+                            const Obj& X = mX;
+
+                            const size_t             preCapacity =
+                                                                  X.capacity();
+                            const bsls::Types::Int64 numAllocs   =
+                                                           ta.numAllocations();
+
+                            {
+                                AllocatorUseGuard guardG(globalAllocator_p);
+                                AllocatorUseGuard guardD(defaultAllocator_p);
+
+                                Obj *mR = 0;
+
+                                switch (MODE) {
+                                  case ASSIGN_SUBSTRINGREF: {
+                                    mR = &mX.assign(SR, POSITION, NUM_CHARS);
+                                  } break;
+                                  case ASSIGN_SUBSTRINGVIEW: {
+                                    mR = &mX.assign(SV, POSITION, NUM_CHARS);
+                                  } break;
+                                  case ASSIGN_SUBSTRINGVIEWLIKE: {
+                                    mR = &mX.assign(SVL, POSITION, NUM_CHARS);
+                                  } break;
+                                  default: {
+                                    printf("***UNKNOWN ASSIGN MODE***\n");
+                                    ASSERT(0);
+                                  } break;
+                                }
+
+                                ASSERTV (INIT_LINE, LINE, i, ti, tj, tk,
+                                       &mX == mR);
+                            }
+
+                            if (EXP_LENGTH <= preCapacity) {
+                                ASSERTV(numAllocs,   ta.numAllocations(),
+                                        numAllocs == ta.numAllocations());
+                            }
+                            else {
+                                ASSERTV(numAllocs + 1,   ta.numAllocations(),
+                                        numAllocs + 1 == ta.numAllocations());
+                            }
+
+                            if (veryVerbose) {
+                                T_; T_; T_; P_(X); P(X.capacity());
+                            }
+
+                            ASSERTV(INIT_LINE, LINE, i, ti, POSITION,
+                                    NUM_CHARS, EXP_LENGTH, X.size(),
+                                    EXP_LENGTH == X.size());
+
+                            for (size_t j = 0; j < EXP_LENGTH; ++j) {
+                                ASSERTV(INIT_LINE, LINE, i, ti,
+                                        POSITION, NUM_CHARS, j,
+                                        Y[j+ POSITION] == X[j]);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        ASSERT(0 == ta.numMismatches());
+        ASSERT(0 == ta.numBlocksInUse());
+    }
+
+#ifndef BDE_BUILD_TARGET_EXC
+    if (verbose) printf("\nSkip testing assign() exception-safety.\n");
+#else
+    if (verbose) printf("\nTesting assign() exception-safety.\n");
+
+    {
+        size_t defaultCapacity = Obj().capacity();
+
+        Obj                          src(defaultCapacity + 1, '1', &ta);
+        const StringRefImp           SR(src.data(), src.length());
+        const StringView             SV(src.data(), src.length());
+        const StringViewOnlyLikeType SVL(src.data());
+
+        Obj dst(defaultCapacity, '2', &ta);
+        Obj dstCopy(dst, &ta);
+
+        bsls::Types::Int64 oldLimit = ta.allocationLimit();
+
+        {
+            // make the allocator throw on the next allocation
+            ta.setAllocationLimit(0);
+            bool exceptionCaught = false;
+
+            try
+            {
+                // the assignment will require to allocate more memory
+                dst.assign(SR);
+            }
+            catch (const bslma::TestAllocatorException &)
+            {
+                exceptionCaught = true;
+            }
+            catch (...)
+            {
+                exceptionCaught = true;
+                ASSERT(0 && "Wrong exception caught");
+            }
+
+            ASSERT(exceptionCaught);
+            ASSERT(dst == dstCopy);
+        }
+
+        {
+            ta.setAllocationLimit(0);
+            bool exceptionCaught = false;
+
+            try
+            {
+                dst.assign(SR, 0, Obj::npos);
+            }
+            catch (const bslma::TestAllocatorException &)
+            {
+                exceptionCaught = true;
+            }
+            catch (...)
+            {
+                exceptionCaught = true;
+                ASSERT(0 && "Wrong exception caught");
+            }
+
+            ASSERT(exceptionCaught);
+            ASSERT(dst == dstCopy);
+        }
+
+        {
+            // make the allocator throw on the next allocation
+            ta.setAllocationLimit(0);
+            bool exceptionCaught = false;
+
+            try
+            {
+                // the assignment will require to allocate more memory
+                dst.assign(SV);
+            }
+            catch (const bslma::TestAllocatorException &)
+            {
+                exceptionCaught = true;
+            }
+            catch (...)
+            {
+                exceptionCaught = true;
+                ASSERT(0 && "Wrong exception caught");
+            }
+
+            ASSERT(exceptionCaught);
+            ASSERT(dst == dstCopy);
+        }
+
+        {
+            ta.setAllocationLimit(0);
+            bool exceptionCaught = false;
+
+            try
+            {
+                dst.assign(SV, 0, Obj::npos);
+            }
+            catch (const bslma::TestAllocatorException &)
+            {
+                exceptionCaught = true;
+            }
+            catch (...)
+            {
+                exceptionCaught = true;
+                ASSERT(0 && "Wrong exception caught");
+            }
+
+            ASSERT(exceptionCaught);
+            ASSERT(dst == dstCopy);
+        }
+
+        {
+            ta.setAllocationLimit(0);
+            bool exceptionCaught = false;
+
+            try
+            {
+                // the assignment will require to allocate more memory
+                dst.assign(SVL);
+            }
+            catch (const bslma::TestAllocatorException &)
+            {
+                exceptionCaught = true;
+            }
+            catch (...)
+            {
+                exceptionCaught = true;
+                ASSERT(0 && "Wrong exception caught");
+            }
+
+            ASSERT(exceptionCaught);
+            ASSERT(dst == dstCopy);
+        }
+
+        {
+            ta.setAllocationLimit(0);
+            bool exceptionCaught = false;
+
+            try
+            {
+                dst.assign(SVL, 0, Obj::npos);
+            }
+            catch (const bslma::TestAllocatorException &)
+            {
+                exceptionCaught = true;
+            }
+            catch (...)
+            {
+                exceptionCaught = true;
+                ASSERT(0 && "Wrong exception caught");
+            }
+
+            ASSERT(exceptionCaught);
+            ASSERT(dst == dstCopy);
+        }
+
+        // restore the allocator state
+        ta.setAllocationLimit(oldLimit);
+    }
+
+    if (verbose) printf("\tWith 'std::out_of_range' exceptions.\n");
     {
         for (int i = 0; i < NUM_DATA; ++i) {
-            const int    INIT_LINE   = DATA[i].d_lineNum;
             const size_t INIT_LENGTH = DATA[i].d_length;
 
             if (veryVerbose) {
@@ -13169,60 +16395,82 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase13StrRefData()
                 printf("using default char value.\n");
             }
 
-            for (int ti = 0; ti < NUM_U_DATA; ++ti) {
-                const int     LINE   = U_DATA[ti].d_lineNum;
-                const char   *SPEC   = U_DATA[ti].d_spec;
-                const size_t  LENGTH = strlen(SPEC);
+            const char *SPEC = "A";
 
-                Obj mY(g(SPEC)); const Obj& Y = mY;
+            // Out of range source position.
 
-                const bsl::basic_string_view<TYPE> strView(Y.begin(),
-                                                           Y.length());
+            const size_t SOURCE_POSITION = strlen(SPEC) + 1;
 
-                if (veryVerbose) {
-                    printf("\t\tAssign "); P_(LENGTH);
-                    printf(" using "); P(SPEC);
+            Obj        mY(g(SPEC));
+            const Obj& Y = mY;
+
+            {
+                Obj                mX(INIT_LENGTH,
+                                      DEFAULT_VALUE,
+                                      AllocType(&ta));
+                const StringRefImp SR( Y.data(), Y.length());
+                bool               outOfRangeCaught = false;
+
+                try {
+                    mX.assign(SR, SOURCE_POSITION, 0);
+                    ASSERT(0);
                 }
-
-                Obj mX(INIT_LENGTH, VALUES[i % NUM_VALUES],
-                       AllocType(&testAllocator));
-                const Obj& X = mX;
-
-                const size_t preCapacity = X.capacity();
-
-                const bsls::Types::Int64 numAllocs =
-                                                testAllocator.numAllocations();
-
-                {
-                    AllocatorUseGuard guardG(globalAllocator_p);
-                    AllocatorUseGuard guardD(defaultAllocator_p);
-                    mX.assign(strView);
+                catch (const std::out_of_range&) {
+                     outOfRangeCaught = true;
                 }
+                ASSERTV(i, outOfRangeCaught);
+            }
+            {
+                Obj              mX(INIT_LENGTH,
+                                    DEFAULT_VALUE,
+                                    AllocType(&ta));
+                const StringView SR( Y.data(), Y.length());
+                bool             outOfRangeCaught = false;
 
-                if (LENGTH <= preCapacity) {
-                    LOOP2_ASSERT(testAllocator.numAllocations(), numAllocs,
-                                  testAllocator.numAllocations() == numAllocs);
+                try {
+                    mX.assign(SR, SOURCE_POSITION, 0);
+                    ASSERT(0);
                 }
-                else {
-                    LOOP2_ASSERT(testAllocator.numAllocations(), numAllocs,
-                              testAllocator.numAllocations() == numAllocs + 1);
+                catch (const std::out_of_range&) {
+                     outOfRangeCaught = true;
                 }
+                ASSERTV(i, outOfRangeCaught);
+            }
+            {
+                Obj              mX(INIT_LENGTH,
+                                    DEFAULT_VALUE,
+                                    AllocType(&ta));
+                const StringView SV( Y.data(), Y.length());
+                bool             outOfRangeCaught = false;
 
-                if (veryVerbose) {
-                    T_; T_; T_; P_(X); P(X.capacity());
+                try {
+                    mX.assign(SV, SOURCE_POSITION, 0);
+                    ASSERT(0);
                 }
-
-                LOOP6_ASSERT(INIT_LINE, LINE, i, ti, LENGTH, X.size(),
-                                                           LENGTH == X.size());
-
-                for (size_t j = 0; j < LENGTH; ++j) {
-                    LOOP5_ASSERT(INIT_LINE, LINE, i, ti, j, Y[j] == X[j]);
+                catch (const std::out_of_range&) {
+                     outOfRangeCaught = true;
                 }
+                ASSERTV(i, outOfRangeCaught);
+            }
+            {
+                Obj                          mX(INIT_LENGTH,
+                                                DEFAULT_VALUE,
+                                                AllocType(&ta));
+                const StringViewOnlyLikeType SVL(Y.data());
+                bool                         outOfRangeCaught = false;
+
+                try {
+                    mX.assign(SVL, SOURCE_POSITION, 0);
+                    ASSERT(0);
+                }
+                catch (const std::out_of_range&) {
+                     outOfRangeCaught = true;
+                }
+                ASSERTV(i, outOfRangeCaught);
             }
         }
-        ASSERT(0 == testAllocator.numMismatches());
-        ASSERT(0 == testAllocator.numBlocksInUse());
     }
+#endif
 }
 
 template <class TYPE, class TRAITS, class ALLOC>
@@ -13230,9 +16478,9 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase13InputIterator()
 {
     // --------------------------------------------------------------------
     // TESTING 'assign' FROM STRING REF
-    // The concerns are the same as for the constructor with the same
-    // signature (case 12), except that the implementation is different,
-    // and in addition the previous value must be freed properly.
+    //   The concerns are the same as for the constructor with the same
+    //   signature (case 12), except that the implementation is different,
+    //   and in addition the previous value must be freed properly.
     //
     // Plan:
     //   For the assignment we will create objects of varying sizes containing
@@ -13247,7 +16495,7 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase13InputIterator()
     //      - element value at each index position { 0 .. length - 1 }.
     //   Note that we relax the concerns about memory consumption, since this
     //   is implemented as 'erase + insert', and insert will be tested more
-    //   completely in test case 17.
+    //   completely in test case 18.
     //
     // Testing:
     //   template <class InputIter>
@@ -13282,7 +16530,7 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase13InputIterator()
 
     static const struct {
         int         d_lineNum;  // source line number
-        const char *d_spec;     // container spec
+        const char *d_spec_p;   // container spec
     } U_DATA[] = {
         //line  spec                                   length
         //----  ----                                    ------
@@ -13318,7 +16566,7 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase13InputIterator()
 
             for (int ti = 0; ti < NUM_U_DATA; ++ti) {
                 const int     LINE   = U_DATA[ti].d_lineNum;
-                const char   *SPEC   = U_DATA[ti].d_spec;
+                const char   *SPEC   = U_DATA[ti].d_spec_p;
                 const size_t  LENGTH = strlen(SPEC);
 
                 Obj mY(g(SPEC)); const Obj& Y = mY;
@@ -13328,8 +16576,9 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase13InputIterator()
                     printf(" using "); P(SPEC);
                 }
 
-                Obj mX(INIT_LENGTH, VALUES[i % NUM_VALUES],
-                       AllocType(&testAllocator));
+                Obj        mX(INIT_LENGTH,
+                              VALUES[i % NUM_VALUES],
+                              AllocType(&testAllocator));
                 const Obj& X = mX;
 
                 {
@@ -13381,7 +16630,7 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase13Range(const CONTAINER&)
     //      - element value at each index position { 0 .. length - 1 }.
     //   Note that we relax the concerns about memory consumption, since this
     //   is implemented as 'erase + insert', and insert will be tested more
-    //   completely in test case 17.
+    //   completely in test case 18.
     //
     // Testing:
     //   template <class Iter> basic_string& assign(Iter first, Iter last);
@@ -13481,8 +16730,9 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase13Range(const CONTAINER&)
                     printf(" using "); P(SPEC);
                 }
 
-                Obj mX(INIT_LENGTH, VALUES[i % NUM_VALUES],
-                       AllocType(&testAllocator));
+                Obj        mX(INIT_LENGTH,
+                              VALUES[i % NUM_VALUES],
+                              AllocType(&testAllocator));
                 const Obj& X = mX;
 
                 const size_t preCapacity = X.capacity();
@@ -13555,7 +16805,8 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase13Range(const CONTAINER&)
                     const Int64 AL = testAllocator.allocationLimit();
                     testAllocator.setAllocationLimit(-1);
 
-                    Obj mX(INIT_LENGTH, DEFAULT_VALUE, Z);  const Obj& X = mX;
+                    Obj                 mX(INIT_LENGTH, DEFAULT_VALUE, Z);
+                    const Obj&          X = mX;
                     ExceptionGuard<Obj> guard(X, L_);
 
                     testAllocator.setAllocationLimit(AL);
@@ -13621,15 +16872,16 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase13Range(const CONTAINER&)
                     const char   *SPEC         = U_DATA[ti].d_spec;
                     const size_t  NUM_ELEMENTS = strlen(SPEC);
 
-                    Obj mY(g(SPEC));  const Obj& Y = mY;
+                    Obj              mY(g(SPEC));
+                    const Obj&       Y = mY;
+                    CONTAINER        mU(Y);
+                    const CONTAINER& U = mU;
+                    const size_t     LENGTH = Y.size();
 
-                    CONTAINER mU(Y);  const CONTAINER& U = mU;
-
-                    const size_t LENGTH = Y.size();
-
-                    Obj mX(INIT_LENGTH,
-                           DEFAULT_VALUE,
-                           AllocType(&testAllocator));  const Obj& X = mX;
+                    Obj        mX(INIT_LENGTH,
+                                  DEFAULT_VALUE,
+                                  AllocType(&testAllocator));
+                    const Obj& X = mX;
                     mX.reserve(INIT_RES);
                     const size_t INIT_CAP = X.capacity();
 
@@ -13751,9 +17003,10 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase13Range(const CONTAINER&)
                         const size_t NUM_ELEMENTS_INS = NUM_ELEMENTS - POS;
                         const size_t LENGTH           = NUM_ELEMENTS_INS;
 
-                        Obj mX(INIT_LENGTH,
-                               DEFAULT_VALUE,
-                               AllocType(&testAllocator));  const Obj& X = mX;
+                        Obj        mX(INIT_LENGTH,
+                                      DEFAULT_VALUE,
+                                      AllocType(&testAllocator));
+                        const Obj& X = mX;
                         mX.reserve(INIT_RES);
                         const size_t INIT_CAP = X.capacity();
 
@@ -13857,70 +17110,70 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase13Range(const CONTAINER&)
                     const size_t LENGTH = Y.size();
 
                     BSLMA_TESTALLOCATOR_EXCEPTION_TEST_BEGIN(testAllocator) {
-                      const Int64 AL = testAllocator.allocationLimit();
-                      testAllocator.setAllocationLimit(-1);
+                        const Int64 AL = testAllocator.allocationLimit();
+                        testAllocator.setAllocationLimit(-1);
 
-                      Obj mX(INIT_LENGTH,
-                             DEFAULT_VALUE,
-                             AllocType(&testAllocator));
-                      const Obj& X = mX;
-                      mX.reserve(INIT_RES);
+                        Obj        mX(INIT_LENGTH,
+                                      DEFAULT_VALUE,
+                                      AllocType(&testAllocator));
+                        const Obj& X = mX;
+                        mX.reserve(INIT_RES);
 
-                      Obj mExp;  const Obj& EXP = mExp;
-                      mExp.append(Y);
+                        Obj mExp;  const Obj& EXP = mExp;
+                        mExp.append(Y);
 
-                      ExceptionGuard<Obj> guard(X, L_);
-                      testAllocator.setAllocationLimit(AL);
+                        ExceptionGuard<Obj> guard(X, L_);
+                        testAllocator.setAllocationLimit(AL);
 
-                      switch (assignMode) {
-                        case ASSIGN_STRING: {
-                          // string& assign(const string& str);
-                          Obj& result = mX.assign(Y);
-                          ASSERT(&result == &mX);
-                        } break;
-                        case ASSIGN_SUBSTRING: {
-                          // string& assign(const string& str, pos, n);
-                          Obj& result = mX.assign(Y, 0, NUM_ELEMENTS);
-                          ASSERT(&result == &mX);
-                        } break;
-                        case ASSIGN_SUBSTRING_NPOS: {
-                          // string& assign(const string& str, pos, n);
-                          Obj& result = mX.assign(Y, 0);  // 'npos' dflt. arg.
-                          ASSERT(&result == &mX);
-                        } break;
-                        case ASSIGN_CSTRING_N: {
-                          // string& assign(const C *s, n);
-                          Obj& result = mX.assign(Y.data(), NUM_ELEMENTS);
-                          ASSERT(&result == &mX);
-                        } break;
-                        case ASSIGN_CSTRING: {
-                          // string& assign(const C *s);
-                          Obj& result = mX.assign(Y.c_str());
-                          ASSERT(&result == &mX);
-                        } break;
-                        case ASSIGN_STRING_FROM_ITERATOR: {
-                          // template <class InputIter>
-                          //  assign(InputIter first, last);
-                          mX. assign(mU.begin(), mU.end());
-                        } break;
-                        case ASSIGN_STRING_FROM_CONST_ITERATOR: {
-                          // template <class InputIter>
-                          //   assign(InputIter first, last);
-                          mX.assign(U.begin(), U.end());
-                        } break;
-                        default: {
-                          printf("***UNKNOWN ASSIGN MODE***\n");
-                          ASSERT(0);
-                        } break;
-                      }
-                      guard.release();
+                        switch (assignMode) {
+                          case ASSIGN_STRING: {
+                            // string& assign(const string& str);
+                            Obj& result = mX.assign(Y);
+                            ASSERT(&result == &mX);
+                          } break;
+                          case ASSIGN_SUBSTRING: {
+                            // string& assign(const string& str, pos, n);
+                            Obj& result = mX.assign(Y, 0, NUM_ELEMENTS);
+                            ASSERT(&result == &mX);
+                          } break;
+                          case ASSIGN_SUBSTRING_NPOS: {
+                            // string& assign(const string& str, pos, n);
+                            Obj& result = mX.assign(Y, 0);  // 'npos' dflt. arg
+                            ASSERT(&result == &mX);
+                          } break;
+                          case ASSIGN_CSTRING_N: {
+                            // string& assign(const C *s, n);
+                            Obj& result = mX.assign(Y.data(), NUM_ELEMENTS);
+                            ASSERT(&result == &mX);
+                          } break;
+                          case ASSIGN_CSTRING: {
+                            // string& assign(const C *s);
+                            Obj& result = mX.assign(Y.c_str());
+                            ASSERT(&result == &mX);
+                          } break;
+                          case ASSIGN_STRING_FROM_ITERATOR: {
+                            // template <class InputIter>
+                            //  assign(InputIter first, last);
+                            mX. assign(mU.begin(), mU.end());
+                          } break;
+                          case ASSIGN_STRING_FROM_CONST_ITERATOR: {
+                            // template <class InputIter>
+                            //   assign(InputIter first, last);
+                            mX.assign(U.begin(), U.end());
+                          } break;
+                          default: {
+                            printf("***UNKNOWN ASSIGN MODE***\n");
+                            ASSERT(0);
+                          } break;
+                        }
+                        guard.release();
 
-                      if (veryVerbose) {
-                          T_; T_; T_; P_(X); P(X.capacity());
-                      }
+                        if (veryVerbose) {
+                            T_; T_; T_; P_(X); P(X.capacity());
+                        }
 
-                      LOOP2_ASSERT(INIT_LINE, LINE, LENGTH == X.size());
-                      LOOP2_ASSERT(INIT_LINE, LINE, EXP    == X);
+                        LOOP2_ASSERT(INIT_LINE, LINE, LENGTH == X.size());
+                        LOOP2_ASSERT(INIT_LINE, LINE, EXP    == X);
 
                     } BSLMA_TESTALLOCATOR_EXCEPTION_TEST_END
                 }
@@ -13955,7 +17208,9 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase13Range(const CONTAINER&)
                     printf("using distinct (cyclic) values.\n");
                 }
 
-                Obj mX(INIT_LENGTH, DEFAULT_VALUE, AllocType(&testAllocator));
+                Obj        mX(INIT_LENGTH,
+                              DEFAULT_VALUE,
+                              AllocType(&testAllocator));
                 const Obj& X = mX;
                 mX.reserve(INIT_RES);
                 const size_t INIT_CAP = X.capacity();
@@ -14117,7 +17372,14 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase12()
     //   basic_string(const CHAR_TYPE *s, a = A());
     //   basic_string(const CHAR_TYPE *s, size_type n, a = A());
     //   basic_string(size_type n, CHAR_TYPE c = CHAR_TYPE(), a = A());
+    //   basic_string(const STRING_VIEW_LIKE_TYPE& object, a = A());
+    //   basic_string(const STRING_VIEW_LIKE_TYPE& object, pos, n, a = A());
     // --------------------------------------------------------------------
+
+    typedef bslstl::StringRefImp<TYPE>               StringRefImp;
+    typedef bsl::basic_string_view<TYPE, TRAITS>     StringView;
+    typedef ConvertibleToStringViewOnlyType<TYPE>    StringViewOnlyLikeType;
+    typedef ConvertibleToStringViewAndCStrType<TYPE> StringViewLikeType;
 
     bslma::TestAllocator  testAllocator(veryVeryVerbose);
 
@@ -14126,8 +17388,8 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase12()
     const int             NUM_VALUES = getValues(&values);
 
     static const struct {
-        int         d_lineNum;          // source line number
-        const char *d_spec;             // specifications
+        int         d_lineNum;  // source line number
+        const char *d_spec_p;   // specifications
     } DATA[] = {
         //line  spec                                       length
         //----  ----                                       ------
@@ -14166,7 +17428,7 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase12()
     {
         for (int ti = 0; ti < NUM_DATA; ++ti) {
             const int    LINE   = DATA[ti].d_lineNum;
-            const char  *SPEC   = DATA[ti].d_spec;
+            const char  *SPEC   = DATA[ti].d_spec_p;
             const size_t LENGTH = strlen(SPEC);
             const TYPE   VALUE  = VALUES[ti % NUM_VALUES];
 
@@ -14209,7 +17471,7 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase12()
                   } break;
                   default: {
                     ASSERTV(CONFIG, !"Bad allocator config.");
-                  } return;                                          // RETURN
+                  } return;                                           // RETURN
                 }
 
                 if (verbose) {
@@ -14264,7 +17526,7 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase12()
     {
         for (int ti = 0; ti < NUM_DATA; ++ti) {
             const int    LINE   = DATA[ti].d_lineNum;
-            const char  *SPEC   = DATA[ti].d_spec;
+            const char  *SPEC   = DATA[ti].d_spec_p;
             const size_t LENGTH = strlen(SPEC);
 
             if (veryVerbose) {
@@ -14360,7 +17622,7 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase12()
     {
         for (int ti = 0; ti < NUM_DATA; ++ti) {
             const int    LINE   = DATA[ti].d_lineNum;
-            const char  *SPEC   = DATA[ti].d_spec;
+            const char  *SPEC   = DATA[ti].d_spec_p;
             const size_t LENGTH = strlen(SPEC);
 
             if (veryVerbose) {
@@ -14407,7 +17669,7 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase12()
                       } break;
                       default: {
                         ASSERTV(CONFIG, !"Bad allocator config.");
-                      } return;                                      // RETURN
+                      } return;                                       // RETURN
                     }
 
                     if (veryVerbose) {
@@ -14463,7 +17725,7 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase12()
     {
         for (int ti = 0; ti < NUM_DATA; ++ti) {
             const int     LINE   = DATA[ti].d_lineNum;
-            const char   *SPEC   = DATA[ti].d_spec;
+            const char   *SPEC   = DATA[ti].d_spec_p;
             const size_t  LENGTH = strlen(SPEC);
 
             if (veryVerbose) {
@@ -14512,7 +17774,7 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase12()
                       } break;
                       default: {
                         ASSERTV(CONFIG, !"Bad allocator config.");
-                      } return;                                      // RETURN
+                      } return;                                       // RETURN
                     }
 
                     if (veryVerbose) {
@@ -14568,7 +17830,7 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase12()
     {
         for (int ti = 0; ti < NUM_DATA; ++ti) {
             const int     LINE   = DATA[ti].d_lineNum;
-            const char   *SPEC   = DATA[ti].d_spec;
+            const char   *SPEC   = DATA[ti].d_spec_p;
             const size_t  LENGTH = strlen(SPEC);
 
             if (veryVerbose) {
@@ -14683,12 +17945,805 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase12()
         }
     }
 
+    if (verbose) printf("\tTesting string(const StringRef& sr, a = A())\n");
+    {
+        for (int ti = 0; ti < NUM_DATA; ++ti) {
+            const int    LINE   = DATA[ti].d_lineNum;
+            const char  *SPEC   = DATA[ti].d_spec_p;
+            const size_t LENGTH = strlen(SPEC);
+
+            if (veryVerbose) {
+                printf("\t\t\tCreating object of "); P_(LENGTH);
+                printf("using "); P(SPEC);
+            }
+
+            Obj                 mY(g(SPEC));
+            const Obj&          Y = mY;
+            StringRefImp        mSR(Y.data(), Y.length());  // source object
+            const StringRefImp& SR = mSR;
+
+            for (char cfg = 'a'; cfg <= 'c'; ++cfg) {
+                const char CONFIG = cfg;  // how we specify the allocator
+
+                bslma::TestAllocator da("default",   veryVeryVeryVerbose);
+                bslma::TestAllocator fa("footprint", veryVeryVeryVerbose);
+                bslma::TestAllocator sa("supplied",  veryVeryVeryVerbose);
+
+                bslma::DefaultAllocatorGuard dag(&da);
+
+                const char           *minorStr;
+                Obj                  *objPtr;
+                bslma::TestAllocator *objAllocatorPtr;
+
+                switch (CONFIG) {
+                  case 'a': {
+                    minorStr = "\t\tWithout passing in an allocator.\n";
+                    objPtr = new (fa) Obj(SR);
+                    objAllocatorPtr = &da;
+                  } break;
+                  case 'b': {
+                    minorStr = "\t\tWith passing in null allocator.\n";
+                    objPtr = new (fa) Obj(
+                                  SR,
+                                  reinterpret_cast<bslma::TestAllocator *>(0));
+                    objAllocatorPtr = &da;
+                  } break;
+                  case 'c': {
+                    minorStr = "\t\tWith passing in an allocator.\n";
+                    objPtr = new (fa) Obj(SR, &sa);
+                    objAllocatorPtr = &sa;
+                  } break;
+                  default: {
+                    ASSERTV(CONFIG, !"Bad allocator config.");
+                  } return;                                           // RETURN
+                }
+
+                if (verbose) {
+                    printf("%s", minorStr);
+                }
+
+                Obj&                   mX = *objPtr;
+                const Obj&              X =  mX;
+                bslma::TestAllocator&  oa = *objAllocatorPtr;
+                bslma::TestAllocator& noa =  'c' != CONFIG ? sa : da;
+
+                if (veryVerbose) {
+                    T_; T_; P_(X); P(X.capacity());
+                }
+
+                ASSERTV(LINE, ti, LENGTH == X.size());
+                ASSERTV(LINE, ti, LENGTH <= X.capacity());
+                ASSERTV(LINE, ti, 0      == TRAITS::compare(SR.data(),
+                                                            X.data(),
+                                                            SR.length()));
+
+                if (LENGTH <= DEFAULT_CAPACITY) {
+                    ASSERTV(LINE, ti, 0 ==  oa.numBlocksTotal());
+                    ASSERTV(LINE, ti, 0 ==  oa.numBlocksInUse());
+                    ASSERTV(LINE, ti, 0 == noa.numBlocksTotal());
+                    ASSERTV(LINE, ti, 0 == noa.numBlocksInUse());
+                } else {
+                    ASSERTV(LINE, ti, 1 ==  oa.numBlocksTotal());
+                    ASSERTV(LINE, ti, 1 ==  oa.numBlocksInUse());
+                    ASSERTV(LINE, ti, 0 == noa.numBlocksTotal());
+                    ASSERTV(LINE, ti, 0 == noa.numBlocksInUse());
+                }
+
+                // Reclaim dynamically allocated object under test.
+
+                fa.deleteObject(objPtr);
+
+                // Verify all memory is released on object destruction.
+
+                ASSERTV(LENGTH, CONFIG, da.numBlocksInUse(),
+                        0 == da.numBlocksInUse());
+                ASSERTV(LENGTH, CONFIG, fa.numBlocksInUse(),
+                        0 == fa.numBlocksInUse());
+                ASSERTV(LENGTH, CONFIG, sa.numBlocksInUse(),
+                        0 == sa.numBlocksInUse());
+            }
+        }
+    }
+
+    if (verbose) printf("\tTesting string(const string_view& sv, a = A())\n");
+    {
+        for (int ti = 0; ti < NUM_DATA; ++ti) {
+            const int    LINE   = DATA[ti].d_lineNum;
+            const char  *SPEC   = DATA[ti].d_spec_p;
+            const size_t LENGTH = strlen(SPEC);
+
+            if (veryVerbose) {
+                printf("\t\t\tCreating object of "); P_(LENGTH);
+                printf("using "); P(SPEC);
+            }
+
+            Obj               mY(g(SPEC));
+            const Obj&        Y = mY;
+            StringView        mSV(Y.data(), Y.length());  // source object
+            const StringView& SV = mSV;
+
+            for (char cfg = 'a'; cfg <= 'c'; ++cfg) {
+                const char CONFIG = cfg;  // how we specify the allocator
+
+                bslma::TestAllocator da("default",   veryVeryVeryVerbose);
+                bslma::TestAllocator fa("footprint", veryVeryVeryVerbose);
+                bslma::TestAllocator sa("supplied",  veryVeryVeryVerbose);
+
+                bslma::DefaultAllocatorGuard dag(&da);
+
+                const char           *minorStr;
+                Obj                  *objPtr;
+                bslma::TestAllocator *objAllocatorPtr;
+
+                switch (CONFIG) {
+                  case 'a': {
+                    minorStr = "\t\tWithout passing in an allocator.\n";
+                    objPtr = new (fa) Obj(SV);
+                    objAllocatorPtr = &da;
+                  } break;
+                  case 'b': {
+                    minorStr = "\t\tWith passing in null allocator.\n";
+                    objPtr = new (fa) Obj(
+                                  SV,
+                                  reinterpret_cast<bslma::TestAllocator *>(0));
+                    objAllocatorPtr = &da;
+                  } break;
+                  case 'c': {
+                    minorStr = "\t\tWith passing in an allocator.\n";
+                    objPtr = new (fa) Obj(SV, &sa);
+                    objAllocatorPtr = &sa;
+                  } break;
+                  default: {
+                    ASSERTV(CONFIG, !"Bad allocator config.");
+                  } return;                                           // RETURN
+                }
+
+                if (verbose) {
+                    printf("%s", minorStr);
+                }
+
+                Obj&                   mX = *objPtr;
+                const Obj&              X =  mX;
+                bslma::TestAllocator&  oa = *objAllocatorPtr;
+                bslma::TestAllocator& noa =  'c' != CONFIG ? sa : da;
+
+                if (veryVerbose) {
+                    T_; T_; P_(X); P(X.capacity());
+                }
+
+                ASSERTV(LINE, ti, LENGTH == X.size());
+                ASSERTV(LINE, ti, LENGTH <= X.capacity());
+                ASSERTV(LINE, ti, 0      == TRAITS::compare(SV.data(),
+                                                            X.data(),
+                                                            SV.length()));
+
+                if (LENGTH <= DEFAULT_CAPACITY) {
+                    ASSERTV(LINE, ti, 0 ==  oa.numBlocksTotal());
+                    ASSERTV(LINE, ti, 0 ==  oa.numBlocksInUse());
+                    ASSERTV(LINE, ti, 0 == noa.numBlocksTotal());
+                    ASSERTV(LINE, ti, 0 == noa.numBlocksInUse());
+                } else {
+                    ASSERTV(LINE, ti, 1 ==  oa.numBlocksTotal());
+                    ASSERTV(LINE, ti, 1 ==  oa.numBlocksInUse());
+                    ASSERTV(LINE, ti, 0 == noa.numBlocksTotal());
+                    ASSERTV(LINE, ti, 0 == noa.numBlocksInUse());
+                }
+
+                // Reclaim dynamically allocated object under test.
+
+                fa.deleteObject(objPtr);
+
+                // Verify all memory is released on object destruction.
+
+                ASSERTV(LENGTH, CONFIG, da.numBlocksInUse(),
+                        0 == da.numBlocksInUse());
+                ASSERTV(LENGTH, CONFIG, fa.numBlocksInUse(),
+                        0 == fa.numBlocksInUse());
+                ASSERTV(LENGTH, CONFIG, sa.numBlocksInUse(),
+                        0 == sa.numBlocksInUse());
+            }
+        }
+    }
+
+    if (verbose)
+        printf("\tTesting string(const StringViewOnlyLike& svl, a = A())\n");
+    {
+        for (int ti = 0; ti < NUM_DATA; ++ti) {
+            const int    LINE   = DATA[ti].d_lineNum;
+            const char  *SPEC   = DATA[ti].d_spec_p;
+            const size_t LENGTH = strlen(SPEC);
+
+            if (veryVerbose) {
+                printf("\t\t\tCreating object of "); P_(LENGTH);
+                printf("using "); P(SPEC);
+            }
+
+            Obj                           mY(g(SPEC));
+            const Obj&                    Y = mY;
+            StringViewOnlyLikeType        mSVL(Y.data());  // source object
+            const StringViewOnlyLikeType& SVL = mSVL;
+
+            for (char cfg = 'a'; cfg <= 'c'; ++cfg) {
+                const char CONFIG = cfg;  // how we specify the allocator
+
+                bslma::TestAllocator da("default",   veryVeryVeryVerbose);
+                bslma::TestAllocator fa("footprint", veryVeryVeryVerbose);
+                bslma::TestAllocator sa("supplied",  veryVeryVeryVerbose);
+
+                bslma::DefaultAllocatorGuard dag(&da);
+
+                const char           *minorStr;
+                Obj                  *objPtr;
+                bslma::TestAllocator *objAllocatorPtr;
+
+                switch (CONFIG) {
+                  case 'a': {
+                    minorStr = "\t\tWithout passing in an allocator.\n";
+                    objPtr = new (fa) Obj(SVL);
+                    objAllocatorPtr = &da;
+                  } break;
+                  case 'b': {
+                    minorStr = "\t\tWith passing in null allocator.\n";
+                    objPtr = new (fa) Obj(
+                                  SVL,
+                                  reinterpret_cast<bslma::TestAllocator *>(0));
+                    objAllocatorPtr = &da;
+                  } break;
+                  case 'c': {
+                    minorStr = "\t\tWith passing in an allocator.\n";
+                    objPtr = new (fa) Obj(SVL, &sa);
+                    objAllocatorPtr = &sa;
+                  } break;
+                  default: {
+                    ASSERTV(CONFIG, !"Bad allocator config.");
+                  } return;                                           // RETURN
+                }
+
+                if (verbose) {
+                    printf("%s", minorStr);
+                }
+
+                Obj&                   mX = *objPtr;
+                const Obj&              X =  mX;
+                bslma::TestAllocator&  oa = *objAllocatorPtr;
+                bslma::TestAllocator& noa =  'c' != CONFIG ? sa : da;
+
+                if (veryVerbose) {
+                    T_; T_; P_(X); P(X.capacity());
+                }
+
+                ASSERTV(LINE, ti, LENGTH == X.size());
+                ASSERTV(LINE, ti, LENGTH <= X.capacity());
+                ASSERTV(LINE, ti, 0      == TRAITS::compare(SVL.data(),
+                                                            X.data(),
+                                                            SVL.length()));
+
+                if (LENGTH <= DEFAULT_CAPACITY) {
+                    ASSERTV(LINE, ti, 0 ==  oa.numBlocksTotal());
+                    ASSERTV(LINE, ti, 0 ==  oa.numBlocksInUse());
+                    ASSERTV(LINE, ti, 0 == noa.numBlocksTotal());
+                    ASSERTV(LINE, ti, 0 == noa.numBlocksInUse());
+                } else {
+                    ASSERTV(LINE, ti, 1 ==  oa.numBlocksTotal());
+                    ASSERTV(LINE, ti, 1 ==  oa.numBlocksInUse());
+                    ASSERTV(LINE, ti, 0 == noa.numBlocksTotal());
+                    ASSERTV(LINE, ti, 0 == noa.numBlocksInUse());
+                }
+
+                // Reclaim dynamically allocated object under test.
+
+                fa.deleteObject(objPtr);
+
+                // Verify all memory is released on object destruction.
+
+                ASSERTV(LENGTH, CONFIG, da.numBlocksInUse(),
+                        0 == da.numBlocksInUse());
+                ASSERTV(LENGTH, CONFIG, fa.numBlocksInUse(),
+                        0 == fa.numBlocksInUse());
+                ASSERTV(LENGTH, CONFIG, sa.numBlocksInUse(),
+                        0 == sa.numBlocksInUse());
+            }
+        }
+    }
+
+    if (verbose)
+        printf("\tTesting string(const StringRef& sr, pos, n, a = A()).\n");
+    {
+        for (int ti = 0; ti < NUM_DATA; ++ti) {
+            const int     LINE   = DATA[ti].d_lineNum;
+            const char   *SPEC   = DATA[ti].d_spec_p;
+            const size_t  LENGTH = strlen(SPEC);
+
+            if (veryVerbose) {
+                printf("\t\t\tCreating object up to "); P_(LENGTH);
+                printf("using "); P(SPEC);
+            }
+
+            Obj                 mY(g(SPEC));
+            const Obj&          Y = mY;
+            StringRefImp        mSR(Y.data(), Y.length());  // source object
+            const StringRefImp& SR = mSR;
+
+            for (size_t i = 0; i < LENGTH; ++i) {
+                const size_t POS = i;
+                for (size_t j = 0; j < LENGTH - POS; ++j) {
+                    const size_t EXP_LENGTH = j;
+                    for (char cfg = 'a'; cfg <= 'c'; ++cfg) {
+                        const char CONFIG = cfg;
+
+                        bslma::TestAllocator da("default",
+                                                veryVeryVeryVerbose);
+                        bslma::TestAllocator fa("footprint",
+                                                veryVeryVeryVerbose);
+                        bslma::TestAllocator sa("supplied",
+                                                veryVeryVeryVerbose);
+
+                        bslma::DefaultAllocatorGuard dag(&da);
+
+                        const char           *minorStr;
+                        Obj                  *objPtr;
+                        bslma::TestAllocator *objAllocatorPtr;
+
+                        switch (CONFIG) {
+                          case 'a': {
+                            minorStr =
+                                      "\t\tWithout passing in an allocator.\n";
+                            objPtr = new (fa) Obj(SR, POS, EXP_LENGTH);
+                            objAllocatorPtr = &da;
+                          } break;
+                          case 'b': {
+                            minorStr = "\t\tWith passing in null allocator.\n";
+                            objPtr = new (fa) Obj(
+                                  SR,
+                                  POS,
+                                  EXP_LENGTH,
+                                  reinterpret_cast<bslma::TestAllocator *>(0));
+                            objAllocatorPtr = &da;
+                          } break;
+                          case 'c': {
+                            minorStr = "\t\tWith passing in an allocator.\n";
+                            objPtr = new (fa) Obj(SR, POS, EXP_LENGTH, &sa);
+                            objAllocatorPtr = &sa;
+                          } break;
+                          default: {
+                            ASSERTV(CONFIG, !"Bad allocator config.");
+                          } return;                                   // RETURN
+                        }
+
+                        if (veryVerbose) {
+                            printf("%s", minorStr);
+                        }
+
+                        Obj&                   mX = *objPtr;
+                        const Obj&              X =  mX;
+                        bslma::TestAllocator&  oa = *objAllocatorPtr;
+                        bslma::TestAllocator& noa =  'c' != CONFIG ? sa : da;
+
+                        if (veryVerbose) {
+                            T_; T_; P_(X); P(X.capacity());
+                        }
+
+                        LOOP3_ASSERT(LINE, ti, i, EXP_LENGTH == X.size());
+                        LOOP3_ASSERT(LINE, ti, i, EXP_LENGTH <= X.capacity());
+
+                        for (size_t k = POS; k < POS + EXP_LENGTH; ++k) {
+                            LOOP5_ASSERT(LINE, ti, i, j, k, Y[k] == X[k-POS]);
+                        }
+
+                        if (EXP_LENGTH <= DEFAULT_CAPACITY) {
+                            LOOP4_ASSERT(LINE, ti, i, j,
+                                         0 ==  oa.numBlocksTotal());
+                            LOOP4_ASSERT(LINE, ti, i, j,
+                                         0 ==  oa.numBlocksInUse());
+                            LOOP4_ASSERT(LINE, ti, i, j,
+                                         0 == noa.numBlocksTotal());
+                            LOOP4_ASSERT(LINE, ti, i, j,
+                                         0 == noa.numBlocksInUse());
+                        } else {
+                            LOOP4_ASSERT(LINE, ti, i, j,
+                                         1 ==  oa.numBlocksTotal());
+                            LOOP4_ASSERT(LINE, ti, i, j,
+                                         1 ==  oa.numBlocksInUse());
+                            LOOP4_ASSERT(LINE, ti, i, j,
+                                         0 == noa.numBlocksTotal());
+                            LOOP4_ASSERT(LINE, ti, i, j,
+                                         0 == noa.numBlocksInUse());
+                        }
+
+                        // Reclaim dynamically allocated object under test.
+
+                        fa.deleteObject(objPtr);
+
+                        // Verify all memory is released on object destruction.
+
+                        ASSERTV(LENGTH, CONFIG, da.numBlocksInUse(),
+                                0 == da.numBlocksInUse());
+                        ASSERTV(LENGTH, CONFIG, fa.numBlocksInUse(),
+                                0 == fa.numBlocksInUse());
+                        ASSERTV(LENGTH, CONFIG, sa.numBlocksInUse(),
+                                0 == sa.numBlocksInUse());
+                    }
+                }
+            }
+        }
+    }
+
+    if (verbose)
+        printf("\tTesting string(const string_view& sv, pos, n, a = A()).\n");
+    {
+        for (int ti = 0; ti < NUM_DATA; ++ti) {
+            const int     LINE   = DATA[ti].d_lineNum;
+            const char   *SPEC   = DATA[ti].d_spec_p;
+            const size_t  LENGTH = strlen(SPEC);
+
+            if (veryVerbose) {
+                printf("\t\t\tCreating object up to "); P_(LENGTH);
+                printf("using "); P(SPEC);
+            }
+
+            Obj               mY(g(SPEC));
+            const Obj&        Y = mY;
+            StringView        mSV(Y.data(), Y.length());  // source object
+            const StringView& SV = mSV;
+
+            for (size_t i = 0; i < LENGTH; ++i) {
+                const size_t POS = i;
+                for (size_t j = 0; j < LENGTH - POS; ++j) {
+                    const size_t EXP_LENGTH = j;
+                    for (char cfg = 'a'; cfg <= 'c'; ++cfg) {
+                        const char CONFIG = cfg;
+
+                        bslma::TestAllocator da("default",
+                                                veryVeryVeryVerbose);
+                        bslma::TestAllocator fa("footprint",
+                                                veryVeryVeryVerbose);
+                        bslma::TestAllocator sa("supplied",
+                                                veryVeryVeryVerbose);
+
+                        bslma::DefaultAllocatorGuard dag(&da);
+
+                        const char           *minorStr;
+                        Obj                  *objPtr;
+                        bslma::TestAllocator *objAllocatorPtr;
+
+                        switch (CONFIG) {
+                          case 'a': {
+                            minorStr =
+                                      "\t\tWithout passing in an allocator.\n";
+                            objPtr = new (fa) Obj(SV, POS, EXP_LENGTH);
+                            objAllocatorPtr = &da;
+                          } break;
+                          case 'b': {
+                            minorStr = "\t\tWith passing in null allocator.\n";
+                            objPtr = new (fa) Obj(
+                                  SV,
+                                  POS,
+                                  EXP_LENGTH,
+                                  reinterpret_cast<bslma::TestAllocator *>(0));
+                            objAllocatorPtr = &da;
+                          } break;
+                          case 'c': {
+                            minorStr = "\t\tWith passing in an allocator.\n";
+                            objPtr = new (fa) Obj(SV, POS, EXP_LENGTH, &sa);
+                            objAllocatorPtr = &sa;
+                          } break;
+                          default: {
+                            ASSERTV(CONFIG, !"Bad allocator config.");
+                          } return;                                   // RETURN
+                        }
+
+                        if (veryVerbose) {
+                            printf("%s", minorStr);
+                        }
+
+                        Obj&                   mX = *objPtr;
+                        const Obj&              X =  mX;
+                        bslma::TestAllocator&  oa = *objAllocatorPtr;
+                        bslma::TestAllocator& noa =  'c' != CONFIG ? sa : da;
+
+                        if (veryVerbose) {
+                            T_; T_; P_(X); P(X.capacity());
+                        }
+
+                        LOOP3_ASSERT(LINE, ti, i, EXP_LENGTH == X.size());
+                        LOOP3_ASSERT(LINE, ti, i, EXP_LENGTH <= X.capacity());
+
+                        for (size_t k = POS; k < POS + EXP_LENGTH; ++k) {
+                            LOOP5_ASSERT(LINE, ti, i, j, k, Y[k] == X[k-POS]);
+                        }
+
+                        if (EXP_LENGTH <= DEFAULT_CAPACITY) {
+                            LOOP4_ASSERT(LINE, ti, i, j,
+                                         0 ==  oa.numBlocksTotal());
+                            LOOP4_ASSERT(LINE, ti, i, j,
+                                         0 ==  oa.numBlocksInUse());
+                            LOOP4_ASSERT(LINE, ti, i, j,
+                                         0 == noa.numBlocksTotal());
+                            LOOP4_ASSERT(LINE, ti, i, j,
+                                         0 == noa.numBlocksInUse());
+                        } else {
+                            LOOP4_ASSERT(LINE, ti, i, j,
+                                         1 ==  oa.numBlocksTotal());
+                            LOOP4_ASSERT(LINE, ti, i, j,
+                                         1 ==  oa.numBlocksInUse());
+                            LOOP4_ASSERT(LINE, ti, i, j,
+                                         0 == noa.numBlocksTotal());
+                            LOOP4_ASSERT(LINE, ti, i, j,
+                                         0 == noa.numBlocksInUse());
+                        }
+
+                        // Reclaim dynamically allocated object under test.
+
+                        fa.deleteObject(objPtr);
+
+                        // Verify all memory is released on object destruction.
+
+                        ASSERTV(LENGTH, CONFIG, da.numBlocksInUse(),
+                                0 == da.numBlocksInUse());
+                        ASSERTV(LENGTH, CONFIG, fa.numBlocksInUse(),
+                                0 == fa.numBlocksInUse());
+                        ASSERTV(LENGTH, CONFIG, sa.numBlocksInUse(),
+                                0 == sa.numBlocksInUse());
+                    }
+                }
+            }
+        }
+    }
+
+    if (verbose)
+        printf(
+            "\tTesting string(const StringViewLike& svl, pos, n, a = A()).\n");
+    {
+        for (int ti = 0; ti < NUM_DATA; ++ti) {
+            const int     LINE   = DATA[ti].d_lineNum;
+            const char   *SPEC   = DATA[ti].d_spec_p;
+            const size_t  LENGTH = strlen(SPEC);
+
+            if (veryVerbose) {
+                printf("\t\t\tCreating object up to "); P_(LENGTH);
+                printf("using "); P(SPEC);
+            }
+
+            Obj                       mY(g(SPEC));
+            const Obj&                Y = mY;
+            StringViewLikeType        mSVL(Y.data());  // source object
+            const StringViewLikeType& SVL = mSVL;
+
+            for (size_t i = 0; i < LENGTH; ++i) {
+                const size_t POS = i;
+                for (size_t j = 0; j < LENGTH - POS; ++j) {
+                    const size_t EXP_LENGTH = j;
+                    for (char cfg = 'a'; cfg <= 'c'; ++cfg) {
+                        const char CONFIG = cfg;
+
+                        bslma::TestAllocator da("default",
+                                                veryVeryVeryVerbose);
+                        bslma::TestAllocator fa("footprint",
+                                                veryVeryVeryVerbose);
+                        bslma::TestAllocator sa("supplied",
+                                                veryVeryVeryVerbose);
+
+                        bslma::DefaultAllocatorGuard dag(&da);
+
+                        const char           *minorStr;
+                        Obj                  *objPtr;
+                        bslma::TestAllocator *objAllocatorPtr;
+
+                        switch (CONFIG) {
+                          case 'a': {
+                            minorStr =
+                                      "\t\tWithout passing in an allocator.\n";
+                            objPtr = new (fa) Obj(SVL, POS, EXP_LENGTH);
+                            objAllocatorPtr = &da;
+                          } break;
+                          case 'b': {
+                            minorStr = "\t\tWith passing in null allocator.\n";
+                            objPtr = new (fa) Obj(
+                                  SVL,
+                                  POS,
+                                  EXP_LENGTH,
+                                  reinterpret_cast<bslma::TestAllocator *>(0));
+                            objAllocatorPtr = &da;
+                          } break;
+                          case 'c': {
+                            minorStr = "\t\tWith passing in an allocator.\n";
+                            objPtr = new (fa) Obj(SVL, POS, EXP_LENGTH, &sa);
+                            objAllocatorPtr = &sa;
+                          } break;
+                          default: {
+                            ASSERTV(CONFIG, !"Bad allocator config.");
+                          } return;                                   // RETURN
+                        }
+
+                        if (veryVerbose) {
+                            printf("%s", minorStr);
+                        }
+
+                        Obj&                   mX = *objPtr;
+                        const Obj&              X =  mX;
+                        bslma::TestAllocator&  oa = *objAllocatorPtr;
+                        bslma::TestAllocator& noa =  'c' != CONFIG ? sa : da;
+
+                        if (veryVerbose) {
+                            T_; T_; P_(X); P(X.capacity());
+                        }
+
+                        LOOP3_ASSERT(LINE, ti, i, EXP_LENGTH == X.size());
+                        LOOP3_ASSERT(LINE, ti, i, EXP_LENGTH <= X.capacity());
+
+                        for (size_t k = POS; k < POS + EXP_LENGTH; ++k) {
+                            LOOP5_ASSERT(LINE, ti, i, j, k, Y[k] == X[k-POS]);
+                        }
+
+                        if (EXP_LENGTH <= DEFAULT_CAPACITY) {
+                            LOOP4_ASSERT(LINE, ti, i, j,
+                                         0 ==  oa.numBlocksTotal());
+                            LOOP4_ASSERT(LINE, ti, i, j,
+                                         0 ==  oa.numBlocksInUse());
+                            LOOP4_ASSERT(LINE, ti, i, j,
+                                         0 == noa.numBlocksTotal());
+                            LOOP4_ASSERT(LINE, ti, i, j,
+                                         0 == noa.numBlocksInUse());
+                        } else {
+                            LOOP4_ASSERT(LINE, ti, i, j,
+                                         1 ==  oa.numBlocksTotal());
+                            LOOP4_ASSERT(LINE, ti, i, j,
+                                         1 ==  oa.numBlocksInUse());
+                            LOOP4_ASSERT(LINE, ti, i, j,
+                                         0 == noa.numBlocksTotal());
+                            LOOP4_ASSERT(LINE, ti, i, j,
+                                         0 == noa.numBlocksInUse());
+                        }
+
+                        // Reclaim dynamically allocated object under test.
+
+                        fa.deleteObject(objPtr);
+
+                        // Verify all memory is released on object destruction.
+
+                        ASSERTV(LENGTH, CONFIG, da.numBlocksInUse(),
+                                0 == da.numBlocksInUse());
+                        ASSERTV(LENGTH, CONFIG, fa.numBlocksInUse(),
+                                0 == fa.numBlocksInUse());
+                        ASSERTV(LENGTH, CONFIG, sa.numBlocksInUse(),
+                                0 == sa.numBlocksInUse());
+                    }
+                }
+            }
+        }
+    }
+
+    if (verbose)
+        printf("\tTesting string(const stringViewOnlyLike& svol, "
+                                "pos, "
+                                "n, "
+                                "a = A()).\n");
+    {
+        for (int ti = 0; ti < NUM_DATA; ++ti) {
+            const int     LINE   = DATA[ti].d_lineNum;
+            const char   *SPEC   = DATA[ti].d_spec_p;
+            const size_t  LENGTH = strlen(SPEC);
+
+            if (veryVerbose) {
+                printf("\t\t\tCreating object up to "); P_(LENGTH);
+                printf("using "); P(SPEC);
+            }
+
+            Obj                           mY(g(SPEC));
+            const Obj&                    Y = mY;
+            StringViewOnlyLikeType        mSVOL(Y.data());  // source object
+            const StringViewOnlyLikeType& SVOL = mSVOL;
+
+            for (size_t i = 0; i < LENGTH; ++i) {
+                const size_t POS = i;
+                for (size_t j = 0; j < LENGTH - POS; ++j) {
+                    const size_t EXP_LENGTH = j;
+                    for (char cfg = 'a'; cfg <= 'c'; ++cfg) {
+                        const char CONFIG = cfg;
+
+                        bslma::TestAllocator da("default",
+                                                veryVeryVeryVerbose);
+                        bslma::TestAllocator fa("footprint",
+                                                veryVeryVeryVerbose);
+                        bslma::TestAllocator sa("supplied",
+                                                veryVeryVeryVerbose);
+
+                        bslma::DefaultAllocatorGuard dag(&da);
+
+                        const char           *minorStr;
+                        Obj                  *objPtr;
+                        bslma::TestAllocator *objAllocatorPtr;
+
+                        switch (CONFIG) {
+                          case 'a': {
+                            minorStr =
+                                      "\t\tWithout passing in an allocator.\n";
+                            objPtr = new (fa) Obj(SVOL, POS, EXP_LENGTH);
+                            objAllocatorPtr = &da;
+                          } break;
+                          case 'b': {
+                            minorStr = "\t\tWith passing in null allocator.\n";
+                            objPtr = new (fa) Obj(
+                                  SVOL,
+                                  POS,
+                                  EXP_LENGTH,
+                                  reinterpret_cast<bslma::TestAllocator *>(0));
+                            objAllocatorPtr = &da;
+                          } break;
+                          case 'c': {
+                            minorStr = "\t\tWith passing in an allocator.\n";
+                            objPtr = new (fa) Obj(SVOL, POS, EXP_LENGTH, &sa);
+                            objAllocatorPtr = &sa;
+                          } break;
+                          default: {
+                            ASSERTV(CONFIG, !"Bad allocator config.");
+                          } return;                                   // RETURN
+                        }
+
+                        if (veryVerbose) {
+                            printf("%s", minorStr);
+                        }
+
+                        Obj&                   mX = *objPtr;
+                        const Obj&              X =  mX;
+                        bslma::TestAllocator&  oa = *objAllocatorPtr;
+                        bslma::TestAllocator& noa =  'c' != CONFIG ? sa : da;
+
+                        if (veryVerbose) {
+                            T_; T_; P_(X); P(X.capacity());
+                        }
+
+                        LOOP3_ASSERT(LINE, ti, i, EXP_LENGTH == X.size());
+                        LOOP3_ASSERT(LINE, ti, i, EXP_LENGTH <= X.capacity());
+
+                        for (size_t k = POS; k < POS + EXP_LENGTH; ++k) {
+                            LOOP5_ASSERT(LINE, ti, i, j, k, Y[k] == X[k-POS]);
+                        }
+
+                        if (EXP_LENGTH <= DEFAULT_CAPACITY) {
+                            LOOP4_ASSERT(LINE, ti, i, j,
+                                         0 ==  oa.numBlocksTotal());
+                            LOOP4_ASSERT(LINE, ti, i, j,
+                                         0 ==  oa.numBlocksInUse());
+                            LOOP4_ASSERT(LINE, ti, i, j,
+                                         0 == noa.numBlocksTotal());
+                            LOOP4_ASSERT(LINE, ti, i, j,
+                                         0 == noa.numBlocksInUse());
+                        } else {
+                            LOOP4_ASSERT(LINE, ti, i, j,
+                                         1 ==  oa.numBlocksTotal());
+                            LOOP4_ASSERT(LINE, ti, i, j,
+                                         1 ==  oa.numBlocksInUse());
+                            LOOP4_ASSERT(LINE, ti, i, j,
+                                         0 == noa.numBlocksTotal());
+                            LOOP4_ASSERT(LINE, ti, i, j,
+                                         0 == noa.numBlocksInUse());
+                        }
+
+                        // Reclaim dynamically allocated object under test.
+
+                        fa.deleteObject(objPtr);
+
+                        // Verify all memory is released on object destruction.
+
+                        ASSERTV(LENGTH, CONFIG, da.numBlocksInUse(),
+                                0 == da.numBlocksInUse());
+                        ASSERTV(LENGTH, CONFIG, fa.numBlocksInUse(),
+                                0 == fa.numBlocksInUse());
+                        ASSERTV(LENGTH, CONFIG, sa.numBlocksInUse(),
+                                0 == sa.numBlocksInUse());
+                    }
+                }
+            }
+        }
+    }
+
     if (verbose) printf("\tWith passing an allocator and checking for "
                         "allocation exceptions.\n");
     {
         for (int ti = 0; ti < NUM_DATA; ++ti) {
             const int     LINE   = DATA[ti].d_lineNum;
-            const char   *SPEC   = DATA[ti].d_spec;
+            const char   *SPEC   = DATA[ti].d_spec_p;
             const size_t  LENGTH = strlen(SPEC);
             const TYPE    VALUE  = VALUES[ti % NUM_VALUES];
 
@@ -14715,11 +18770,6 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase12()
 
             } BSLMA_TESTALLOCATOR_EXCEPTION_TEST_END
 
-            if (veryVerbose) {
-                printf("\t\t\tCreating object of "); P_(LENGTH);
-                printf("using "); P(SPEC);
-            }
-
             Obj mY(g(SPEC));  const Obj& Y = mY;
 
             BSLMA_TESTALLOCATOR_EXCEPTION_TEST_BEGIN(testAllocator) {
@@ -14739,7 +18789,7 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase12()
 
             BSLMA_TESTALLOCATOR_EXCEPTION_TEST_BEGIN(testAllocator) {
 
-                Obj mX(&Y[0], LENGTH, AllocType(&testAllocator));
+                Obj        mX(&Y[0], LENGTH, AllocType(&testAllocator));
                 const Obj& X = mX;
 
                 if (veryVerbose) {
@@ -14754,7 +18804,7 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase12()
 
             BSLMA_TESTALLOCATOR_EXCEPTION_TEST_BEGIN(testAllocator) {
 
-                Obj mX(Y, 0, AllocType(&testAllocator));
+                Obj        mX(Y, 0, AllocType(&testAllocator));
                 const Obj& X = mX;
 
                 if (veryVerbose) {
@@ -14769,7 +18819,7 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase12()
 
             BSLMA_TESTALLOCATOR_EXCEPTION_TEST_BEGIN(testAllocator) {
 
-                Obj mX(Y, 0, LENGTH, AllocType(&testAllocator));
+                Obj        mX(Y, 0, LENGTH, AllocType(&testAllocator));
                 const Obj& X = mX;
 
                 if (veryVerbose) {
@@ -14780,6 +18830,114 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase12()
                 LOOP2_ASSERT(LINE, ti, LENGTH <= X.capacity());
                 LOOP2_ASSERT(LINE, ti, Y == X);
 
+            } BSLMA_TESTALLOCATOR_EXCEPTION_TEST_END
+
+            StringRefImp        mSR(Y.data(), Y.length());
+            const StringRefImp&  SR = mSR;
+
+            BSLMA_TESTALLOCATOR_EXCEPTION_TEST_BEGIN(testAllocator) {
+
+                Obj        mX(SR, AllocType(&testAllocator));
+                const Obj& X = mX;
+
+                if (veryVerbose) {
+                    T_; T_; P_(X); P(X.capacity());
+                }
+
+                ASSERTV(LINE, ti, LENGTH == X.size());
+                ASSERTV(LINE, ti, LENGTH <= X.capacity());
+                ASSERTV(LINE, ti, 0      == TRAITS::compare(SR.data(),
+                                                            X.data(),
+                                                            LENGTH));
+            } BSLMA_TESTALLOCATOR_EXCEPTION_TEST_END
+
+            StringView        mSV(Y.data(), Y.length());
+            const StringView&  SV = mSV;
+
+            BSLMA_TESTALLOCATOR_EXCEPTION_TEST_BEGIN(testAllocator) {
+
+                Obj        mX(SV, AllocType(&testAllocator));
+                const Obj& X = mX;
+
+                if (veryVerbose) {
+                    T_; T_; P_(X); P(X.capacity());
+                }
+
+                ASSERTV(LINE, ti, LENGTH == X.size());
+                ASSERTV(LINE, ti, LENGTH <= X.capacity());
+                ASSERTV(LINE, ti, 0      == TRAITS::compare(SV.data(),
+                                                            X.data(),
+                                                            LENGTH));
+            } BSLMA_TESTALLOCATOR_EXCEPTION_TEST_END
+
+            StringViewOnlyLikeType        mSVOL(Y.data());
+            const StringViewOnlyLikeType& SVOL = mSVOL;
+
+            BSLMA_TESTALLOCATOR_EXCEPTION_TEST_BEGIN(testAllocator) {
+
+                Obj        mX(SVOL, AllocType(&testAllocator));
+                const Obj& X = mX;
+
+                if (veryVerbose) {
+                    T_; T_; P_(X); P(X.capacity());
+                }
+
+                ASSERTV(LINE, ti, LENGTH == X.size());
+                ASSERTV(LINE, ti, LENGTH <= X.capacity());
+                ASSERTV(LINE, ti, 0      == TRAITS::compare(SVOL.data(),
+                                                            X.data(),
+                                                            LENGTH));
+            } BSLMA_TESTALLOCATOR_EXCEPTION_TEST_END
+
+            BSLMA_TESTALLOCATOR_EXCEPTION_TEST_BEGIN(testAllocator) {
+
+                Obj        mX(SV, 0, LENGTH, AllocType(&testAllocator));
+                const Obj& X = mX;
+
+                if (veryVerbose) {
+                    T_; T_; P_(X); P(X.capacity());
+                }
+
+                ASSERTV(LINE, ti, LENGTH == X.size());
+                ASSERTV(LINE, ti, LENGTH <= X.capacity());
+                ASSERTV(LINE, ti, 0      == TRAITS::compare(SV.data(),
+                                                            X.data(),
+                                                            LENGTH));
+            } BSLMA_TESTALLOCATOR_EXCEPTION_TEST_END
+
+            StringViewLikeType        mSVL(Y.data());
+            const StringViewLikeType& SVL = mSVL;
+
+            BSLMA_TESTALLOCATOR_EXCEPTION_TEST_BEGIN(testAllocator) {
+
+                Obj        mX(SVL, 0, LENGTH, AllocType(&testAllocator));
+                const Obj& X = mX;
+
+                if (veryVerbose) {
+                    T_; T_; P_(X); P(X.capacity());
+                }
+
+                ASSERTV(LINE, ti, LENGTH == X.size());
+                ASSERTV(LINE, ti, LENGTH <= X.capacity());
+                ASSERTV(LINE, ti, 0      == TRAITS::compare(SVL.data(),
+                                                            X.data(),
+                                                            LENGTH));
+            } BSLMA_TESTALLOCATOR_EXCEPTION_TEST_END
+
+            BSLMA_TESTALLOCATOR_EXCEPTION_TEST_BEGIN(testAllocator) {
+
+                Obj        mX(SVOL, 0, LENGTH, AllocType(&testAllocator));
+                const Obj& X = mX;
+
+                if (veryVerbose) {
+                    T_; T_; P_(X); P(X.capacity());
+                }
+
+                ASSERTV(LINE, ti, LENGTH == X.size());
+                ASSERTV(LINE, ti, LENGTH <= X.capacity());
+                ASSERTV(LINE, ti, 0      == TRAITS::compare(SVOL.data(),
+                                                            X.data(),
+                                                            LENGTH));
             } BSLMA_TESTALLOCATOR_EXCEPTION_TEST_END
 
             LOOP2_ASSERT(LINE, ti, 0 == testAllocator.numBlocksInUse());
@@ -14790,7 +18948,7 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase12()
     {
         for (int ti = 0; ti < NUM_DATA; ++ti) {
             const int     LINE   = DATA[ti].d_lineNum;
-            const char   *SPEC   = DATA[ti].d_spec;
+            const char   *SPEC   = DATA[ti].d_spec_p;
             const size_t  LENGTH = strlen(SPEC);
             const TYPE    VALUE  = VALUES[ti % NUM_VALUES];
 
@@ -14798,10 +18956,18 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase12()
                 printf("\t\tCreating object of "); P(LENGTH);
             }
 
-            Obj        mY(g(SPEC));
-            const Obj&  Y = mY;
+            Obj                           mY(g(SPEC));
+            const Obj&                    Y = mY;
+            StringRefImp                  mSR(Y.data(), Y.length());
+            const StringRefImp&           SR = mSR;
+            StringView                    mSV(Y.data(), Y.length());
+            const StringView&             SV = mSV;
+            StringViewOnlyLikeType        mSVOL(Y.data());
+            const StringViewOnlyLikeType& SVOL = mSVOL;
+            StringViewLikeType            mSVL(Y.data());
+            const StringViewLikeType&     SVL = mSVL;
 
-            for (int i = 0; i < 5; ++i) {
+            for (int i = 0; i < 10; ++i) {
                 AllocatorUseGuard guardG(globalAllocator_p);
                 AllocatorUseGuard guardD(defaultAllocator_p);
 
@@ -14820,6 +18986,27 @@ void TestDriver<TYPE,TRAITS,ALLOC>::testCase12()
                   } break;
                   case 4: {
                     Obj x(Y, 0, LENGTH, objectAllocator_p);
+                  } break;
+                  case 5: {
+                    Obj x(SR, objectAllocator_p);
+                  } break;
+                  case 6: {
+                    Obj x(SV, objectAllocator_p);
+                  } break;
+                  case 7: {
+                    Obj x(SVL, objectAllocator_p);
+                  } break;
+                  case 8: {
+                    Obj x(SR, 0, LENGTH, objectAllocator_p);
+                  } break;
+                  case 9: {
+                    Obj x(SV, 0, LENGTH, objectAllocator_p);
+                  } break;
+                  case 10: {
+                    Obj x(SVL, 0, LENGTH, objectAllocator_p);
+                  } break;
+                  case 11: {
+                    Obj x(SVOL, 0, LENGTH, objectAllocator_p);
                   } break;
                 }
 
@@ -16582,6 +20769,9 @@ int main(int argc, char *argv[])
         veryVeryVerbose = argc > 4;
     veryVeryVeryVerbose = argc > 5;
 
+    // Suppress warnings.
+    (void) k_SHORT_BUFFER_CAPACITY_CHAR8_T;
+
     // As part of our overall allocator testing strategy, we will create three
     // test allocators.
 
@@ -16614,6 +20804,186 @@ int main(int argc, char *argv[])
     printf("TEST " __FILE__ " CASE %d\n", test);
 
     switch (test) { case 0:  // Zero is always the leading case.
+      case 42: {
+        // -------------------------------------------------------------------
+        // TESTING 'erase' AND 'erase_if'
+        //
+        // Concerns:
+        //: 1 The 'erase' and 'erase_if' free functions work correctly for
+        //:   objects of any size and content.
+        //:
+        //: 2 The NUL character is handled correctly regardless of whether it
+        //:   belongs to the object or is the character being erased.
+        //:
+        //: 3 An empty string is handled correctly.
+        //:
+        //: 4 No additional memory allocation occurs.
+        //
+        // Plan:
+        //: 1 Call 'erase' and 'erase_if' on an empty string and make sure
+        //:   there is no effect. (C-1)
+        //:
+        //: 2 Construct an object with a variety of elements, including the NUL
+        //:   character.
+        //:
+        //: 3 Call 'erase' and 'erase_if' methods and verify the results.
+        //:   (C-1, 2, 3)
+        //:
+        //: 4 Verify that no additional memory allocation occurs during
+        //:   erasure. (C-4)
+        //
+        // Testing:
+        //   size_type erase(basic_string& str, const C& c);
+        //   size_type erase_if(basic_string& str, const UNARY_PRED& pred);
+        // --------------------------------------------------------------------
+
+        if (verbose) printf("\n" "TESTING 'erase' AND 'erase_if'\n"
+                                 "==============================\n");
+
+        if (verbose) printf("\n... with 'char'.\n");
+        TestDriver<char>::testCase42();
+
+        if (verbose) printf("\n... with 'wchar_t'.\n");
+        TestDriver<wchar_t>::testCase42();
+      } break;
+      case 41: {
+        // --------------------------------------------------------------------
+        // TESTING 'starts_with' AND 'ends_with'
+        //
+        // Concerns:
+        //: 1 The 'starts_with' and 'ends_with' methods work correctly for
+        //:   objects of any size and content.
+        //:
+        //: 2 The null character is handled correctly regardless of whether it
+        //:   belongs to the object or to the string for search.
+        //:
+        //: 3 An empty string is handled correctly regardless of whether it
+        //:   is an empty object or an empty string for search.
+        //:
+        //: 4 No additional memory allocation occurs.
+        //:
+        //: 5 QoI: Asserted precondition violations are detected when enabled.
+        //
+        // Plan:
+        //: 1 Using a loop-based approach, construct a set of objects and a set
+        //:   of strings for search having different sizes and content.
+        //:
+        //: 2 Call every overload of the 'starts_with' and 'ends_with' methods
+        //:   and verify the results.  Verify that no memory was allocated by
+        //:   the default allocator.  (C-1, 3)
+        //:
+        //: 3 Using a table-based approach, construct a set of objects and a
+        //:   set of strings for search having different sizes and content and
+        //:   containing the null character.
+        //:
+        //: 4 Call 'string_view' and single characters overloads of the
+        //:   'starts_with' and 'ends_with' methods and verify the results.
+        //:   Verify that no memory was allocated by the default allocator.
+        //:
+        //: 5 Using a table-based approach, construct a set of objects
+        //:   containing the null character and a set of strings for search
+        //:   having different sizes.  Due to the c-strings peculiarity when
+        //:   the first null character encountered is considered the end of the
+        //:   string, we have to create a separate table, different from the
+        //:   table from P-3.  In this table only object specifications contain
+        //:   null characters.
+        //:
+        //: 6 Call c-string overloads of the 'starts_with' and 'ends_with'
+        //:   methods and verify the results.  Verify that no memory was
+        //:   allocated by the default allocator.  (C-2, 4)
+        //:
+        //: 7 Verify that, in appropriate build modes, defensive checks are
+        //:   triggered for invalid attribute values, but not triggered for
+        //:   adjacent valid ones (using the 'BSLS_ASSERTTEST_*' macros).
+        //:   (C-5)
+        //
+        // Testing:
+        //   bool starts_with(basic_string_view characterString) const;
+        //   bool starts_with(CHAR_TYPE character) const;
+        //   bool starts_with(const CHAR_TYPE *characterString) const;
+        //   bool ends_with(basic_string_view characterString) const;
+        //   bool ends_with(CHAR_TYPE character) const;
+        //   bool ends_with(const CHAR_TYPE *characterString) const;
+        // --------------------------------------------------------------------
+
+        if (verbose) printf("\n" "TESTING 'starts_with' AND 'ends_with'\n"
+                                 "=====================================\n");
+
+        if (verbose) printf("\n... with 'char'.\n");
+        TestDriver<char>::testCase41();
+
+        if (verbose) printf("\n... with 'wchar_t'.\n");
+        TestDriver<wchar_t>::testCase41();
+      } break;
+      case 40: {
+        // --------------------------------------------------------------------
+        // TESTING C++11 WIDE STRINGS
+        //
+        // Concerns:
+        //: 1 That 'u16string' and 'u32string' exist on all C++ versions at and
+        //:   after C++11.
+        //:
+        //: 2 That 'u8string' exists on and after C++20.
+        //
+        // Plan:
+        //: 1 On or after the required versions of C++, create some strings of
+        //:   the types under test, compare them, and assign between them.
+        //
+        // Testing;
+        //   bsl::u8string
+        //   bsl::u16string
+        //   bsl::u32string
+        // --------------------------------------------------------------------
+
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_UTF8_CHAR_TYPE)
+        const char8_t arr8A[] = { 'a', 'b', 'c', 'd', 0 };
+
+        bsl::u8string s8A(arr8A), s8B;
+
+        ASSERT(!s8A.empty());
+        ASSERT( s8B.empty());
+        ASSERT(4 == s8A.length());
+        ASSERT(s8A != s8B);
+
+        s8B = s8A;
+
+        ASSERT(!s8B.empty());
+        ASSERT(4 == s8B.length());
+        ASSERT(s8A == s8B);
+#endif
+
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_UNICODE_CHAR_TYPES)
+        const char16_t arr16A[] = { 'a', 'b', 'c', 'd', 0 };
+
+        bsl::u16string s16A(arr16A), s16B;
+
+        ASSERT(!s16A.empty());
+        ASSERT( s16B.empty());
+        ASSERTV(s16A.length(), 4 == s16A.length());
+        ASSERT(s16A != s16B);
+
+        s16B = s16A;
+
+        ASSERT(!s16B.empty());
+        ASSERTV(s16B.length(), 4 == s16B.length());
+        ASSERT(s16A == s16B);
+
+        const char32_t arr32A[] = { 'a', 'b', 'c', 'd', 0 };
+
+        bsl::u32string s32A(arr32A), s32B;
+
+        ASSERT(!s32A.empty());
+        ASSERT( s32B.empty());
+        ASSERT(4 == s32A.length());
+        ASSERT(s32A != s32B);
+
+        s32B = s32A;
+
+        ASSERT(!s32B.empty());
+        ASSERT(4 == s32B.length());
+        ASSERT(s32A == s32B);
+#endif
+      } break;
       case 39: {
         // --------------------------------------------------------------------
         // TESTING 'shrink_to_fit'
@@ -16656,6 +21026,19 @@ int main(int argc, char *argv[])
 
         if (verbose) printf("\n... with 'wchar_t'.\n");
         TestDriver<wchar_t>::testCase39();
+
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_UTF8_CHAR_TYPE)
+        if (verbose) printf("\n... with 'char8_t'.\n");
+        TestDriver<char8_t>::testCase39();
+#endif
+
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_UNICODE_CHAR_TYPES)
+        if (verbose) printf("\n... with 'char16_t'.\n");
+        TestDriver<char16_t>::testCase39();
+
+        if (verbose) printf("\n... with 'char32_t'.\n");
+        TestDriver<char32_t>::testCase39();
+#endif
       } break;
       case 38: {
         //---------------------------------------------------------------------
@@ -16717,7 +21100,7 @@ int main(int argc, char *argv[])
         //:   1 Iterate through the 'J' loop, and create various input
         //:     variants ('bsl::string', 'std::string', 'const TYPE *' and
         //:     'TYPE') to be used as the 'right-hand-side' non-moveable
-        //:      parameters for the operator.  For each pair '(lhs, rhs)':
+        //:     parameters for the operator.  For each pair '(lhs, rhs)':
         //:
         //:     1 Call the operator and verify that the result string contains
         //:       the expected value.
@@ -16732,9 +21115,9 @@ int main(int argc, char *argv[])
         //:       (C-4)
         //:
         //: 3 Verify that, in appropriate build modes, defensive checks are
-        //:   triggered for invalid date and 'numDays' values, but not
-        //:   triggered for adjacent valid ones (using the 'BSLS_ASSERTTEST_*'
-        //:   macros). (C-5)
+        //:   triggered for invalid attribute values, but not triggered for
+        //:   adjacent valid ones (using the 'BSLS_ASSERTTEST_*' macros).
+        //:   (C-5)
         //
         // Testing:
         //   string operator+(const string&,      const string&);
@@ -16782,6 +21165,18 @@ int main(int argc, char *argv[])
         if (verbose) printf("\n... with 'wchar_t'.\n");
         TestDriver<wchar_t>::testCase36();
 
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_UTF8_CHAR_TYPE)
+        if (verbose) printf("\n... with 'char8_t'.\n");
+        TestDriver<char8_t>::testCase36();
+#endif
+
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_UNICODE_CHAR_TYPES)
+        if (verbose) printf("\n... with 'char16_t'.\n");
+        TestDriver<char16_t>::testCase36();
+
+        if (verbose) printf("\n... with 'char32_t'.\n");
+        TestDriver<char32_t>::testCase36();
+#endif
       } break;
       case 35: {
         // --------------------------------------------------------------------
@@ -16791,12 +21186,117 @@ int main(int argc, char *argv[])
         if (verbose) printf("\n" "'noexcept' SPECIFICATION" "\n"
                                  "========================" "\n");
 
+        typedef bsltf::StdStatefulAllocator
+                           <char,   // TYPE
+                            false,  // PROPAGATE_ON_CONTAINER_COPY_CONSTRUCTION
+                            false,  // PROPAGATE_ON_CONTAINER_COPY_ASSIGNMENT
+                            false,  // PROPAGATE_ON_CONTAINER_SWAP
+                            false,  // PROPAGATE_ON_CONTAINER_MOVE_ASSIGNMENT
+                            false   // IS_ALWAYS_EQUAL
+                           > AllFalseAllocator;
+
+        typedef bsltf::StdStatefulAllocator
+                           <char,   // TYPE
+                            false,  // PROPAGATE_ON_CONTAINER_COPY_CONSTRUCTION
+                            false,  // PROPAGATE_ON_CONTAINER_COPY_ASSIGNMENT
+                            true,   // PROPAGATE_ON_CONTAINER_SWAP
+                            false,  // PROPAGATE_ON_CONTAINER_MOVE_ASSIGNMENT
+                            false   // IS_ALWAYS_EQUAL
+                           > ContainerSwapAllocator;
+
+        typedef bsltf::StdStatefulAllocator
+                           <char,   // TYPE
+                            false,  // PROPAGATE_ON_CONTAINER_COPY_CONSTRUCTION
+                            false,  // PROPAGATE_ON_CONTAINER_COPY_ASSIGNMENT
+                            false,  // PROPAGATE_ON_CONTAINER_SWAP
+                            true,   // PROPAGATE_ON_CONTAINER_MOVE_ASSIGNMENT
+                            false   // IS_ALWAYS_EQUAL
+                           > ContainerMoveAllocator;
+
+        typedef bsltf::StdStatefulAllocator
+                           <char,   // TYPE
+                            false,  // PROPAGATE_ON_CONTAINER_COPY_CONSTRUCTION
+                            false,  // PROPAGATE_ON_CONTAINER_COPY_ASSIGNMENT
+                            false,  // PROPAGATE_ON_CONTAINER_SWAP
+                            false,  // PROPAGATE_ON_CONTAINER_MOVE_ASSIGNMENT
+                            true    // IS_ALWAYS_EQUAL
+                           > AlwaysEqualAllocator;
+
+        typedef bsltf::StdStatefulAllocator
+                           <char,   // TYPE
+                            false,  // PROPAGATE_ON_CONTAINER_COPY_CONSTRUCTION
+                            false,  // PROPAGATE_ON_CONTAINER_COPY_ASSIGNMENT
+                            true,   // PROPAGATE_ON_CONTAINER_SWAP
+                            false,  // PROPAGATE_ON_CONTAINER_MOVE_ASSIGNMENT
+                            true    // IS_ALWAYS_EQUAL
+                           > ContainerSwapAlwaysEqualAllocator;
+
+        typedef bsltf::StdStatefulAllocator
+                           <char,   // TYPE
+                            false,  // PROPAGATE_ON_CONTAINER_COPY_CONSTRUCTION
+                            false,  // PROPAGATE_ON_CONTAINER_COPY_ASSIGNMENT
+                            false,  // PROPAGATE_ON_CONTAINER_SWAP
+                            true,   // PROPAGATE_ON_CONTAINER_MOVE_ASSIGNMENT
+                            true    // IS_ALWAYS_EQUAL
+                           > ContainerMoveAlwaysEqualAllocator;
+
         if (verbose) printf("\n... with 'char'.\n");
         TestDriver<char>::testCase35();
 
         if (verbose) printf("\n... with 'wchar_t'.\n");
         TestDriver<wchar_t>::testCase35();
 
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_UTF8_CHAR_TYPE)
+        if (verbose) printf("\n... with 'char8_t'.\n");
+        TestDriver<char8_t>::testCase35();
+#endif
+
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_UNICODE_CHAR_TYPES)
+        if (verbose) printf("\n... with 'char16_t'.\n");
+        TestDriver<char16_t>::testCase35();
+
+        if (verbose) printf("\n... with 'char32_t'.\n");
+        TestDriver<char32_t>::testCase35();
+#endif
+
+        if (verbose)
+            printf("\n... with 'false' allocator propagation properties.\n");
+        TestDriver<char,
+                   bsl::char_traits<char>,
+                   AllFalseAllocator>::testCase35();
+
+        if (verbose)
+            printf("\n... with and 'container swap' propagation property.\n");
+        TestDriver<char,
+                   bsl::char_traits<char>,
+                   ContainerSwapAllocator>::testCase35();
+
+        if (verbose)
+            printf("\n... with and 'container move assignment' propagation"
+                   " property.\n");
+        TestDriver<char,
+                   bsl::char_traits<char>,
+                   ContainerMoveAllocator>::testCase35();
+
+        if (verbose)
+            printf("\n... with and 'always equal' propagation property.\n");
+        TestDriver<char,
+                   bsl::char_traits<char>,
+                   AlwaysEqualAllocator>::testCase35();
+
+        if (verbose)
+            printf("\n... with 'container swap' and 'always equal' propagation"
+                   " properties.\n");
+        TestDriver<char,
+                   bsl::char_traits<char>,
+                   ContainerSwapAlwaysEqualAllocator>::testCase35();
+
+        if (verbose)
+            printf("\n... with 'container move assignment' and 'always equal'"
+                   " propagation properties.\n");
+        TestDriver<char,
+                   bsl::char_traits<char>,
+                   ContainerMoveAlwaysEqualAllocator>::testCase35();
       } break;
       case 34: {
         // --------------------------------------------------------------------
@@ -17122,8 +21622,18 @@ int main(int argc, char *argv[])
                             "\n====================================\n");
 
 #if defined(BSLS_COMPILERFEATURES_SUPPORT_GENERALIZED_INITIALIZERS)
-        TestDriver<char   >::testCase33();
-        TestDriver<wchar_t>::testCase33();
+        TestDriver<char    >::testCase33();
+        TestDriver<wchar_t >::testCase33();
+
+# if defined(BSLS_COMPILERFEATURES_SUPPORT_UTF8_CHAR_TYPE)
+        TestDriver<char8_t >::testCase33();
+# endif
+
+# if defined(BSLS_COMPILERFEATURES_SUPPORT_UNICODE_CHAR_TYPES)
+        TestDriver<char16_t>::testCase33();
+        TestDriver<char32_t>::testCase33();
+# endif
+
 #else
         if (verbose) printf("\nSkip %d: Requires C++11 Initializers\n", test);
 #endif
@@ -17142,7 +21652,7 @@ int main(int argc, char *argv[])
         //:    value.
         //
         // Plan:
-        //: 1 use 'sprintf' and 'swprintf' with an arbitrarily large buffer,
+        //: 1 use 'snprintf' and 'swprintf' with an arbitrarily large buffer,
         //:   (in this test case the buffer size will be 384) and compare it to
         //:   the output of 'to_string' and 'to_wstring'.  The buffer must be
         //:   at least as large as the largest floating point value that might
@@ -17257,7 +21767,7 @@ int main(int argc, char *argv[])
             }
 
             // Set up the oracle results for signed integers, using 'long long'
-            // versions of the corresponding C library 'sprintf' functions.
+            // versions of the corresponding C library 'snprintf' functions.
 
             // On some platforms, where 'long' and 'long long' are the same
             // size (like x86_64 Linux), these comparisons generate compiler
@@ -17267,7 +21777,7 @@ int main(int argc, char *argv[])
 #pragma GCC diagnostic ignored "-Wtautological-type-limit-compare"
 #endif
 
-            sprintf(tempBuf, "%lld", VALUE);
+            snprintf(tempBuf, sizeof(tempBuf), "%lld", VALUE);
 
             if (VALUE <= std::numeric_limits<int>::max() &&
                 VALUE >= std::numeric_limits<int>::min()) {
@@ -17302,9 +21812,9 @@ int main(int argc, char *argv[])
 
             // Set up the oracle results for unsigned integers, using the
             // 'unsigned long long' versions of the corresponding C library
-            // 'sprintf' functions.
+            // 'snprintf' functions.
 
-            sprintf(tempBuf, "%llu", U_VALUE);
+            snprintf(tempBuf, sizeof(tempBuf), "%llu", U_VALUE);
 
 #ifdef BSLS_PLATFORM_CMP_CLANG
 #pragma GCC diagnostic push
@@ -17367,7 +21877,7 @@ int main(int argc, char *argv[])
             }
 
             // Set up the oracle results for signed integers, using 'long long'
-            // versions of the corresponding C library 'sprintf' functions.
+            // versions of the corresponding C library 'snprintf' functions.
 
             swprintf(wTempBuf, BUF_LEN, L"%lld", VALUE);
 
@@ -17397,9 +21907,9 @@ int main(int argc, char *argv[])
 
             // Set up the oracle results for unsigned integers, using the
             // 'unsigned long long' versions of the corresponding C library
-            // 'sprintf' functions.
+            // 'snprintf' functions.
 
-            sprintf(tempBuf, "%llu", U_VALUE);
+            snprintf(tempBuf, sizeof(tempBuf), "%llu", U_VALUE);
             swprintf(wTempBuf, BUF_LEN, L"%llu", U_VALUE);
 
             if (U_VALUE <= std::numeric_limits<unsigned int>::max()) {
@@ -17474,19 +21984,28 @@ int main(int argc, char *argv[])
             }
 
             if (VALUE <= std::numeric_limits<float>::max()){
-                sprintf(tempBuf, "%f", static_cast<float>(VALUE));
+                snprintf(tempBuf,
+                         sizeof(tempBuf),
+                         "%f",
+                         static_cast<float>(VALUE));
                 bsl::string str = bsl::to_string(static_cast<float>(VALUE));
                 ASSERTV(LINE, tempBuf, str, tempBuf == str );
             }
 
             if (VALUE <= std::numeric_limits<double>::max()){
-                sprintf(tempBuf, "%f", static_cast<double>(VALUE));
+                snprintf(tempBuf,
+                         sizeof(tempBuf),
+                         "%f",
+                         static_cast<double>(VALUE));
                 bsl::string str = bsl::to_string(static_cast<double>(VALUE));
                 ASSERTV(LINE, tempBuf, str, tempBuf == str );
             }
 
             if (VALUE <= std::numeric_limits<float>::max()){
-                sprintf(tempBuf, "%Lf", static_cast<long double>(VALUE));
+                snprintf(tempBuf,
+                         sizeof(tempBuf),
+                         "%Lf",
+                         static_cast<long double>(VALUE));
                 bsl::string str =
                                bsl::to_string(static_cast<long double>(VALUE));
                 ASSERTV(LINE, tempBuf, str, tempBuf == str );
@@ -19029,6 +23548,17 @@ int main(int argc, char *argv[])
         if (verbose) printf("\n... with 'wchar_t'.\n");
         TestDriver<wchar_t>::testCase29();
 
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_UTF8_CHAR_TYPE)
+        if (verbose) printf("\n... with 'char8_t'.\n");
+        TestDriver<char8_t>::testCase29();
+#endif
+
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_UNICODE_CHAR_TYPES)
+        if (verbose) printf("\n... with 'char16_t'.\n");
+        TestDriver<char16_t>::testCase29();
+        if (verbose) printf("\n... with 'char32_t'.\n");
+        TestDriver<char32_t>::testCase29();
+#endif
       } break;
       case 28: {
         // --------------------------------------------------------------------
@@ -19128,6 +23658,18 @@ int main(int argc, char *argv[])
         if (verbose) printf("\n... with 'wchar_t'.\n");
         TestDriver<wchar_t>::testCase26();
 
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_UTF8_CHAR_TYPE)
+        if (verbose) printf("\n... with 'char8_t'.\n");
+        TestDriver<char8_t>::testCase26();
+#endif
+
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_UNICODE_CHAR_TYPES)
+        if (verbose) printf("\n... with 'char16_t'.\n");
+        TestDriver<char16_t>::testCase26();
+
+        if (verbose) printf("\n... with 'char32_t'.\n");
+        TestDriver<char32_t>::testCase26();
+#endif
       } break;
       case 25: {
         // --------------------------------------------------------------------
@@ -19156,6 +23698,18 @@ int main(int argc, char *argv[])
         if (verbose) printf("\n... with 'wchar_t'.\n");
         TestDriver<wchar_t>::testCase25();
 
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_UTF8_CHAR_TYPE)
+        if (verbose) printf("\n... with 'char8_t'.\n");
+        TestDriver<char8_t>::testCase25();
+#endif
+
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_UNICODE_CHAR_TYPES)
+        if (verbose) printf("\n... with 'char16_t'.\n");
+        TestDriver<char16_t>::testCase25();
+
+        if (verbose) printf("\n... with 'char32_t'.\n");
+        TestDriver<char32_t>::testCase25();
+#endif
       } break;
       case 24: {
         // --------------------------------------------------------------------
@@ -19175,18 +23729,32 @@ int main(int argc, char *argv[])
         //   int compare(const C *s) const;
         //   int compare(pos1, n1, const C *s) const;
         //   int compare(pos1, n1, const C *s, n2) const;
+        //   int compare(const STRING_VIEW_LIKE_TYPE& str) const;
+        //   int compare(p1, n1, const STRING_VIEW_LIKE_TYPE& str) const;
+        //   int compare(p1, n1, const STRING_VIEW_LIKE_TYPE& s, p2, n2) const;
         //   bool operator<(const string<C,CT,A>&, const string<C,CT,A>&);
+        //   operator<(const string<C,CT,A1>&, const std::string<C,CT,A2>&);
+        //   operator<(const std::string<C,CT,A1>&, const string<C,CT,A2>&);
         //   bool operator<(const C *, const string<C,CT,A>&);
         //   bool operator<(const string<C,CT,A>&, const C *);
         //   bool operator>(const string<C,CT,A>&, const string<C,CT,A>&);
+        //   operator>(const string<C,CT,A1>&, const std::string<C,CT,A2>&);
+        //   operator>(const std::string<C,CT,A1>&, const string<C,CT,A2>&);
         //   bool operator>(const C *, const string<C,CT,A>&);
         //   bool operator>(const string<C,CT,A>&, const C *);
         //   bool operator<=(const string<C,CT,A>&, const string<C,CT,A>&);
+        //   operator<=(const string<C,CT,A1>&, const std::string<C,CT,A2>&);
+        //   operator<=(const std::string<C,CT,A1>&, const string<C,CT,A2>&);
         //   bool operator<=(const C *, const string<C,CT,A>&);
         //   bool operator<=(const string<C,CT,A>&, const C *);
         //   bool operator>=(const string<C,CT,A>&, const string<C,CT,A>&);
+        //   operator>=(const string<C,CT,A1>&, const std::string<C,CT,A2>&);
+        //   operator>=(const std::string<C,CT,A1>&, const string<C,CT,A2>&);
         //   bool operator>=(const C *, const string<C,CT,A>&);
         //   bool operator>=(const string<C,CT,A>&, const C *);
+        //   auto operator<=>(const string<C,CT,A>&, const string<C,CT,A>&);
+        //   auto operator<=>(const string<C,CT,A>&, const C *);
+        //   operator<=>(const string<C,CT,A1>&, const std::string<C,CT,A2>&);
         // --------------------------------------------------------------------
 
         if (verbose) printf("\nTESTING COMPARISONS"
@@ -19198,6 +23766,19 @@ int main(int argc, char *argv[])
         if (verbose) printf("\n... with 'wchar_t'.\n");
         TestDriver<wchar_t>::testCase24();
 
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_UTF8_CHAR_TYPE)
+        if (verbose) printf("\n... with 'char8_t'.\n");
+        TestDriver<char8_t>::testCase24();
+#endif
+
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_UNICODE_CHAR_TYPES)
+        if (verbose) printf("\n... with 'char16_t'.\n");
+        TestDriver<char16_t>::testCase24();
+
+        if (verbose) printf("\n... with 'char32_t'.\n");
+        TestDriver<char32_t>::testCase24();
+#endif
+
 #ifdef BDE_BUILD_TARGET_EXC
         if (verbose) printf("\nNegative testing comparisons"
                             "\n============================\n");
@@ -19207,8 +23788,20 @@ int main(int argc, char *argv[])
 
         if (verbose) printf("\n... with 'wchar_t'.\n");
         TestDriver<wchar_t>::testCase24Negative();
-#endif
 
+# if defined(BSLS_COMPILERFEATURES_SUPPORT_UTF8_CHAR_TYPE)
+        if (verbose) printf("\n... with 'char8_t'.\n");
+        TestDriver<char8_t>::testCase24Negative();
+# endif
+
+# if defined(BSLS_COMPILERFEATURES_SUPPORT_UNICODE_CHAR_TYPES)
+        if (verbose) printf("\n... with 'char16_t'.\n");
+        TestDriver<char16_t>::testCase24Negative();
+
+        if (verbose) printf("\n... with 'char32_t'.\n");
+        TestDriver<char32_t>::testCase24Negative();
+# endif
+#endif
       } break;
       case 23: {
         // --------------------------------------------------------------------
@@ -19231,6 +23824,19 @@ int main(int argc, char *argv[])
         if (verbose) printf("\n... with 'wchar_t'.\n");
         TestDriver<wchar_t>::testCase23();
 
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_UTF8_CHAR_TYPE)
+        if (verbose) printf("\n... with 'char8_t'.\n");
+        TestDriver<char8_t>::testCase23();
+#endif
+
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_UNICODE_CHAR_TYPES)
+        if (verbose) printf("\n... with 'char16_t'.\n");
+        TestDriver<char16_t>::testCase23();
+
+        if (verbose) printf("\n... with 'char32_t'.\n");
+        TestDriver<char32_t>::testCase23();
+#endif
+
 #ifdef BDE_BUILD_TARGET_EXC
         if (verbose) printf("\nNegative Testing 'copy'"
                             "\n==========================\n");
@@ -19240,8 +23846,20 @@ int main(int argc, char *argv[])
 
         if (verbose) printf("\n... with 'wchar_t'.\n");
         TestDriver<wchar_t>::testCase23Negative();
-#endif
 
+# if defined(BSLS_COMPILERFEATURES_SUPPORT_UTF8_CHAR_TYPE)
+        if (verbose) printf("\n... with 'char8_t'.\n");
+        TestDriver<char8_t>::testCase23Negative();
+# endif
+
+# if defined(BSLS_COMPILERFEATURES_SUPPORT_UNICODE_CHAR_TYPES)
+        if (verbose) printf("\n... with 'char16_t'.\n");
+        TestDriver<char16_t>::testCase23Negative();
+
+        if (verbose) printf("\n... with 'char32_t'.\n");
+        TestDriver<char32_t>::testCase23Negative();
+# endif
+#endif
       } break;
       case 22: {
         // --------------------------------------------------------------------
@@ -19252,29 +23870,35 @@ int main(int argc, char *argv[])
         //
         // Testing:
         //   size_type find(const string& str, pos = 0) const;
+        //   size_type find(const STRING_VIEW_LIKE_TYPE& str, pos = 0) const;
         //   size_type find(const C *s, pos, n) const;
         //   size_type find(const C *s, pos = 0) const;
         //   size_type find(C c, pos = 0) const;
-        //   size_type rfind(const string& str, pos = 0) const;
+        //   size_type rfind(const string& str, pos = npos) const;
+        //   size_type rfind(const STRING_VIEW_LIKE_TYPE& str, pos) const;
         //   size_type rfind(const C *s, pos, n) const;
-        //   size_type rfind(const C *s, pos = 0) const;
-        //   size_type rfind(C c, pos = 0) const;
+        //   size_type rfind(const C *s, pos = npos) const;
+        //   size_type rfind(C c, pos = npos) const;
         //   size_type find_first_of(const string& str, pos = 0) const;
+        //   size_type find_first_of(const STRING_VIEW_LIKE_TYPE& s, p) const;
         //   size_type find_first_of(const C *s, pos, n) const;
         //   size_type find_first_of(const C *s, pos = 0) const;
         //   size_type find_first_of(C c, pos = 0) const;
-        //   size_type find_last_of(const string& str, pos = 0) const;
+        //   size_type find_last_of(const string& str, pos = npos) const;
+        //   size_type find_last_of(const STRING_VIEW_LIKE_TYPE& str, p) const;
         //   size_type find_last_of(const C *s, pos, n) const;
-        //   size_type find_last_of(const C *s, pos = 0) const;
-        //   size_type find_last_of(C c, pos = 0) const;
+        //   size_type find_last_of(const C *s, pos = npos) const;
+        //   size_type find_last_of(C c, pos = npos) const;
         //   size_type find_first_not_of(const string& str, pos = 0) const;
+        //   size_type find_first_not_of(const STRING_VIEW_LIKE_TYPE&,p) const;
         //   size_type find_first_not_of(const C *s, pos, n) const;
         //   size_type find_first_not_of(const C *s, pos = 0) const;
         //   size_type find_first_not_of(C c, pos = 0) const;
-        //   size_type find_last_not_of(const string& str, pos = 0) const;
+        //   size_type find_last_not_of(const string& str, pos = npos) const;
+        //   size_type find_last_not_of(const STRING_VIEW_LIKE_TYPE&, p) const;
         //   size_type find_last_not_of(const C *s, pos, n) const;
-        //   size_type find_last_not_of(const C *s, pos = 0) const;
-        //   size_type find_last_not_of(C c, pos = 0) const;
+        //   size_type find_last_not_of(const C *s, pos = npos) const;
+        //   size_type find_last_not_of(C c, pos = npos) const;
         // --------------------------------------------------------------------
 
         if (verbose) printf("\nTESTING 'find...' VARIANTS"
@@ -19286,6 +23910,19 @@ int main(int argc, char *argv[])
         if (verbose) printf("\n... with 'wchar_t'.\n");
         TestDriver<wchar_t>::testCase22();
 
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_UTF8_CHAR_TYPE)
+        if (verbose) printf("\n... with 'char8_t'.\n");
+        TestDriver<char8_t>::testCase22();
+# endif
+
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_UNICODE_CHAR_TYPES)
+        if (verbose) printf("\n... with 'char16_t'.\n");
+        TestDriver<char16_t>::testCase22();
+
+        if (verbose) printf("\n... with 'char32_t'.\n");
+        TestDriver<char32_t>::testCase22();
+#endif
+
 #ifdef BDE_BUILD_TARGET_EXC
         if (verbose) printf("\nNegative testing 'find...' methods."
                             "\n===================================\n");
@@ -19295,6 +23932,19 @@ int main(int argc, char *argv[])
 
         if (verbose) printf("\n... with 'wchar_t'.\n");
         TestDriver<wchar_t>::testCase22Negative();
+
+# if defined(BSLS_COMPILERFEATURES_SUPPORT_UTF8_CHAR_TYPE)
+        if (verbose) printf("\n... with 'char8_t'.\n");
+        TestDriver<char8_t>::testCase22Negative();
+# endif
+
+# if defined(BSLS_COMPILERFEATURES_SUPPORT_UTF8_CHAR_TYPE)
+        if (verbose) printf("\n... with 'char16_t'.\n");
+        TestDriver<char16_t>::testCase22Negative();
+
+        if (verbose) printf("\n... with 'char32_t'.\n");
+        TestDriver<char32_t>::testCase22Negative();
+# endif
 #endif
 
       } break;
@@ -19319,6 +23969,19 @@ int main(int argc, char *argv[])
         if (verbose) printf("\n... with 'wchar_t'.\n");
         TestDriver<wchar_t>::testCase21();
 
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_UTF8_CHAR_TYPE)
+        if (verbose) printf("\n... with 'char8_t'.\n");
+        TestDriver<char8_t>::testCase21();
+#endif
+
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_UNICODE_CHAR_TYPES)
+        if (verbose) printf("\n... with 'char16_t'.\n");
+        TestDriver<char16_t>::testCase21();
+
+        if (verbose) printf("\n... with 'char32_t'.\n");
+        TestDriver<char32_t>::testCase21();
+#endif
+
         if (verbose) printf("\nTesting Allocator Propagation on Swap"
                             "\n=====================================\n");
         TestDriver<char>::testCase21_propagate_on_container_swap();
@@ -19331,13 +23994,19 @@ int main(int argc, char *argv[])
         // Plan:
         //: See 'TestDriver<CHAR_TYPE>::testCase20' for details.
         //
+        //  This test case was taking 6 times too long on C++11 and beyond, so
+        //  we are disabling most of the testing except in verbose mode.
+        //
         // Testing:
         //   basic_string& replace(pos1, n1, const string& str);
+        //   basic_string& replace(pos1, n1, const STRING_VIEW_LIKE_TYPE& str);
         //   basic_string& replace(pos1, n1, const string& str, pos2, n2=npos);
+        //   basic_string& replace(p1,n1,const STRING_VIEW_LIKE_TYPE& s,p2,n2);
         //   basic_string& replace(pos1, n1, const C *s, n2);
         //   basic_string& replace(pos1, n1, const C *s);
         //   basic_string& replace(pos1, n1, size_type n2, C c);
         //   basic_string& replace(const_iterator p, q, const string& str);
+        //   basic_string& replace(const_iterator p,q,const STRING_VIEW_LIKE&);
         //   basic_string& replace(const_iterator p, q, const C *s, n2);
         //   basic_string& replace(const_iterator p, q, const C *s);
         //   basic_string& replace(const_iterator p, q, size_type n2, C c);
@@ -19356,11 +24025,45 @@ int main(int argc, char *argv[])
         if (verbose) printf("\n... with 'wchar_t'.\n");
         TestDriver<wchar_t>::testCase20();
 
+        if (verbose) {
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_UTF8_CHAR_TYPE)
+            if (verbose) printf("\n... with 'char8_t'.\n");
+            TestDriver<char8_t>::testCase20();
+#endif
+
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_UNICODE_CHAR_TYPES)
+            if (verbose) printf("\n... with 'char16_t'.\n");
+            TestDriver<char16_t>::testCase20();
+
+            if (verbose) printf("\n... with 'char32_t'.\n");
+            TestDriver<char32_t>::testCase20();
+#endif
+        }
+
+
         if (verbose) printf("\n... with 'char' & matching integral types.\n");
         TestDriver<char>::testCase20MatchTypes();
 
         if (verbose) printf("\n... with 'wchar_t' & matching integ types.\n");
         TestDriver<wchar_t>::testCase20MatchTypes();
+
+        if (verbose) {
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_UTF8_CHAR_TYPE)
+            if (verbose) printf(
+                          "\n... with 'char8_t' & matching integral types.\n");
+            TestDriver<char8_t>::testCase20MatchTypes();
+#endif
+
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_UNICODE_CHAR_TYPES)
+            if (verbose) printf(
+                         "\n... with 'char16_t' & matching integral types.\n");
+            TestDriver<char16_t>::testCase20MatchTypes();
+
+            if (verbose) printf(
+                         "\n... with 'char32_t' & matching integral types.\n");
+            TestDriver<char32_t>::testCase20MatchTypes();
+#endif
+        }
 
         if (verbose) printf("\nTesting 'replace' with range"
                             "\n============================\n");
@@ -19381,6 +24084,36 @@ int main(int argc, char *argv[])
                             "and arbitrary random-access iterator.\n");
         TestDriver<wchar_t>::testCase20Range(CharArray<wchar_t>());
 
+        if (verbose) {
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_UTF8_CHAR_TYPE)
+            if (verbose) printf("\n... with 'char8_t' "
+                                "and arbitrary input iterator.\n");
+            TestDriver<char8_t>::testCase20Range(CharList<char8_t>());
+
+            if (verbose) printf("\n... with 'char8_t' "
+                                "and arbitrary random-access iterator.\n");
+            TestDriver<char8_t>::testCase20Range(CharArray<char8_t>());
+#endif
+
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_UNICODE_CHAR_TYPES)
+            if (verbose) printf("\n... with 'char16_t' "
+                                "and arbitrary input iterator.\n");
+            TestDriver<char16_t>::testCase20Range(CharList<char16_t>());
+
+            if (verbose) printf("\n... with 'char16_t' "
+                                "and arbitrary random-access iterator.\n");
+            TestDriver<char16_t>::testCase20Range(CharArray<char16_t>());
+
+            if (verbose) printf("\n... with 'char32_t' "
+                                "and arbitrary input iterator.\n");
+            TestDriver<char32_t>::testCase20Range(CharList<char32_t>());
+
+            if (verbose) printf("\n... with 'char32_t' "
+                                "and arbitrary random-access iterator.\n");
+            TestDriver<char32_t>::testCase20Range(CharArray<char32_t>());
+#endif
+        }
+
 #ifdef BDE_BUILD_TARGET_EXC
         if (verbose) printf("\nNegative Testing 'replace'"
                             "\n==========================\n");
@@ -19390,8 +24123,20 @@ int main(int argc, char *argv[])
 
         if (verbose) printf("\n... with 'wchar_t'.\n");
         TestDriver<wchar_t>::testCase20Negative();
-#endif
 
+# if defined(BSLS_COMPILERFEATURES_SUPPORT_UTF8_CHAR_TYPE)
+        if (verbose) printf("\n... with 'char8_t'.\n");
+        TestDriver<char8_t>::testCase20Negative();
+# endif
+
+# if defined(BSLS_COMPILERFEATURES_SUPPORT_UNICODE_CHAR_TYPES)
+        if (verbose) printf("\n... with 'char16_t'.\n");
+        TestDriver<char16_t>::testCase20Negative();
+
+        if (verbose) printf("\n... with 'char32_t'.\n");
+        TestDriver<char32_t>::testCase20Negative();
+# endif
+#endif
       } break;
       case 19: {
         // --------------------------------------------------------------------
@@ -19416,6 +24161,19 @@ int main(int argc, char *argv[])
         if (verbose) printf("\n... with 'wchar_t'.\n");
         TestDriver<wchar_t>::testCase19();
 
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_UTF8_CHAR_TYPE)
+        if (verbose) printf("\n... with 'char8_t'.\n");
+        TestDriver<char8_t>::testCase19();
+#endif
+
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_UNICODE_CHAR_TYPES)
+        if (verbose) printf("\n... with 'char16_t'.\n");
+        TestDriver<char16_t>::testCase19();
+
+        if (verbose) printf("\n... with 'char32_t'.\n");
+        TestDriver<char32_t>::testCase19();
+#endif
+
 #ifdef BDE_BUILD_TARGET_EXC
         if (verbose) printf("\nNegative Testing for 'erase' and 'pop_back'"
                             "\n===========================================\n");
@@ -19425,6 +24183,19 @@ int main(int argc, char *argv[])
 
         if (verbose) printf("\n... with 'wchar_t'.\n");
         TestDriver<wchar_t>::testCase19Negative();
+
+# if defined(BSLS_COMPILERFEATURES_SUPPORT_UTF8_CHAR_TYPE)
+        if (verbose) printf("\n... with 'char8_t'.\n");
+        TestDriver<char8_t>::testCase19Negative();
+# endif
+
+# if defined(BSLS_COMPILERFEATURES_SUPPORT_UNICODE_CHAR_TYPES)
+        if (verbose) printf("\n... with 'char16_t'.\n");
+        TestDriver<char16_t>::testCase19Negative();
+
+        if (verbose) printf("\n... with 'char32_t'.\n");
+        TestDriver<char32_t>::testCase19Negative();
+# endif
 #endif
 
       } break;
@@ -19436,7 +24207,11 @@ int main(int argc, char *argv[])
         //: See 'TestDriver<CHAR_TYPE>::testCase18' for details.
         //
         // Testing:
+        //   basic_string& insert(size_type pos, const CHAR_TYPE *s, n);
+        //   basic_string& insert(size_type pos, const CHAR_TYPE *s);
         //   basic_string& insert(size_type pos, size_type n, CHAR_TYPE c);
+        //   basic_string& insert(size_type p, const STRING_VIEW_LIKE_TYPE& s);
+        //   basic_string& insert(p1, const STRING_VIEW_LIKE_TYPE& s, p2, n);
         //   iterator insert(const_iterator pos, CHAR_TYPE value);
         //   iterator insert(const_iterator pos, size_type n, CHAR_TYPE value);
         //   template <class Iter> iterator insert(const_iterator, Iter, Iter);
@@ -19453,6 +24228,19 @@ int main(int argc, char *argv[])
 
         if (verbose) printf("\n... with 'wchar_t'.\n");
         TestDriver<wchar_t>::testCase18();
+
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_UTF8_CHAR_TYPE)
+        if (verbose) printf("\n... with 'char8_t'.\n");
+        TestDriver<char8_t>::testCase18();
+#endif
+
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_UNICODE_CHAR_TYPES)
+        if (verbose) printf("\n... with 'char16_t'.\n");
+        TestDriver<char16_t>::testCase18();
+
+        if (verbose) printf("\n... with 'char32_t'.\n");
+        TestDriver<char32_t>::testCase18();
+#endif
 
         if (verbose) printf("\nTesting Range Insertion"
                             "\n=======================\n");
@@ -19473,6 +24261,35 @@ int main(int argc, char *argv[])
                             "and arbitrary random-access iterator.\n");
         TestDriver<wchar_t>::testCase18Range(CharArray<wchar_t>());
 
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_UTF8_CHAR_TYPE)
+        if (verbose) printf("\n... with 'char8_t' "
+                            "and arbitrary input iterator.\n");
+        TestDriver<char8_t>::testCase18Range(CharList<char8_t>());
+
+        if (verbose) printf("\n... with 'char8_t' "
+                            "and arbitrary random-access iterator.\n");
+        TestDriver<char8_t>::testCase18Range(CharArray<char8_t>());
+#endif
+
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_UNICODE_CHAR_TYPES)
+        if (verbose) printf("\n... with 'char16_t' "
+                            "and arbitrary input iterator.\n");
+        TestDriver<char16_t>::testCase18Range(CharList<char16_t>());
+
+        if (verbose) printf("\n... with 'char16_t' "
+                            "and arbitrary random-access iterator.\n");
+        TestDriver<char16_t>::testCase18Range(CharArray<char16_t>());
+
+        if (verbose) printf("\n... with 'char32_t' "
+                            "and arbitrary input iterator.\n");
+        TestDriver<char32_t>::testCase18Range(CharList<char32_t>());
+
+        if (verbose) printf("\n... with 'char32_t' "
+                            "and arbitrary random-access iterator.\n");
+        TestDriver<char32_t>::testCase18Range(CharArray<char32_t>());
+#endif
+
+
 #ifdef BDE_BUILD_TARGET_EXC
         if (verbose) printf("\nNegative Testing Insertion"
                             "\n==========================\n");
@@ -19482,8 +24299,20 @@ int main(int argc, char *argv[])
 
         if (verbose) printf("\n... with 'wchar_t'.\n");
         TestDriver<wchar_t>::testCase18Negative();
-#endif
 
+# if defined(BSLS_COMPILERFEATURES_SUPPORT_UTF8_CHAR_TYPE)
+        if (verbose) printf("\n... with 'char8_t'.\n");
+        TestDriver<char8_t>::testCase18Negative();
+# endif
+
+# if defined(BSLS_COMPILERFEATURES_SUPPORT_UNICODE_CHAR_TYPES)
+        if (verbose) printf("\n... with 'char16_t'.\n");
+        TestDriver<char16_t>::testCase18Negative();
+
+        if (verbose) printf("\n... with 'char32_t'.\n");
+        TestDriver<char32_t>::testCase18Negative();
+# endif
+#endif
       } break;
       case 17: {
         // --------------------------------------------------------------------
@@ -19493,10 +24322,14 @@ int main(int argc, char *argv[])
         //: See 'TestDriver<CHAR_TYPE>::testCase17' for details.
         //
         // Testing:
+        //   basic_string& operator+=(const basic_string& rhs);
+        //   basic_string& operator+=(const CHAR_TYPE *s);
         //   basic_string& operator+=(CHAR_TYPE c);
-        //   basic_string& operator+=(const StringRefData& strRefData);
+        //   basic_string& operator+=(const STRING_VIEW_LIKE_TYPE& rhs);
         //   basic_string& append(const basic_string& str);
         //   basic_string& append(const basic_string& str, pos, n = npos);
+        //   basic_string& append(const STRING_VIEW_LIKE_TYPE& strView);
+        //   basic_string& append(const STRING_VIEW_LIKE_TYPE& strView, pos,n);
         //   basic_string& append(const CHAR_TYPE *s, size_type n);
         //   basic_string& append(const CHAR_TYPE *s);
         //   basic_string& append(size_type n, CHAR_TYPE c);
@@ -19514,6 +24347,19 @@ int main(int argc, char *argv[])
 
         if (verbose) printf("\n... with 'wchar_t'.\n");
         TestDriver<wchar_t>::testCase17();
+
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_UTF8_CHAR_TYPE)
+        if (verbose) printf("\n... with 'char8_t'.\n");
+        TestDriver<char8_t>::testCase17();
+#endif
+
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_UNICODE_CHAR_TYPES)
+        if (verbose) printf("\n... with 'char16_t'.\n");
+        TestDriver<char16_t>::testCase17();
+
+        if (verbose) printf("\n... with 'char32_t'.\n");
+        TestDriver<char32_t>::testCase17();
+#endif
 
         if (verbose) printf("\nTesting Range Append"
                             "\n====================\n");
@@ -19534,6 +24380,34 @@ int main(int argc, char *argv[])
                             "and arbitrary random-access iterator.\n");
         TestDriver<wchar_t>::testCase17Range(CharArray<wchar_t>());
 
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_UTF8_CHAR_TYPE)
+        if (verbose) printf("\n... with 'char8_t' "
+                            "and arbitrary input iterator.\n");
+        TestDriver<char8_t>::testCase17Range(CharList<char8_t>());
+
+        if (verbose) printf("\n... with 'char8_t' "
+                            "and arbitrary random-access iterator.\n");
+        TestDriver<char8_t>::testCase17Range(CharArray<char8_t>());
+#endif
+
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_UNICODE_CHAR_TYPES)
+        if (verbose) printf("\n... with 'char16_t' "
+                            "and arbitrary input iterator.\n");
+        TestDriver<char16_t>::testCase17Range(CharList<char16_t>());
+
+        if (verbose) printf("\n... with 'char16_t' "
+                            "and arbitrary random-access iterator.\n");
+        TestDriver<char16_t>::testCase17Range(CharArray<char16_t>());
+
+        if (verbose) printf("\n... with 'char32_t' "
+                            "and arbitrary input iterator.\n");
+        TestDriver<char32_t>::testCase17Range(CharList<char32_t>());
+
+        if (verbose) printf("\n... with 'char32_t' "
+                            "and arbitrary random-access iterator.\n");
+        TestDriver<char32_t>::testCase17Range(CharArray<char32_t>());
+#endif
+
 #ifdef BDE_BUILD_TARGET_EXC
         if (verbose) printf("\nNegative Testing Range Append"
                             "\n=============================\n");
@@ -19543,6 +24417,19 @@ int main(int argc, char *argv[])
 
         if (verbose) printf("\n... with 'wchar_t'.\n");
         TestDriver<wchar_t>::testCase17Negative();
+
+# if defined(BSLS_COMPILERFEATURES_SUPPORT_UTF8_CHAR_TYPE)
+        if (verbose) printf("\n... with 'char8_t'.\n");
+        TestDriver<char8_t>::testCase17Negative();
+# endif
+
+# if defined(BSLS_COMPILERFEATURES_SUPPORT_UNICODE_CHAR_TYPES)
+        if (verbose) printf("\n... with 'char16_t'.\n");
+        TestDriver<char16_t>::testCase17Negative();
+
+        if (verbose) printf("\n... with 'char32_t'.\n");
+        TestDriver<char32_t>::testCase17Negative();
+# endif
 #endif
 
       } break;
@@ -19573,6 +24460,18 @@ int main(int argc, char *argv[])
         if (verbose) printf("\n... with 'wchar_t'.\n");
         TestDriver<wchar_t>::testCase16();
 
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_UTF8_CHAR_TYPE)
+        if (verbose) printf("\n... with 'char8_t'.\n");
+        TestDriver<char8_t>::testCase16();
+#endif
+
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_UNICODE_CHAR_TYPES)
+        if (verbose) printf("\n... with 'char16_t'.\n");
+        TestDriver<char16_t>::testCase16();
+
+        if (verbose) printf("\n... with 'char32_t'.\n");
+        TestDriver<char32_t>::testCase16();
+#endif
       } break;
       case 15: {
         // --------------------------------------------------------------------
@@ -19599,6 +24498,19 @@ int main(int argc, char *argv[])
         if (verbose) printf("\n... with 'wchar_t'.\n");
         TestDriver<wchar_t>::testCase15();
 
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_UTF8_CHAR_TYPE)
+        if (verbose) printf("\n... with 'char8_t'.\n");
+        TestDriver<char8_t>::testCase15();
+#endif
+
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_UNICODE_CHAR_TYPES)
+        if (verbose) printf("\n... with 'char16_t'.\n");
+        TestDriver<char16_t>::testCase15();
+
+        if (verbose) printf("\n... with 'char32_t'.\n");
+        TestDriver<char32_t>::testCase15();
+#endif
+
 #ifdef BDE_BUILD_TARGET_EXC
         if (verbose) printf("\nNegative Testing Element Access"
                             "\n===============================\n");
@@ -19608,6 +24520,19 @@ int main(int argc, char *argv[])
 
         if (verbose) printf("\n... with 'wchar_t'.\n");
         TestDriver<wchar_t>::testCase15Negative();
+
+# if defined(BSLS_COMPILERFEATURES_SUPPORT_UTF8_CHAR_TYPE)
+        if (verbose) printf("\n... with 'char8_t'.\n");
+        TestDriver<char8_t>::testCase15Negative();
+# endif
+
+# if defined(BSLS_COMPILERFEATURES_SUPPORT_UNICODE_CHAR_TYPES)
+        if (verbose) printf("\n... with 'char16_t'.\n");
+        TestDriver<char16_t>::testCase15Negative();
+
+        if (verbose) printf("\n... with 'char32_t'.\n");
+        TestDriver<char32_t>::testCase15Negative();
+# endif
 #endif
 
       } break;
@@ -19636,6 +24561,18 @@ int main(int argc, char *argv[])
         if (verbose) printf("\n... with 'wchar_t'.\n");
         TestDriver<wchar_t>::testCase14();
 
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_UTF8_CHAR_TYPE)
+        if (verbose) printf("\n... with 'char8_t'.\n");
+        TestDriver<char8_t>::testCase14();
+#endif
+
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_UNICODE_CHAR_TYPES)
+        if (verbose) printf("\n... with 'char16_t'.\n");
+        TestDriver<char16_t>::testCase14();
+
+        if (verbose) printf("\n... with 'char32_t'.\n");
+        TestDriver<char32_t>::testCase14();
+#endif
       } break;
       case 13: {
         // --------------------------------------------------------------------
@@ -19650,7 +24587,8 @@ int main(int argc, char *argv[])
         //   basic_string& assign(const basic_string& str, pos, n = npos);
         //   basic_string& assign(const CHAR_TYPE *s, size_type n);
         //   basic_string& assign(const CHAR_TYPE *s);
-        //   basic_string& assign(const StringRefData<CHAR_TYPE>& strRef);
+        //   basic_string& assign(const STRING_VIEW_LIKE_TYPE& s);
+        //   basic_string& assign(const STRING_VIEW_LIKE_TYPE& s, p, n = npos);
         //   basic_string& assign(size_type n, CHAR_TYPE c);
         //   template <class Iter> basic_string& assign(Iter first, Iter last);
         // --------------------------------------------------------------------
@@ -19666,6 +24604,20 @@ int main(int argc, char *argv[])
 
         if (verbose) printf("\n... with 'wchar_t'.\n");
         TestDriver<wchar_t>::testCase13();
+
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_UTF8_CHAR_TYPE)
+        if (verbose) printf("\n... with 'char8_t'.\n");
+        TestDriver<char8_t>::testCase13();
+#endif
+
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_UNICODE_CHAR_TYPES)
+        if (verbose) printf("\n... with 'char16_t'.\n");
+        TestDriver<char16_t>::testCase13();
+
+        if (verbose) printf("\n... with 'char32_t'.\n");
+        TestDriver<char32_t>::testCase13();
+#endif
+
 
         if (verbose) printf("\nTesting Initial-Range Assignment"
                             "\n================================\n");
@@ -19683,8 +24635,8 @@ int main(int argc, char *argv[])
         TestDriver<char>::testCase13Range(CharArray<char>());
 
         if (verbose) printf("\n... with 'char' "
-                            "and StringRefData.\n");
-        TestDriver<char>::testCase13StrRefData();
+                            "and 'StringViewLike' object.\n");
+        TestDriver<char>::testCase13StrViewLike();
 
         if (verbose) printf("\n... with 'wchar_t' "
                             "and arbitrary input iterator.\n");
@@ -19699,8 +24651,61 @@ int main(int argc, char *argv[])
         TestDriver<wchar_t>::testCase13Range(CharArray<wchar_t>());
 
         if (verbose) printf("\n... with 'wchar_t' "
-                            "and StringRefData.\n");
-        TestDriver<wchar_t>::testCase13StrRefData();
+                            "and 'StringViewLike' object.\n");
+        TestDriver<wchar_t>::testCase13StrViewLike();
+
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_UTF8_CHAR_TYPE)
+        if (verbose) printf("\n... with 'char8_t' "
+                            "and arbitrary input iterator.\n");
+        TestDriver<char8_t>::testCase13InputIterator();
+
+        if (verbose) printf("\n... with 'char8_t' "
+                            "and arbitrary forward iterator.\n");
+        TestDriver<char8_t>::testCase13Range(CharList<char8_t>());
+
+        if (verbose) printf("\n... with 'char8_t' "
+                            "and arbitrary random-access iterator.\n");
+        TestDriver<char8_t>::testCase13Range(CharArray<char8_t>());
+
+        if (verbose) printf("\n... with 'char8_t' "
+                            "and 'StringViewLike' object.\n");
+        TestDriver<char8_t>::testCase13StrViewLike();
+#endif
+
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_UNICODE_CHAR_TYPES)
+        if (verbose) printf("\n... with 'char16_t' "
+                            "and arbitrary input iterator.\n");
+        TestDriver<char16_t>::testCase13InputIterator();
+
+        if (verbose) printf("\n... with 'char16_t' "
+                            "and arbitrary forward iterator.\n");
+        TestDriver<char16_t>::testCase13Range(CharList<char16_t>());
+
+        if (verbose) printf("\n... with 'char16_t' "
+                            "and arbitrary random-access iterator.\n");
+        TestDriver<char16_t>::testCase13Range(CharArray<char16_t>());
+
+        if (verbose) printf("\n... with 'char16_t' "
+                            "and 'StringViewLike' object.\n");
+        TestDriver<char16_t>::testCase13StrViewLike();
+
+
+        if (verbose) printf("\n... with 'char32_t' "
+                            "and arbitrary input iterator.\n");
+        TestDriver<char32_t>::testCase13InputIterator();
+
+        if (verbose) printf("\n... with 'char32_t' "
+                            "and arbitrary forward iterator.\n");
+        TestDriver<char32_t>::testCase13Range(CharList<char32_t>());
+
+        if (verbose) printf("\n... with 'char32_t' "
+                            "and arbitrary random-access iterator.\n");
+        TestDriver<char32_t>::testCase13Range(CharArray<char32_t>());
+
+        if (verbose) printf("\n... with 'char32_t' "
+                            "and 'StringViewLike' object.\n");
+        TestDriver<char32_t>::testCase13StrViewLike();
+#endif
 
 #ifdef BDE_BUILD_TARGET_EXC
         if (verbose) printf("\nNegative Testing Assignment"
@@ -19711,8 +24716,20 @@ int main(int argc, char *argv[])
 
         if (verbose) printf("\n... with 'wchar_t'.\n");
         TestDriver<wchar_t>::testCase13Negative();
-#endif
 
+# if defined(BSLS_COMPILERFEATURES_SUPPORT_UTF8_CHAR_TYPE)
+        if (verbose) printf("\n... with 'char8_t'.\n");
+        TestDriver<char8_t>::testCase13Negative();
+# endif
+
+# if defined(BSLS_COMPILERFEATURES_SUPPORT_UNICODE_CHAR_TYPES)
+        if (verbose) printf("\n... with 'char16_t'.\n");
+        TestDriver<char16_t>::testCase13Negative();
+
+        if (verbose) printf("\n... with 'char32_t'.\n");
+        TestDriver<char32_t>::testCase13Negative();
+# endif
+#endif
       } break;
       case 12: {
         // --------------------------------------------------------------------
@@ -19741,6 +24758,21 @@ int main(int argc, char *argv[])
         if (verbose) printf("\n... with 'wchar_t'.\n");
         TestDriver<wchar_t>::testCase12();
 
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_UTF8_CHAR_TYPE)
+        if (verbose) printf("\n... with 'char8_t'.\n");
+        TestDriver<char8_t>::testCase12();
+#endif
+
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_UNICODE_CHAR_TYPES)
+        if (verbose) printf("\n... with 'char16_t'.\n");
+        TestDriver<char16_t>::testCase12();
+
+        if (verbose) printf("\n... with 'char32_t'.\n");
+        TestDriver<char32_t>::testCase12();
+#endif
+
+
+
         if (verbose) printf("\nTesting Initial-Range Constructor"
                             "\n=================================\n");
 
@@ -19760,6 +24792,36 @@ int main(int argc, char *argv[])
                             "and arbitrary random-access iterator.\n");
         TestDriver<wchar_t>::testCase12Range(CharArray<wchar_t>());
 
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_UTF8_CHAR_TYPE)
+        if (verbose) printf("\n... with 'char8_t' "
+                            "and arbitrary input iterator.\n");
+        TestDriver<char8_t>::testCase12Range(CharList<char8_t>());
+
+        if (verbose) printf("\n... with 'char8_t' "
+                            "and arbitrary random-access iterator.\n");
+        TestDriver<char8_t>::testCase12Range(CharArray<char8_t>());
+#endif
+
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_UNICODE_CHAR_TYPES)
+        if (verbose) printf("\n... with 'char16_t' "
+                            "and arbitrary input iterator.\n");
+        TestDriver<char16_t>::testCase12Range(CharList<char16_t>());
+
+        if (verbose) printf("\n... with 'char16_t' "
+                            "and arbitrary random-access iterator.\n");
+        TestDriver<char16_t>::testCase12Range(CharArray<char16_t>());
+
+        if (verbose) printf("\n... with 'char32_t' "
+                            "and arbitrary input iterator.\n");
+        TestDriver<char32_t>::testCase12Range(CharList<char32_t>());
+
+        if (verbose) printf("\n... with 'char32_t' "
+                            "and arbitrary random-access iterator.\n");
+        TestDriver<char32_t>::testCase12Range(CharArray<char32_t>());
+#endif
+
+
+
 #ifdef BDE_BUILD_TARGET_EXC
         if (verbose) printf("\nNegative testing of Constructors"
                             "\n================================\n");
@@ -19769,6 +24831,20 @@ int main(int argc, char *argv[])
 
         if (verbose) printf("\n... with 'wchar_t'.\n");
         TestDriver<wchar_t>::testCase12Negative();
+
+# if defined(BSLS_COMPILERFEATURES_SUPPORT_UTF8_CHAR_TYPE)
+        if (verbose) printf("\n... with 'char8_t'.\n");
+        TestDriver<char8_t>::testCase12Negative();
+# endif
+
+# if defined(BSLS_COMPILERFEATURES_SUPPORT_UNICODE_CHAR_TYPES)
+        if (verbose) printf("\n... with 'char16_t'.\n");
+        TestDriver<char16_t>::testCase12Negative();
+
+        if (verbose) printf("\n... with 'char32_t'.\n");
+        TestDriver<char32_t>::testCase12Negative();
+# endif
+
 #endif
 
       } break;

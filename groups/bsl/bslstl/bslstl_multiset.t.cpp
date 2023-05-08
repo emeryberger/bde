@@ -147,6 +147,8 @@
 // [21] value_compare value_comp() const;
 //
 // multiset operations:
+// [13] bool contains(const key_type& key);
+// [13] bool contains(const LOOKUP_KEY& key);
 // [13] iterator find(const key_type& key);
 // [13] const_iterator find(const key_type& key) const;
 // [13] size_type count(const key_type& key) const;
@@ -163,6 +165,7 @@
 // [19] bool operator> (const multiset& lhs, const multiset& rhs);
 // [19] bool operator>=(const multiset& lhs, const multiset& rhs);
 // [19] bool operator<=(const multiset& lhs, const multiset& rhs);
+// [19] auto operator<=>(const multiset& lhs, const multiset& rhs);
 //
 //// specialized algorithms:
 // [ 8] void swap(multiset& a, multiset& b);
@@ -962,7 +965,8 @@ class TestDriver {
     typedef TestComparatorNonConst<KEY>           NonConstComp;
         // Comparator functor with a non-'const' function call operator.
 
-    typedef bsl::allocator_traits<ALLOC>          AllocatorTraits;
+    typedef bsl::allocator_traits<ALLOC>                AllocatorTraits;
+    typedef typename ALLOC::template rebind<KEY>::other KeyAllocator;
 
     enum AllocCategory { e_BSLMA, e_STDALLOC, e_ADAPTOR, e_STATEFUL };
 
@@ -1900,7 +1904,7 @@ void TestDriver<KEY, COMP, ALLOC>::testCase7()
                         TYPE_ALLOC);
 
     bslma::TestAllocator oa(veryVeryVerbose);
-    bsl::allocator<KEY>  xoa(&oa);
+    KeyAllocator         xoa(&oa);
 
     const TestValues VALUES;
 
@@ -2188,10 +2192,16 @@ void TestDriver<KEY, COMP, ALLOC>::testCase6()
         // Verify that the signatures and return types are standard.
 
         operatorPtr operatorEq = operator==;
-        operatorPtr operatorNe = operator!=;
-
         (void) operatorEq;  // quash potential compiler warnings
+
+#ifdef BSLS_COMPILERFEATURES_SUPPORT_THREE_WAY_COMPARISON
+        (void) [](const Obj& lhs, const Obj& rhs) -> bool {
+            return lhs != rhs;
+        };
+#else
+        operatorPtr operatorNe = operator!=;
         (void) operatorNe;
+#endif
     }
 
     const int NUM_DATA                     = DEFAULT_NUM_DATA;
@@ -2211,7 +2221,7 @@ void TestDriver<KEY, COMP, ALLOC>::testCase6()
             // Ensure an object compares correctly with itself (alias test).
             {
                 bslma::TestAllocator scratch("scratch", veryVeryVeryVerbose);
-                bsl::allocator<KEY>  xscratch(&scratch);
+                KeyAllocator         xscratch(&scratch);
 
                 Obj mX(xscratch); const Obj& X = gg(&mX, SPEC1);
 
@@ -2244,8 +2254,8 @@ void TestDriver<KEY, COMP, ALLOC>::testCase6()
                     bslma::TestAllocator& xa = oax;
                     bslma::TestAllocator& ya = 'a' == CONFIG ? oax : oay;
 
-                    bsl::allocator<KEY> xxa(&xa);
-                    bsl::allocator<KEY> xya(&ya);
+                    KeyAllocator        xxa(&xa);
+                    KeyAllocator        xya(&ya);
 
                     Obj mX(xxa); const Obj& X = gg(&mX, SPEC1);
                     Obj mY(xya); const Obj& Y = gg(&mY, SPEC2);
@@ -2493,7 +2503,7 @@ void TestDriver<KEY, COMP, ALLOC>::testCase3()
                         TYPE_ALLOC);
 
     bslma::TestAllocator oa(veryVeryVerbose);
-    bsl::allocator<KEY>  xoa(&oa);
+    KeyAllocator         xoa(&oa);
 
     if (verbose) printf("\nTesting generator on valid specs.\n");
     {
@@ -2744,7 +2754,7 @@ void TestDriver<KEY, COMP, ALLOC>::testCase2()
             bslma::TestAllocator fa("footprint", veryVeryVeryVerbose);
             bslma::TestAllocator sa("supplied",  veryVeryVeryVerbose);
 
-            bsl::allocator<KEY>  xsa(&sa);
+            KeyAllocator         xsa(&sa);
 
             bslma::DefaultAllocatorGuard dag(&da);
 
@@ -2798,7 +2808,7 @@ void TestDriver<KEY, COMP, ALLOC>::testCase2()
             if (veryVerbose) { printf("\n\tTesting 'insert' (bootstrap).\n"); }
 
             bslma::TestAllocator scratch("scratch", veryVeryVeryVerbose);
-            bsl::allocator<KEY>  xscratch(&scratch);
+            KeyAllocator         xscratch(&scratch);
 
             if (0 < LENGTH) {
                 if (verbose) {

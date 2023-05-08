@@ -21,23 +21,12 @@
 // regions of C++11 code, then this header contains no code and is not
 // '#include'd in the original header.
 //
-// Generated on Thu Mar  3 14:02:24 2022
+// Generated on Mon May  1 17:29:06 2023
 // Command line: sim_cpp11_features.pl bdlb_nullablevalue.h
 
 #ifdef COMPILING_BDLB_NULLABLEVALUE_H
 
 namespace BloombergLP {
-
-#ifdef BSLS_COMPILERFEATURES_SUPPORT_RVALUE_REFERENCES
-    // Declaring rvalue references as 'bslmf::MovableRef<T>' does not work in
-    // some contexts in this file in C++11 and beyond, in those cases the
-    // syntax 'T&&' does.
-
-# define BDLB_NULLABLEVALUE_DEDUCE_MOVABLE_REF(TYPE)  TYPE&&
-#else
-# define BDLB_NULLABLEVALUE_DEDUCE_MOVABLE_REF(TYPE)  bslmf::MovableRef<TYPE>
-#endif
-
 namespace bdlb {
 
 template <class TYPE>
@@ -211,7 +200,7 @@ class NullableValue : public bsl::optional<TYPE> {
                      EnableType>::type = EnableType());             // IMPLICIT
 
     template <class BDE_OTHER_TYPE>
-    NullableValue(BDLB_NULLABLEVALUE_DEDUCE_MOVABLE_REF(
+    NullableValue(BSLMF_MOVABLEREF_DEDUCE(
                                           NullableValue<BDE_OTHER_TYPE>) value,
                   typename bsl::enable_if<
                      bsl::is_convertible<BDE_OTHER_TYPE, TYPE>::value &&
@@ -219,7 +208,7 @@ class NullableValue : public bsl::optional<TYPE> {
                      EnableType>::type = EnableType());             // IMPLICIT
 
     template <class BDE_OTHER_TYPE>
-    NullableValue(BDLB_NULLABLEVALUE_DEDUCE_MOVABLE_REF(
+    NullableValue(BSLMF_MOVABLEREF_DEDUCE(
                                       NullableValue<BDE_OTHER_TYPE>) value,
                   const allocator_type&                              allocator,
                   typename bsl::enable_if<
@@ -228,15 +217,14 @@ class NullableValue : public bsl::optional<TYPE> {
                      EnableType>::type = EnableType());             // IMPLICIT
 
     template <class BDE_OTHER_TYPE>
-    NullableValue(BDLB_NULLABLEVALUE_DEDUCE_MOVABLE_REF(
-                                          bsl::optional<BDE_OTHER_TYPE>) value,
+    NullableValue(BSLMF_MOVABLEREF_DEDUCE(bsl::optional<BDE_OTHER_TYPE>) value,
                   typename bsl::enable_if<
                      bsl::is_convertible<BDE_OTHER_TYPE, TYPE>::value &&
                      !bsl::is_same<bsl::optional<BDE_OTHER_TYPE>, TYPE>::value,
                      EnableType>::type = EnableType());             // IMPLICIT
 
     template <class BDE_OTHER_TYPE>
-    NullableValue(BDLB_NULLABLEVALUE_DEDUCE_MOVABLE_REF(
+    NullableValue(BSLMF_MOVABLEREF_DEDUCE(
                                       bsl::optional<BDE_OTHER_TYPE>) value,
                   const allocator_type&                              allocator,
                   typename bsl::enable_if<
@@ -304,7 +292,7 @@ class NullableValue : public bsl::optional<TYPE> {
 
     template <class BDE_OTHER_TYPE>
     NullableValue<TYPE>& operator=(
-                            BDLB_NULLABLEVALUE_DEDUCE_MOVABLE_REF(
+                            BSLMF_MOVABLEREF_DEDUCE(
                                            NullableValue<BDE_OTHER_TYPE>) rhs);
         // Assign to this object the null value if the specified 'rhs' object
         // is null, and the value of 'rhs.value()' (of 'BDE_OTHER_TYPE')
@@ -325,8 +313,7 @@ class NullableValue : public bsl::optional<TYPE> {
     template <class BDE_OTHER_TYPE>
     typename bsl::enable_if<bsl::is_convertible<BDE_OTHER_TYPE, TYPE>::value,
                             NullableValue<TYPE>&>::type
-    operator=(BDLB_NULLABLEVALUE_DEDUCE_MOVABLE_REF(
-                                           bsl::optional<BDE_OTHER_TYPE>) rhs);
+    operator=(BSLMF_MOVABLEREF_DEDUCE(bsl::optional<BDE_OTHER_TYPE>) rhs);
         // Assign to this object the null value if the specified 'rhs' object
         // is null, and the value of 'rhs.value()' (of 'BDE_OTHER_TYPE')
         // converted to 'TYPE' otherwise.  Return a reference providing
@@ -939,7 +926,7 @@ NullableValue<TYPE>::NullableValue(
 template <class TYPE>
 template <class BDE_OTHER_TYPE>
 inline
-NullableValue<TYPE>::NullableValue(BDLB_NULLABLEVALUE_DEDUCE_MOVABLE_REF(
+NullableValue<TYPE>::NullableValue(BSLMF_MOVABLEREF_DEDUCE(
                                           NullableValue<BDE_OTHER_TYPE>) value,
                   typename bsl::enable_if<
                      bsl::is_convertible<BDE_OTHER_TYPE, TYPE>::value &&
@@ -952,7 +939,7 @@ NullableValue<TYPE>::NullableValue(BDLB_NULLABLEVALUE_DEDUCE_MOVABLE_REF(
 template <class TYPE>
 template <class BDE_OTHER_TYPE>
 inline
-NullableValue<TYPE>::NullableValue(BDLB_NULLABLEVALUE_DEDUCE_MOVABLE_REF(
+NullableValue<TYPE>::NullableValue(BSLMF_MOVABLEREF_DEDUCE(
                                       NullableValue<BDE_OTHER_TYPE>) value,
                   const allocator_type&                              allocator,
                   typename bsl::enable_if<
@@ -969,8 +956,7 @@ template <class TYPE>
 template <class BDE_OTHER_TYPE>
 inline
 NullableValue<TYPE>::NullableValue(
-                  BDLB_NULLABLEVALUE_DEDUCE_MOVABLE_REF(
-                                          bsl::optional<BDE_OTHER_TYPE>) value,
+                  BSLMF_MOVABLEREF_DEDUCE(bsl::optional<BDE_OTHER_TYPE>) value,
                   typename bsl::enable_if<
                      bsl::is_convertible<BDE_OTHER_TYPE, TYPE>::value &&
                      !bsl::is_same<bsl::optional<BDE_OTHER_TYPE>, TYPE>::value,
@@ -982,7 +968,7 @@ template <class TYPE>
 template <class BDE_OTHER_TYPE>
 inline
 NullableValue<TYPE>::NullableValue(
-                  BDLB_NULLABLEVALUE_DEDUCE_MOVABLE_REF(
+                  BSLMF_MOVABLEREF_DEDUCE(
                                       bsl::optional<BDE_OTHER_TYPE>) value,
                   const allocator_type&                              allocator,
                   typename bsl::enable_if<
@@ -1102,7 +1088,7 @@ NullableValue<TYPE>& NullableValue<TYPE>::operator=(
 template <class TYPE>
 template <class BDE_OTHER_TYPE>
 NullableValue<TYPE>& NullableValue<TYPE>::operator=(
-      BDLB_NULLABLEVALUE_DEDUCE_MOVABLE_REF(NullableValue<BDE_OTHER_TYPE>) rhs)
+      BSLMF_MOVABLEREF_DEDUCE(NullableValue<BDE_OTHER_TYPE>) rhs)
 {
     // Constraints on 'bsl::optional' assignment operator may affect the
     // assignment.  In order to avoid changes to behavior, we implement the
@@ -1143,7 +1129,7 @@ template <class BDE_OTHER_TYPE>
 typename bsl::enable_if<bsl::is_convertible<BDE_OTHER_TYPE, TYPE>::value,
                         NullableValue<TYPE>&>::type
 NullableValue<TYPE>::operator=(
-      BDLB_NULLABLEVALUE_DEDUCE_MOVABLE_REF(bsl::optional<BDE_OTHER_TYPE>) rhs)
+      BSLMF_MOVABLEREF_DEDUCE(bsl::optional<BDE_OTHER_TYPE>) rhs)
 {
     Base& base = *this;
 
@@ -1378,9 +1364,13 @@ template <class TYPE>
 inline
 TYPE& NullableValue<TYPE>::value()
 {
+#ifndef BDE_OMIT_INTERNAL_DEPRECATED
     BSLS_REVIEW_OPT(this->has_value());
 
     return this->dereferenceRaw();
+#else
+    return **this;
+#endif
 }
 // ACCESSORS
 template <class TYPE>
@@ -1463,9 +1453,13 @@ template <class TYPE>
 inline
 const TYPE& NullableValue<TYPE>::value() const
 {
+#ifndef BDE_OMIT_INTERNAL_DEPRECATED
     BSLS_REVIEW_OPT(this->has_value());
 
     return this->dereferenceRaw();
+#else
+    return **this;
+#endif
 }
 
 template <class TYPE>
@@ -1870,6 +1864,29 @@ bdlb::swap(NullableValue<TYPE>& lhs, NullableValue<TYPE>& rhs)
 
 }  // close enterprise namespace
 
+#ifdef BSLSTL_OPTIONAL_CPP20_IS_OPTIONAL_GNU_WORKAROUND_NEEDED
+// This hack works around a bug in gcc's defintion for is-optional.  See
+// bslstl_optional.h for more information.
+
+namespace std {
+template <typename _Tp>
+inline constexpr bool __is_optional_v<BloombergLP::bdlb::NullableValue<_Tp>> =
+    true;
+}
+#endif // BSLSTL_OPTIONAL_CPP20_IS_OPTIONAL_GNU_WORKAROUND_NEEDED
+
+#ifdef BSLSTL_OPTIONAL_CPP20_IS_OPTIONAL_MSVC_WORKAROUND_NEEDED
+// This hack works around a bug in MSVC's C++20 defintion for is-optional. See
+// bslstl_optional.h for more information.
+
+namespace std {
+template <typename _Tp>
+inline
+constexpr bool _Is_specialization_v<BloombergLP::bdlb::NullableValue<_Tp>,
+                                    std::optional> = true;
+}
+#endif  // BSLSTL_OPTIONAL_CPP20_IS_OPTIONAL_MSVC_WORKAROUND_NEEDED
+
 #else // if ! defined(DEFINED_BDLB_NULLABLEVALUE_H)
 # error Not valid except when included from bdlb_nullablevalue.h
 #endif // ! defined(COMPILING_BDLB_NULLABLEVALUE_H)
@@ -1877,7 +1894,7 @@ bdlb::swap(NullableValue<TYPE>& lhs, NullableValue<TYPE>& rhs)
 #endif // ! defined(INCLUDED_BDLB_NULLABLEVALUE_CPP03)
 
 // ----------------------------------------------------------------------------
-// Copyright 2022 Bloomberg Finance L.P.
+// Copyright 2023 Bloomberg Finance L.P.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.

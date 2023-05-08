@@ -15,11 +15,14 @@
   <xs:include schemaLocation='s_baltst_featuretestmessage.xsd'/>
   <xs:include schemaLocation='s_baltst_mychoice.xsd'/>
   <xs:include schemaLocation='s_baltst_myenumeration.xsd'/>
+  <xs:include schemaLocation='s_baltst_myenumerationwithfallback.xsd'/>
   <xs:include schemaLocation='s_baltst_mysequence.xsd'/>
   <xs:include schemaLocation='s_baltst_mysequencewithanonymouschoice.xsd'/>
   <xs:include schemaLocation='s_baltst_mysequencewitharray.xsd'/>
   <xs:include schemaLocation='s_baltst_mysequencewithattributes.xsd'/>
   <xs:include schemaLocation='s_baltst_mysequencewithchoice.xsd'/>
+  <xs:include schemaLocation='s_baltst_mysequencewithchoicearray.xsd'/>
+  <xs:include schemaLocation='s_baltst_mysequencewithchoices.xsd'/>
   <xs:include schemaLocation='s_baltst_mysequencewithdecimalattribute.xsd'/>
   <xs:include schemaLocation='s_baltst_mysequencewithdoubleattribute.xsd'/>
   <xs:include schemaLocation='s_baltst_mysequencewithnillable.xsd'/>
@@ -65,6 +68,8 @@
               type='MyChoice'/>
   <xs:element name='MyEnumeration'
               type='MyEnumeration'/>
+  <xs:element name='MyEnumerationWithFallback'
+              type='MyEnumerationWithFallback'/>
   <xs:element name='MySequence'
               type='MySequence'/>
   <xs:element name='MySequenceWithAnonymousChoice'
@@ -75,6 +80,10 @@
               type='MySequenceWithAttributes'/>
   <xs:element name='MySequenceWithChoice'
               type='MySequenceWithChoice'/>
+  <xs:element name='MySequenceWithChoiceArray'
+              type='MySequenceWithChoiceArray'/>
+  <xs:element name='MySequenceWithChoices'
+              type='MySequenceWithChoices'/>
   <xs:element name='MySequenceWithDecimalAttribute'
               type='MySequenceWithDecimalAttribute'/>
   <xs:element name='MySequenceWithDoubleAttribute'

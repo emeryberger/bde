@@ -174,7 +174,7 @@ void aSsErT(bool condition, const char *message, int line)
 
 #if defined(BSLS_LIBRARYFEATURES_HAS_CPP17_BOOL_CONSTANT)
 # define DECLARE_BOOL_CONSTANT(NAME, EXPRESSION)                              \
-    BSLS_KEYWORD_CONSTEXPR_MEMBER bsl::bool_constant<EXPRESSION> NAME{}
+    const BSLS_KEYWORD_CONSTEXPR bsl::bool_constant<EXPRESSION> NAME{}
     // This leading branch is the preferred version for C++17, but the feature
     // test macro is (currently) for documentation purposes only, and never
     // defined.  This is the ideal (simplest) form for such declarations:
@@ -361,7 +361,7 @@ class TestDriver {
                    bslma::Allocator *basicAllocator,
                    int               verbose = 1);
         // Construct the specified 'object' according to the specified 'spec',
-        // using the specified 'basicAllocator' to supply memeory.  Optionally
+        // using the specified 'basicAllocator' to supply memory.  Optionally
         // specify a zero 'verbose' to suppress 'spec' syntax error messages.
         // Return the index of the first invalid character, and a negative
         // value otherwise.  Note that this function is used to implement 'gg'

@@ -28,6 +28,9 @@ struct TestDriver2 : TestSupport<TYPE, ALLOC> {
     static void testCase21();
         // Test free comparison operators.
 
+    static void testCase20_swap_noexcept();
+        // Test noexcept specification of 'swap'.
+
     static void testCase20_dispatch();
         // Test 'swap' member.
 
@@ -607,7 +610,8 @@ void TestDriver2<TYPE,ALLOC>::testCase21()
     //   1) 'operator<' returns the lexicographic comparison on two arrays.
     //   2) 'operator>', 'operator<=', and 'operator>=' are correctly tied to
     //      'operator<'.
-    //   3) That traits get selected properly.
+    //   3) 'operator<=>' is consistent with '<', '>', '<=', '>='.
+    //   4) That traits get selected properly.
     //
     // Plan:
     //   For a variety of 'deque's of different sizes and different values,
@@ -620,6 +624,7 @@ void TestDriver2<TYPE,ALLOC>::testCase21()
     //   bool operator> (const deque& lhs, const deque& rhs);
     //   bool operator<=(const deque& lhs, const deque& rhs);
     //   bool operator>=(const deque& lhs, const deque& rhs);
+    //   auto operator<=>(const deque& lhs, const deque& rhs);
     // ------------------------------------------------------------------------
 
     static const char *SPECS[] = {
@@ -709,9 +714,47 @@ void TestDriver2<TYPE,ALLOC>::testCase21()
                 LOOP2_ASSERT(si, sj, !isLessEq == (U > V));
                 LOOP2_ASSERT(si, sj,  isLessEq == (U <= V));
                 LOOP2_ASSERT(si, sj, !isLess   == (U >= V));
+#ifdef BSLALG_SYNTHTHREEWAYUTIL_AVAILABLE
+                const auto cmp = U <=> V;
+                LOOP2_ASSERT(si, sj,  isLess   == (cmp < 0));
+                LOOP2_ASSERT(si, sj, !isLessEq == (cmp > 0));
+                LOOP2_ASSERT(si, sj,  isLessEq == (cmp <= 0));
+                LOOP2_ASSERT(si, sj, !isLess   == (cmp >= 0));
+#endif
             }
         }
     }
+}
+
+template <class TYPE, class ALLOC>
+void TestDriver2<TYPE,ALLOC>::testCase20_swap_noexcept()
+{
+    // ------------------------------------------------------------------------
+    // SWAP MEMBER AND FREE FUNCTIONS: NOEXCEPT SPECIFICATIONS
+    //
+    // Concerns:
+    //: 1 If 'allocator_traits<Allocator>::is_always_equal::value' is
+    //:   true, the 'swap' functions are 'noexcept(true)'.
+    //
+    // Plan:
+    //: 1 Compare the value of the trait with the member 'swap' function
+    //:   noexcept specification.
+    //:
+    //: 2 Compare the value of the trait with the free 'swap' function noexcept
+    //:   specification.
+    //
+    // Testing:
+    //   deque::swap()
+    //   swap(deque& , deque& )
+    // ------------------------------------------------------------------------
+
+#if BSLS_KEYWORD_NOEXCEPT_AVAILABLE
+    bsl::deque<TYPE, ALLOC> a, b;
+
+    const bool isNoexcept = AllocatorTraits::is_always_equal::value;
+    ASSERT(isNoexcept == BSLS_KEYWORD_NOEXCEPT_OPERATOR(a.swap(b)));
+    ASSERT(isNoexcept == BSLS_KEYWORD_NOEXCEPT_OPERATOR(swap(a,b)));
+#endif
 }
 
 template <class TYPE, class ALLOC>
@@ -750,6 +793,9 @@ void TestDriver2<TYPE,ALLOC>::testCase20_dispatch()
     //:
     //: 8 The free 'swap' function is discoverable through ADL (Argument
     //:   Dependent Lookup).
+    //:
+    //: 9 If 'allocator_traits<Allocator>::is_always_equal::value' is
+    //:   true, the 'swap' functions are 'noexcept(true)'.
     //
     // Plan:
     //: 1 Use the addresses of the 'swap' member and free functions defined
@@ -904,10 +950,13 @@ void TestDriver2<TYPE,ALLOC>::testCase20_dispatch()
     //:     1 The values have been exchanged.  (C-1)
     //:
     //:     2 There was no additional object memory allocation.  (C-4)
+    //:
+    //: 6 To address concern 9 pass allocators with both 'is_always_equal'
+    //:   values (true & false).
     //
     // Testing:
-    //   void swap(multiset& other);
-    //   void swap(multiset<K, C, A>& a, multiset<K, C, A>& b);
+    //   void swap(deque& other);
+    //   void swap(deque& a, deque& b);
     // ------------------------------------------------------------------------
 
     // Since this function is called with a variety of template arguments, it
@@ -1151,6 +1200,9 @@ void TestDriver2<TYPE,ALLOC>::testCase20_dispatch()
     }
 
     ASSERTV(e_STATEFUL == s_allocCategory || 0 == doa.numBlocksTotal());
+
+    // Test noexcept specifications of the 'swap' functions.
+    testCase20_swap_noexcept();
 }
 
 template <class TYPE, class ALLOC>
@@ -4699,6 +4751,9 @@ void MetaTestDriver2<TYPE>::testCase20()
     TestDriver2<TYPE, A10>::testCase20_dispatch();
     TestDriver2<TYPE, A11>::testCase20_dispatch();
 #endif
+
+    // is_always_equal == true
+    TestDriver2<TYPE, StatelessAllocator<TYPE> >::testCase20_swap_noexcept();
 }
 
 // ============================================================================
@@ -4746,6 +4801,7 @@ int main(int argc, char *argv[])
         //   bool operator> (const deque& lhs, const deque& rhs);
         //   bool operator<=(const deque& lhs, const deque& rhs);
         //   bool operator>=(const deque& lhs, const deque& rhs);
+        //   auto operator<=>(const deque& lhs, const deque& rhs);
         // --------------------------------------------------------------------
 
         if (verbose) printf("TESTING FREE COMPARISON OPERATORS\n"
@@ -5006,6 +5062,24 @@ int main(int argc, char *argv[])
         typedef bsltf::StdAllocTestType<bsl::allocator<int> > AllocInt;
         StdBslmaTestDriver2<AllocInt>::testCase13();
 
+        if (verbose) printf("\nTesting default-insertable type support"
+                            "\n========================================\n");
+
+        bsl::deque<NonCopyableType> mX;
+        ASSERT(mX.empty());
+
+        mX.resize(10); // grow
+        ASSERT(mX.size() == 10);
+        // Every element is value-initialized
+        for(bsl::deque<NonCopyableType>::iterator it =  mX.begin();
+                                                  it != mX.end();
+                                                  ++it) {
+            ASSERT(*it == NonCopyableType());
+        }
+
+        mX.resize(1); // shorten
+        ASSERT(mX.size() == 1);
+        ASSERT(mX.front() == NonCopyableType());
       } break;
       case 12: {
         // --------------------------------------------------------------------
@@ -5092,6 +5166,18 @@ int main(int argc, char *argv[])
 
         typedef bsltf::StdAllocTestType<bsl::allocator<int> > AllocInt;
         StdBslmaTestDriver2<AllocInt>::testCase11();
+
+        if (verbose) printf("\nTesting default-insertable type support"
+                            "\n========================================\n");
+
+        bsl::deque<NonCopyableType> mX(5);
+        ASSERT(mX.size() == 5);
+        // Every element is value-initialized
+        for(bsl::deque<NonCopyableType>::iterator it =  mX.begin();
+                                                  it != mX.end();
+                                                  ++it) {
+            ASSERT(*it == NonCopyableType());
+        }
 
         if (verbose) printf("\nTesting Initial-Range Constructor"
                             "\n=================================\n");

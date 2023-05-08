@@ -21,7 +21,7 @@
 // regions of C++11 code, then this header contains no code and is not
 // '#include'd in the original header.
 //
-// Generated on Wed Sep 21 17:14:49 2022
+// Generated on Tue Apr 11 12:04:50 2023
 // Command line: sim_cpp11_features.pl bslstl_multimap.h
 
 #ifdef COMPILING_BSLSTL_MULTIMAP_H
@@ -417,7 +417,9 @@ class multimap {
         // 'VALUE'}).
 
     multimap& operator=(BloombergLP::bslmf::MovableRef<multimap> rhs)
-             BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(false);
+        BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(
+                           AllocatorTraits::is_always_equal::value &&
+                           std::is_nothrow_move_assignable<COMPARATOR>::value);
         // Assign to this object the value and comparator of the specified
         // 'rhs' object, propagate to this object the allocator of 'rhs' if the
         // 'ALLOCATOR' type has trait 'propagate_on_container_move_assignment',
@@ -676,8 +678,9 @@ class multimap {
         // the 'end' iterator, and the 'first' position is at or before the
         // 'last' position in the ordered sequence provided by this container.
 
-    void swap(multimap& other)
-             BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(false);
+    void swap(multimap& other) BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(
+                                 AllocatorTraits::is_always_equal::value &&
+                                 bsl::is_nothrow_swappable<COMPARATOR>::value);
         // Exchange the value and comparator of this object with those of the
         // specified 'other' object; also exchange the allocator of this object
         // with that of 'other' if the (template parameter) type 'ALLOCATOR'
@@ -905,6 +908,24 @@ class multimap {
         // Return a reverse iterator providing non-modifiable access to the
         // prior-to-the-beginning element in the ordered sequence of
         // 'value_type' objects maintained by this multimap.
+
+    bool contains(const key_type &key) const;
+        // Return 'true' if this multimap contains an element whose key is
+        // equivalent to the specified 'key'.
+
+    template <class LOOKUP_KEY>
+    typename bsl::enable_if<
+        BloombergLP::bslmf::IsTransparentPredicate<COMPARATOR,
+                                                   LOOKUP_KEY>::value,
+        bool>::type
+    contains(const LOOKUP_KEY& key) const
+        // Return 'true' if this multimap contains an element whose key is
+        // equivalent to the specified 'key'.
+        //
+        // Note: implemented inline due to Sun CC compilation error
+    {
+        return find(key) != end();
+    }
 
     bool empty() const BSLS_KEYWORD_NOEXCEPT;
         // Return 'true' if this multimap contains no elements, and 'false'
@@ -1283,6 +1304,7 @@ bool operator==(const multimap<KEY, VALUE, COMPARATOR, ALLOCATOR>& lhs,
     // parameter) types 'KEY' and 'VALUE' both be 'equality-comparable' (see
     // {Requirements on 'KEY' and 'VALUE'}).
 
+#ifndef BSLS_COMPILERFEATURES_SUPPORT_THREE_WAY_COMPARISON
 template <class KEY, class VALUE, class COMPARATOR, class ALLOCATOR>
 bool operator!=(const multimap<KEY, VALUE, COMPARATOR, ALLOCATOR>& lhs,
                 const multimap<KEY, VALUE, COMPARATOR, ALLOCATOR>& rhs);
@@ -1294,6 +1316,20 @@ bool operator!=(const multimap<KEY, VALUE, COMPARATOR, ALLOCATOR>& lhs,
     // in the ordered sequence of key-value pairs of 'rhs'.  This method
     // requires that the (template parameter) types 'KEY' and 'VALUE' both be
     // 'equality-comparable' (see {Requirements on 'KEY' and 'VALUE'}).
+#endif
+
+#ifdef BSLALG_SYNTHTHREEWAYUTIL_AVAILABLE
+
+template <class KEY, class VALUE, class COMPARATOR, class ALLOCATOR>
+BloombergLP::bslalg::SynthThreeWayUtil::Result<pair<const KEY, VALUE>>
+operator<=>(const multimap<KEY, VALUE, COMPARATOR, ALLOCATOR>& lhs,
+            const multimap<KEY, VALUE, COMPARATOR, ALLOCATOR>& rhs);
+    // Perform a lexicographic three-way comparison of the specified 'lhs' and
+    // the specified 'rhs' maps by using the comparison operators of
+    // 'bsl::pair<const KEY, VALUE>' on each element; return the result of that
+    // comparison.
+
+#else
 
 template <class KEY, class VALUE, class COMPARATOR, class ALLOCATOR>
 bool operator<(const multimap<KEY, VALUE, COMPARATOR, ALLOCATOR>& lhs,
@@ -1342,6 +1378,8 @@ bool operator>=(const multimap<KEY, VALUE, COMPARATOR, ALLOCATOR>& lhs,
     // 'lhs' is not lexicographically less than 'rhs' (see 'operator<').  This
     // method requires that 'operator<', inducing a total order, be defined for
     // 'value_type'.  Note that this operator returns '!(lhs < rhs)'.
+
+#endif  // BSLALG_SYNTHTHREEWAYUTIL_AVAILABLE
 
 // FREE FUNCTIONS
 template <class KEY, class VALUE, class COMPARATOR, class ALLOCATOR>
@@ -1752,7 +1790,9 @@ inline
 multimap<KEY, VALUE, COMPARATOR, ALLOCATOR>&
 multimap<KEY, VALUE, COMPARATOR, ALLOCATOR>::operator=(
                                   BloombergLP::bslmf::MovableRef<multimap> rhs)
-              BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(false)
+    BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(
+                            AllocatorTraits::is_always_equal::value &&
+                            std::is_nothrow_move_assignable<COMPARATOR>::value)
 {
     multimap& lvalue = rhs;
 
@@ -2238,7 +2278,9 @@ multimap<KEY, VALUE, COMPARATOR, ALLOCATOR>::erase(const_iterator first,
 template <class KEY, class VALUE, class COMPARATOR, class ALLOCATOR>
 inline
 void multimap<KEY, VALUE, COMPARATOR, ALLOCATOR>::swap(multimap& other)
-              BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(false)
+    BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(
+                                  AllocatorTraits::is_always_equal::value &&
+                                  bsl::is_nothrow_swappable<COMPARATOR>::value)
 {
     if (AllocatorTraits::propagate_on_container_swap::value) {
         quickSwapExchangeAllocators(other);
@@ -2366,6 +2408,14 @@ multimap<KEY, VALUE, COMPARATOR, ALLOCATOR>::crend() const
     return const_reverse_iterator(begin());
 }
 
+template <class KEY, class VALUE, class COMPARATOR, class ALLOCATOR>
+inline
+bool multimap<KEY, VALUE, COMPARATOR, ALLOCATOR>::contains(
+                                                     const key_type& key) const
+{
+    return find(key) != end();
+}
+
 // capacity:
 template <class KEY, class VALUE, class COMPARATOR, class ALLOCATOR>
 inline
@@ -2425,6 +2475,7 @@ bool bsl::operator==(
                                                     rhs.size());
 }
 
+#ifndef BSLS_COMPILERFEATURES_SUPPORT_THREE_WAY_COMPARISON
 template <class KEY, class VALUE, class COMPARATOR, class ALLOCATOR>
 inline
 bool bsl::operator!=(
@@ -2433,6 +2484,25 @@ bool bsl::operator!=(
 {
     return !(lhs == rhs);
 }
+#endif
+
+#ifdef BSLALG_SYNTHTHREEWAYUTIL_AVAILABLE
+
+template <class KEY, class VALUE, class COMPARATOR, class ALLOCATOR>
+inline
+BloombergLP::bslalg::SynthThreeWayUtil::Result<bsl::pair<const KEY, VALUE>>
+bsl::operator<=>(const multimap<KEY, VALUE, COMPARATOR, ALLOCATOR>& lhs,
+                 const multimap<KEY, VALUE, COMPARATOR, ALLOCATOR>& rhs)
+{
+    return bsl::lexicographical_compare_three_way(
+                              lhs.begin(),
+                              lhs.end(),
+                              rhs.begin(),
+                              rhs.end(),
+                              BloombergLP::bslalg::SynthThreeWayUtil::compare);
+}
+
+#else
 
 template <class KEY, class VALUE, class COMPARATOR, class ALLOCATOR>
 inline
@@ -2475,6 +2545,8 @@ bool bsl::operator>=(
 {
     return !(lhs < rhs);
 }
+
+#endif  // BSLALG_SYNTHTHREEWAYUTIL_AVAILABLE
 
 // FREE FUNCTIONS
 template <class KEY, class VALUE, class COMPARATOR, class ALLOCATOR>
@@ -2525,7 +2597,7 @@ struct UsesBslmaAllocator<bsl::multimap<KEY, VALUE, COMPARATOR, ALLOCATOR> >
 #endif // ! defined(INCLUDED_BSLSTL_MULTIMAP_CPP03)
 
 // ----------------------------------------------------------------------------
-// Copyright 2022 Bloomberg Finance L.P.
+// Copyright 2023 Bloomberg Finance L.P.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.

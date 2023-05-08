@@ -158,19 +158,25 @@ BSLS_IDENT("$Id: $")
 
 #include <bslscm_version.h>
 
+#include <bslstl_algorithm.h>
 #include <bslstl_iterator.h>
 #include <bslstl_stdexceptutil.h>
 
+#include <bslalg_arrayprimitives.h>
 #include <bslalg_rangecompare.h>
+#include <bslalg_synththreewayutil.h>
 #include <bslalg_hasstliterators.h>
 
 #include <bslh_hash.h>
+
+#include <bslma_default.h>
 
 #include <bslmf_assert.h>
 #include <bslmf_enableif.h>
 #include <bslmf_isnothrowswappable.h>
 #include <bslmf_issame.h>
 #include <bslmf_movableref.h>
+#include <bslmf_removecv.h>
 
 #include <bsls_assert.h>
 #include <bsls_compilerfeatures.h>
@@ -194,6 +200,24 @@ BSLS_IDENT("$Id: $")
 #include <bsls_nativestd.h>
 #endif // BDE_DONT_ALLOW_TRANSITIVE_INCLUDES
 
+#ifndef BDE_DISABLE_CPP17_ABI
+#ifdef BSLS_LIBRARYFEATURES_HAS_CPP17_BASELINE_LIBRARY
+
+#include <array>  // 'std::array'
+#include <tuple>  // 'std::get'
+
+namespace bsl {
+using std::array;
+using std::get;
+}  // close namespace bsl
+
+#define BSLSTL_ARRAY_IS_ALIASED
+#endif  // BSLS_LIBRARYFEATURES_HAS_CPP17_BASELINE_LIBRARY
+#endif  // BDE_DISABLE_CPP17_ABI
+
+
+#ifndef BSLSTL_ARRAY_IS_ALIASED
+
 // DEFECT DETECTION MACROS
 
 #if defined(BSLS_COMPILERFEATURES_SUPPORT_CONSTEXPR_CPP14)                    \
@@ -209,9 +233,7 @@ BSLS_IDENT("$Id: $")
 # define BSLSTL_ARRAY_DISABLE_CONSTEXPR_CONTRACTS       1
 #endif
 
-
 namespace bsl {
-
                                 // ===========
                                 // class array
                                 // ===========
@@ -423,6 +445,8 @@ bool operator==(const array<VALUE_TYPE, SIZE>& lhs,
     // element has the same value as the corresponding element in the other
     // array.
 
+#ifndef BSLS_COMPILERFEATURES_SUPPORT_THREE_WAY_COMPARISON
+
 template <class VALUE_TYPE, size_t SIZE>
 bool operator!=(const array<VALUE_TYPE, SIZE>& lhs,
                 const array<VALUE_TYPE, SIZE>& rhs);
@@ -431,6 +455,20 @@ bool operator!=(const array<VALUE_TYPE, SIZE>& lhs,
     // same value if some element in the ordered sequence of elements of 'lhs'
     // does not have the same value as the corresponding element in the ordered
     // sequence of elements of 'rhs'.
+
+#endif  // BSLS_COMPILERFEATURES_SUPPORT_THREE_WAY_COMPARISON
+
+#ifdef BSLALG_SYNTHTHREEWAYUTIL_AVAILABLE
+
+template <class VALUE_TYPE, size_t SIZE>
+BloombergLP::bslalg::SynthThreeWayUtil::Result<VALUE_TYPE> operator<=>(
+                                           const array<VALUE_TYPE, SIZE>& lhs,
+                                           const array<VALUE_TYPE, SIZE>& rhs);
+    // Perform a lexicographic three-way comparison of the specified 'lhs' and
+    // the specified 'rhs' arrays by using the comparison operators of
+    // 'VALUE_TYPE' on each element; return the result of that comparison.
+
+#else
 
 template <class VALUE_TYPE, size_t SIZE>
 bool operator<(const array<VALUE_TYPE, SIZE>& lhs,
@@ -459,6 +497,8 @@ bool operator>=(const array<VALUE_TYPE, SIZE>& lhs,
     // Return 'true' if the specified 'lhs' is lexicographically greater than
     // the specified 'rhs' by using the comparison operators of 'VALUE_TYPE' on
     // each element or if 'lhs' and 'rhs' are equal; return 'false' otherwise.
+
+#endif  // BSLALG_SYNTHTHREEWAYUTIL_AVAILABLE
 
 // FREE FUNCTIONS
 template <class VALUE_TYPE, size_t SIZE>
@@ -553,18 +593,50 @@ struct tuple_size<bsl::array<TYPE, SIZE> > : integral_constant<size_t, SIZE>
 }  // close namespace std
 
 #endif  // BSLS_LIBRARYFEATURES_HAS_CPP11_TUPLE
+#endif  // !BSLSTL_ARRAY_IS_ALIASED
 
-namespace bsl {
+#ifdef BSLSTL_ARRAY_IS_ALIASED
+namespace BloombergLP {
+namespace bslh {
+
+// HASH SPECIALIZATIONS
+template <class HASH_ALGORITHM, class TYPE, size_t SIZE>
+void hashAppend(HASH_ALGORITHM&               hashAlgorithm,
+                const std::array<TYPE, SIZE>& input);
+    // Pass the specified 'input' to the specified 'hashAlgorithm' hashing
+    // algorithm of the (template parameter) type 'HASH_ALGORITHM'.  Note that
+    // this function violates the BDE coding standard, adding a function for a
+    // namespace for a different package, and none of the function parameters
+    // are from this package either.  This is necessary in order to provide an
+    // implementation of 'bslh::hashAppend' for the (native) standard library
+    // 'array' type as we are not allowed to add overloads directly into
+    // namespace 'std', and this component essentially provides the interface
+    // between 'bsl' and 'std' array types.
+
+}  // close namespace bslh
+}  // close enterprise namespace
+
+#endif  // BSLSTL_ARRAY_IS_ALIASED
 
 // ============================================================================
 //                  TEMPLATE AND INLINE FUNCTION DEFINITIONS
 // ============================================================================
 
+#ifndef BSLSTL_ARRAY_IS_ALIASED
+
+namespace bsl {
                                 // -----------
                                 // class array
                                 // -----------
 
 // MANIPULATORS
+
+// suppress comparison of 'unsigned' expression is always false warnings
+#ifdef BSLS_PLATFORM_HAS_PRAGMA_GCC_DIAGNOSTIC
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wtype-limits"
+#endif
+
 template <class VALUE_TYPE, size_t SIZE>
 void array<VALUE_TYPE, SIZE>::fill(const VALUE_TYPE& value)
 {
@@ -583,6 +655,11 @@ void array<VALUE_TYPE, SIZE>::swap(array<VALUE_TYPE, SIZE>& rhs)
         swap(d_data[i], rhs.d_data[i]);
     }
 }
+
+// suppress comparison of 'unsigned' expression is always false warnings
+#ifdef BSLS_PLATFORM_HAS_PRAGMA_GCC_DIAGNOSTIC
+#pragma GCC diagnostic pop
+#endif
 
 // ACCESSORS
 template <class VALUE_TYPE, size_t SIZE>
@@ -806,6 +883,13 @@ array<VALUE_TYPE, SIZE>::data() const BSLS_KEYWORD_NOEXCEPT
 }
 
 // HASH SPECIALIZATIONS
+
+// suppress comparison of 'unsigned' expression is always false warnings
+#ifdef BSLS_PLATFORM_HAS_PRAGMA_GCC_DIAGNOSTIC
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wtype-limits"
+#endif
+
 template <class HASH_ALGORITHM, class TYPE, size_t SIZE>
 void hashAppend(HASH_ALGORITHM& hashAlgorithm, const array<TYPE, SIZE>& input)
 {
@@ -818,6 +902,10 @@ void hashAppend(HASH_ALGORITHM& hashAlgorithm, const array<TYPE, SIZE>& input)
     }
 }
 
+// suppress comparison of 'unsigned' expression is always false warnings
+#ifdef BSLS_PLATFORM_HAS_PRAGMA_GCC_DIAGNOSTIC
+#pragma GCC diagnostic pop
+#endif
 }  // close namespace bsl
 
 // FREE OPERATORS
@@ -833,12 +921,33 @@ bool bsl::operator==(const array<VALUE_TYPE, SIZE>& lhs,
                                                     rhs.size());
 }
 
+#ifndef BSLS_COMPILERFEATURES_SUPPORT_THREE_WAY_COMPARISON
+
 template <class VALUE_TYPE, size_t SIZE>
 bool bsl::operator!=(const array<VALUE_TYPE, SIZE>& lhs,
                      const array<VALUE_TYPE, SIZE>& rhs)
 {
     return !(lhs == rhs);
 }
+
+#endif  // BSLS_COMPILERFEATURES_SUPPORT_THREE_WAY_COMPARISON
+
+#ifdef BSLALG_SYNTHTHREEWAYUTIL_AVAILABLE
+
+template <class VALUE_TYPE, size_t SIZE>
+BloombergLP::bslalg::SynthThreeWayUtil::Result<VALUE_TYPE> bsl::operator<=>(
+                                            const array<VALUE_TYPE, SIZE>& lhs,
+                                            const array<VALUE_TYPE, SIZE>& rhs)
+{
+    return bsl::lexicographical_compare_three_way(
+                              lhs.begin(),
+                              lhs.end(),
+                              rhs.begin(),
+                              rhs.end(),
+                              BloombergLP::bslalg::SynthThreeWayUtil::compare);
+}
+
+#else
 
 template <class VALUE_TYPE, size_t SIZE>
 bool bsl::operator<(const array<VALUE_TYPE, SIZE>& lhs,
@@ -872,6 +981,8 @@ bool bsl::operator>=(const array<VALUE_TYPE, SIZE>& lhs,
 {
     return !(lhs < rhs);
 }
+
+#endif  // BSLALG_SYNTHTHREEWAYUTIL_AVAILABLE
 
 // FREE FUNCTIONS
 template <class VALUE_TYPE, size_t SIZE>
@@ -910,6 +1021,168 @@ const TYPE&& bsl::get(const array<TYPE, SIZE>&& a) BSLS_KEYWORD_NOEXCEPT
 }
 #endif  // BSLS_COMPILERFEATURES_SUPPORT_RVALUE_REFERENCES
 
+
+#endif  // !BSLSTL_ARRAY_IS_ALIASED
+
+#ifdef BSLSTL_ARRAY_IS_ALIASED
+namespace BloombergLP {
+namespace bslh {
+
+// HASH SPECIALIZATIONS
+template <class HASH_ALGORITHM, class TYPE, size_t SIZE>
+void hashAppend(HASH_ALGORITHM&               hashAlgorithm,
+                const std::array<TYPE, SIZE>& input)
+{
+    using ::BloombergLP::bslh::hashAppend;
+
+    hashAppend(hashAlgorithm, SIZE);
+    if BSLS_KEYWORD_CONSTEXPR_CPP17 (SIZE > 0) {
+        for (size_t i = 0; i < SIZE; ++i) {
+            hashAppend(hashAlgorithm, input[i]);
+        }
+    }
+}
+
+}  // close namespace bslh
+}  // close enterprise namespace
+
+#endif  // BSLSTL_ARRAY_IS_ALIASED
+
+#if defined(BSLSTL_ARRAY_IS_ALIASED) \
+ && defined(BSLS_LIBRARYFEATURES_HAS_CPP20_BASELINE_LIBRARY)
+namespace bsl {
+using std::to_array;
+}  // close namespace bsl
+#else
+namespace bsl {
+
+// FREE FUNCTIONS
+template< class TYPE, std::size_t SIZE >
+BSLS_KEYWORD_CONSTEXPR_CPP14
+array<typename remove_cv<TYPE>::type, SIZE> to_array( TYPE (&src)[SIZE] );
+    // Creates an 'array' from the specified 'src' one-dimensional built-in
+    // array by copying the corresponding elements.  The template parameter
+    // 'TYPE' shall not itself be a built-in array.  Note that 'TYPE' must
+    // be 'CopyConstructible' and, in C++ versions prior to C++14, must also
+    // be 'DefaultConstructible'.
+
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_RVALUE_REFERENCES)
+template< class TYPE, std::size_t SIZE >
+BSLS_KEYWORD_CONSTEXPR_CPP14
+array<typename remove_cv<TYPE>::type, SIZE> to_array( TYPE (&&src)[SIZE] );
+    // Creates an 'array' from the specified 'src' one-dimensional built-in
+    // array by moving the corresponding elements.  The template parameter
+    // 'TYPE' shall not itself be a built-in array.  Note that 'TYPE' must
+    // be 'MoveConstructible' and, in C++ versions prior to C++14, must also
+    // be 'DefaultConstructible'.
+
+#endif  // BSLSTL_ARRAY_IS_ALIASED &&
+        // BSLS_LIBRARYFEATURES_HAS_CPP20_BASELINE_LIBRARY
+
+}  // close namespace bsl
+
+// FREE FUNCTIONS
+
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_VARIADIC_TEMPLATES) \
+ && defined(BSLS_COMPILERFEATURES_SUPPORT_VARIABLE_TEMPLATES)
+namespace BloombergLP {
+namespace bslstl_to_array_impl {
+
+template <class TYPE, std::size_t SIZE, std::size_t... INDICES>
+inline
+BSLS_KEYWORD_CONSTEXPR_CPP14 bsl::array<bsl::remove_cv_t<TYPE>, SIZE>
+to_array_lvalue_builder(TYPE (&src)[SIZE], std::index_sequence<INDICES...>)
+    // This implementation detail function copy constructs a 'bsl::array' from
+    // the specified 'src' argument.
+{
+    return {{src[INDICES]...}};
+}
+
+template <class TYPE, std::size_t SIZE, std::size_t... INDICES>
+inline
+BSLS_KEYWORD_CONSTEXPR_CPP14 bsl::array<bsl::remove_cv_t<TYPE>, SIZE>
+to_array_rvalue_builder(TYPE(&&src)[SIZE], std::index_sequence<INDICES...>)
+    // This implementation detail function move constructs a 'bsl::array' from
+    // the specified 'src' argument.
+{
+    return {{std::move(src[INDICES])...}};
+}
+
+}  // close namespace bslstl_to_array_impl
+}  // close enterprise namespace
+
+template <class TYPE, std::size_t SIZE>
+inline
+BSLS_KEYWORD_CONSTEXPR_CPP14
+bsl::array<typename bsl::remove_cv<TYPE>::type, SIZE>
+bsl::to_array(TYPE (&src)[SIZE])
+{
+    BSLMF_ASSERT(!bsl::is_array<TYPE>::value);
+    BSLMF_ASSERT(bsl::is_copy_constructible<TYPE>::value);
+
+    return BloombergLP::bslstl_to_array_impl::to_array_lvalue_builder(
+                                             src,
+                                             std::make_index_sequence<SIZE>());
+}
+
+template <class TYPE, std::size_t SIZE>
+inline
+BSLS_KEYWORD_CONSTEXPR_CPP14
+bsl::array<typename bsl::remove_cv<TYPE>::type, SIZE>
+bsl::to_array(TYPE (&&src)[SIZE])
+{
+    BSLMF_ASSERT(!bsl::is_array<TYPE>::value);
+    BSLMF_ASSERT(std::is_move_constructible<TYPE>::value);
+
+    return BloombergLP::bslstl_to_array_impl::to_array_rvalue_builder(
+                                             std::move(src),
+                                             std::make_index_sequence<SIZE>());
+}
+
+#else // ! ..._SUPPORT_{VARIADIC,VARIABLE}_TEMPLATES
+
+template <class TYPE, std::size_t SIZE>
+BSLS_KEYWORD_CONSTEXPR_CPP14
+bsl::array<typename bsl::remove_cv<TYPE>::type, SIZE>
+bsl::to_array(TYPE (&src)[SIZE])
+{
+    BSLMF_ASSERT(!bsl::is_array<TYPE>::value);
+    BSLMF_ASSERT(bsl::is_copy_constructible<TYPE>::value);
+
+    array<typename remove_cv<TYPE>::type, SIZE> result;
+
+    for (std::size_t i = 0; i < SIZE; ++i) {
+        result[i] = src[i];
+    }
+
+    return result;
+}
+
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_RVALUE_REFERENCES)
+template <class TYPE, std::size_t SIZE>
+BSLS_KEYWORD_CONSTEXPR_CPP14
+bsl::array<typename bsl::remove_cv<TYPE>::type, SIZE>
+bsl::to_array(TYPE(&&src)[SIZE])
+{
+    BSLMF_ASSERT(!bsl::is_array<TYPE>::value);
+    BSLMF_ASSERT(std::is_move_constructible<TYPE>::value);
+
+    array<typename remove_cv<TYPE>::type, SIZE> result;
+
+    for (std::size_t i = 0; i < SIZE; ++i) {
+        result[i] = std::move(src[i]);
+    }
+
+    return result;
+}
+#endif  // BSLS_COMPILERFEATURES_SUPPORT_RVALUE_REFERENCES
+
+
+#endif  // BSLS_COMPILERFEATURES_SUPPORT_VARIADIC_TEMPLATES
+        // && BSLS_COMPILERFEATURES_SUPPORT_VARIABLE_TEMPLATES
+
+
+#endif
 // ============================================================================
 //                                TYPE TRAITS
 // ============================================================================

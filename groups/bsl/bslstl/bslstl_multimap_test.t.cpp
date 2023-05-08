@@ -937,6 +937,20 @@ void testTransparentComparator(Container& container,
     ASSERT(container.end()                  == NON_EXISTING_F);
     ASSERT(nonExistingKey.conversionCount() == expectedConversionCount);
 
+    // Testing 'contains'.
+
+    const bool EXISTING_CONTAINS = container.contains(existingKey);
+    if (!isTransparent) {
+        ++expectedConversionCount;
+    }
+
+    ASSERT(true == EXISTING_CONTAINS);
+    ASSERT(existingKey.conversionCount() == expectedConversionCount);
+
+    const bool NON_EXISTING_CONTAINS = container.contains(nonExistingKey);
+    ASSERT(false == NON_EXISTING_CONTAINS);
+    ASSERT(nonExistingKey.conversionCount() == expectedConversionCount);
+
     // Testing 'count'.
 
     const Count EXPECTED_C = initKeyValue ? initKeyValue : 1;
@@ -1003,6 +1017,53 @@ void testTransparentComparator(Container& container,
     ASSERT(NON_EXISTING_UB         == NON_EXISTING_ER.second);
     ASSERT(expectedConversionCount == nonExistingKey.conversionCount());
 }
+
+                            // =============================
+                            // struct ThrowingMoveComparator
+                            // =============================
+
+template <class TYPE>
+struct ThrowingMoveComparator : public std::less<TYPE> {
+    // Comparator with throwing move operations.
+
+    // CREATORS
+    ThrowingMoveComparator()
+        // Create a 'ThrowingMoveComparator' object.
+    {
+    }
+
+    ThrowingMoveComparator(const ThrowingMoveComparator &other)
+        // Create a 'ThrowingMoveComparator' object having the same value as
+        // that of the specified 'other'.
+    {
+        (void)other;
+    }
+
+    ThrowingMoveComparator(bslmf::MovableRef<ThrowingMoveComparator> other)
+                                     BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(false)
+        // Create a 'ThrowingMoveComparator' object having the same value as
+        // that of the specified 'other'.
+    {
+        (void)other;
+    }
+
+    // MANIPULATORS
+    ThrowingMoveComparator &operator=(const ThrowingMoveComparator &other)
+        // Assign to this object the value of the specified 'other'.
+    {
+        (void)other;
+        return *this;
+    }
+
+    ThrowingMoveComparator &operator=(
+        bslmf::MovableRef<ThrowingMoveComparator> other)
+                                     BSLS_KEYWORD_NOEXCEPT_SPECIFICATION(false)
+        // Assign to this object the value of the specified 'other'.
+    {
+        (void)other;
+        return *this;
+    }
+};
 
                        // =====================
                        // class TemplateWrapper
@@ -1615,6 +1676,9 @@ class TestDriver {
 
     static void testCase27_dispatch();
         // Test move assignment.
+
+    static void testCase27_noexcept();
+        // Test move assignment operator noexcept.
 
     static void testCase26();
         // Test move construction.
@@ -5174,6 +5238,23 @@ void TestDriver<KEY, VALUE, COMP, ALLOC>::testCase27_dispatch()
 }
 
 template <class KEY, class VALUE, class COMP, class ALLOC>
+void TestDriver<KEY, VALUE, COMP, ALLOC>::testCase27_noexcept()
+    // Verify that noexcept specification of the move assignment operator is
+    // correct.
+{
+    Obj a;
+    Obj b;
+
+#if BSLS_KEYWORD_NOEXCEPT_AVAILABLE
+    const bool isNoexcept =
+                        bsl::allocator_traits<ALLOC>::is_always_equal::value &&
+                        std::is_nothrow_move_assignable<COMP>::value;
+    ASSERT(isNoexcept ==
+           BSLS_KEYWORD_NOEXCEPT_OPERATOR(a = MoveUtil::move(b)));
+#endif
+}
+
+template <class KEY, class VALUE, class COMP, class ALLOC>
 void TestDriver<KEY, VALUE, COMP, ALLOC>::testCase26()
 {
     // ------------------------------------------------------------------------
@@ -5810,14 +5891,36 @@ void TestDriver<KEY, VALUE, COMP, ALLOC>::testCase25()
     bool (*operatorEq)(const Obj&, const Obj&) = operator==;
     (void) operatorEq;
 
+#ifdef BSLS_COMPILERFEATURES_SUPPORT_THREE_WAY_COMPARISON
+    (void) [](const Obj& lhs, const Obj& rhs) -> bool {
+        return lhs != rhs;
+    };
+#else
     // template <class Key, class T, class Compare, class Allocator>
     // bool operator!=(const multimap<Key,T,Compare,Allocator>& x,
     // const multimap<Key,T,Compare,Allocator>& y);
 
     bool (*operatorNe)(const Obj&, const Obj&) = operator!=;
     (void) operatorNe;
+#endif
 
-
+#ifdef BSLALG_SYNTHTHREEWAYUTIL_AVAILABLE
+    (void) [](const Obj& lhs, const Obj& rhs) -> bool {
+        return lhs < rhs;
+    };
+    (void) [](const Obj& lhs, const Obj& rhs) -> bool {
+        return lhs > rhs;
+    };
+    (void) [](const Obj& lhs, const Obj& rhs) -> bool {
+        return lhs <= rhs;
+    };
+    (void) [](const Obj& lhs, const Obj& rhs) -> bool {
+        return lhs >= rhs;
+    };
+    (void) [](const Obj& lhs, const Obj& rhs) {
+        return lhs <=> rhs;
+    };
+#else
     // template <class Key, class T, class Compare, class Allocator>
     // bool operator< (const multimap<Key,T,Compare,Allocator>& x,
     // const multimap<Key,T,Compare,Allocator>& y);
@@ -5846,6 +5949,7 @@ void TestDriver<KEY, VALUE, COMP, ALLOC>::testCase25()
 
     bool (*operatorLe)(const Obj&, const Obj&) = operator<=;
     (void) operatorLe;
+#endif  // BSLALG_SYNTHTHREEWAYUTIL_AVAILABLE
 
     // specialized algorithms:
     // template <class Key, class T, class Compare, class Allocator>
@@ -6403,6 +6507,8 @@ void TestDriver<KEY, VALUE, COMP, ALLOC>::testCase19()
     //:   2 '(a <= b) == !(b < a)'
     //:
     //:   3 '(a >= b) == !(a < b)'
+    //:
+    //: 4 'operator<=>' is consistent with '<', '>', '<=', '>='.
     //
     // Plan:
     //: 1 For a variety of objects of different sizes and different values,
@@ -6413,6 +6519,7 @@ void TestDriver<KEY, VALUE, COMP, ALLOC>::testCase19()
     //   bool operator> (const multimap& lhs, const multimap& rhs);
     //   bool operator>=(const multimap& lhs, const multimap& rhs);
     //   bool operator<=(const multimap& lhs, const multimap& rhs);
+    //   auto operator<=>(const multimap& lhs, const multimap& rhs);
     // ------------------------------------------------------------------------
 
     const int NUM_DATA                     = DEFAULT_NUM_DATA;
@@ -6477,6 +6584,13 @@ void TestDriver<KEY, VALUE, COMP, ALLOC>::testCase19()
                 ASSERTV(LINE1, LINE2, !isLessEq == (X > Y));
                 ASSERTV(LINE1, LINE2,  isLessEq == (X <= Y));
                 ASSERTV(LINE1, LINE2, !isLess   == (X >= Y));
+
+#ifdef BSLALG_SYNTHTHREEWAYUTIL_AVAILABLE
+                ASSERTV(LINE1, LINE2,  isLess   == (X <=> Y < 0));
+                ASSERTV(LINE1, LINE2, !isLessEq == (X <=> Y > 0));
+                ASSERTV(LINE1, LINE2,  isLessEq == (X <=> Y <= 0));
+                ASSERTV(LINE1, LINE2, !isLess   == (X <=> Y >= 0));
+#endif
 
                 TestComparator<KEY>::enableFunctor();
 
@@ -7548,11 +7662,12 @@ void TestDriver<KEY, VALUE, COMP, ALLOC>::testCase13()
     //: 1 If the key being searched exists in the container, 'find' and
     //:   'lower_bound' returns the first iterator referring to the existing
     //:   element, 'upper_bound' returns the iterator to the element after the
-    //:   searched element.
+    //:   searched element, and 'contains' return 'true'.
     //:
     //: 2 If the key being searched does not exists in the container, 'find'
     //:   returns the 'end' iterator, 'lower_bound' and 'upper_bound' returns
-    //:   the iterator to the smallest element greater than searched element.
+    //:   the iterator to the smallest element greater than searched element,
+    //:   and 'contains' returns 'false'.
     //:
     //: 3 'equal_range(key)' returns
     //:   'std::make_pair(lower_bound(key), upper_bound(key))'.
@@ -7579,6 +7694,8 @@ void TestDriver<KEY, VALUE, COMP, ALLOC>::testCase13()
     //:   4 Verify no memory is allocated from any allocators.  (C-4)
     //
     // Testing:
+    //   bool contains(const key_type& key);
+    //   bool contains(const LOOKUP_KEY& key);
     //   iterator find(const key_type& key);
     //   const_iterator find(const key_type& key) const;
     //   size_type count(const key_type& key) const;
@@ -7632,6 +7749,18 @@ void TestDriver<KEY, VALUE, COMP, ALLOC>::testCase13()
                                 CITER[idx] == X.find(VALUES[tj].first));
                         ASSERTV(ti, tj,
                                 ITER[idx] == mX.find(VALUES[tj].first));
+                        bool shouldBeFound  = ITER[idx] != X.end();
+                        bool cShouldBeFound = CITER[idx] != X.end();
+                        ASSERTV(
+                               ti,
+                               tj,
+                               cShouldBeFound,
+                               cShouldBeFound == X.contains(VALUES[tj].first));
+                        ASSERTV(
+                               ti,
+                               tj,
+                               shouldBeFound,
+                               shouldBeFound == mX.contains(VALUES[tj].first));
                         ASSERTV(ti, tj,
                                 CITER[idx] == X.lower_bound(VALUES[tj].first));
                         ASSERTV(ti, tj,
@@ -8678,6 +8807,60 @@ int main(int argc, char *argv[])
                        bsltf::MoveOnlyAllocTestType>::testCase27();
         MetaTestDriver<int,
                        bsltf::WellBehavedMoveOnlyAllocTestType>::testCase27();
+
+#if BSLS_KEYWORD_NOEXCEPT_AVAILABLE
+        // Test noexcept
+        {
+            typedef bsltf::StdStatefulAllocator<bsl::pair<const int, int>,
+                                                false,
+                                                false,
+                                                false,
+                                                false> Alloc;
+            typedef TestComparator<int> Comp;
+
+            ASSERT(!bsl::allocator_traits<Alloc>::is_always_equal::value);
+            ASSERT( std::is_nothrow_move_assignable<Comp>::value);
+            TestDriver<int, int, Comp, Alloc>::testCase27_noexcept();
+        }
+        {
+            typedef bsltf::StdStatefulAllocator<bsl::pair<const int, int>,
+                                                false,
+                                                false,
+                                                false,
+                                                false,
+                                                true> Alloc;
+            typedef TestComparator<int> Comp;
+
+            ASSERT( bsl::allocator_traits<Alloc>::is_always_equal::value);
+            ASSERT( std::is_nothrow_move_assignable<Comp>::value);
+            TestDriver<int, int, Comp, Alloc>::testCase27_noexcept();
+        }
+        {
+            typedef bsltf::StdStatefulAllocator<bsl::pair<const int, int>,
+                                                false,
+                                                false,
+                                                false,
+                                                false> Alloc;
+            typedef ThrowingMoveComparator<int> Comp;
+
+            ASSERT(!bsl::allocator_traits<Alloc>::is_always_equal::value);
+            ASSERT(!std::is_nothrow_move_assignable<Comp>::value);
+            TestDriver<int, int, Comp, Alloc>::testCase27_noexcept();
+        }
+        {
+            typedef bsltf::StdStatefulAllocator<bsl::pair<const int, int>,
+                                                false,
+                                                false,
+                                                false,
+                                                false,
+                                                true> Alloc;
+            typedef ThrowingMoveComparator<int> Comp;
+
+            ASSERT( bsl::allocator_traits<Alloc>::is_always_equal::value);
+            ASSERT(!std::is_nothrow_move_assignable<Comp>::value);
+            TestDriver<int, int, Comp, Alloc>::testCase27_noexcept();
+        }
+#endif
       } break;
       case 26: {
         // --------------------------------------------------------------------
@@ -8822,7 +9005,7 @@ int main(int argc, char *argv[])
       } break;
       case 13: {
         // --------------------------------------------------------------------
-        // TESTING 'find'
+        // TESTING 'find', 'contains'
         // --------------------------------------------------------------------
 
         RUN_EACH_TYPE(TestDriver,

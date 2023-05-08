@@ -64,6 +64,7 @@
 #include <bslstl_string.h>
 #include <bslstl_vector.h>
 
+#include <new>           // 'operator delete'
 #include <stdio.h>
 #include <stdlib.h>      // 'atoi'
 #include <string.h>      // 'strcmp', 'strcpy'
@@ -109,6 +110,12 @@
 // compiler bug triggering in lower level components, so we simply disable
 // those aspects of testing, and rely on the extensive test coverage on other
 // platforms.
+#endif
+
+#if defined(BSLS_PLATFORM_OS_AIX) && BSLS_COMPILERFEATURES_CPLUSPLUS < 201103L
+#define BSLSTL_SHAREDPTR_DONT_TEST_UNBOUNDED_ARRAYS
+// Some compilers (AIX) do not like unbounded arrays in types in C++03.  Things
+// like 'shared_ptr<int[]>' cause them to complain.
 #endif
 
 using namespace BloombergLP;
@@ -634,7 +641,7 @@ void aSsErT(bool condition, const char *message, int line)
 
 #if defined(BSLS_LIBRARYFEATURES_HAS_CPP17_BOOL_CONSTANT)
 # define DECLARE_BOOL_CONSTANT(NAME, EXPRESSION)                              \
-    BSLS_KEYWORD_CONSTEXPR_MEMBER bsl::bool_constant<EXPRESSION> NAME{}
+    const BSLS_KEYWORD_CONSTEXPR bsl::bool_constant<EXPRESSION> NAME{}
     // This leading branch is the preferred version for C++17, but the feature
     // test macro is (currently) for documentation purposes only, and never
     // defined.  This is the ideal (simplest) form for such declarations:
@@ -876,14 +883,14 @@ namespace NAMESPACE_USAGE_EXAMPLE_3 {
     class my_MutexUnlockAndBroadcastDeleter {
 
         // DATA
-        bcemt_Mutex     *d_mutex_p;  // mutex to lock (held, not owned)
-        bcemt_Condition *d_cond_p;   // condition variable used to broadcast
-                                     // (held, not owned)
+        bslmt::Mutex     *d_mutex_p;  // mutex to lock (held, not owned)
+        bslmt::Condition *d_cond_p;   // condition variable used to broadcast
+                                      // (held, not owned)
 
       public:
         // CREATORS
-        my_MutexUnlockAndBroadcastDeleter(bcemt_Mutex     *mutex,
-                                          bcemt_Condition *cond)
+        my_MutexUnlockAndBroadcastDeleter(bslmt::Mutex     *mutex,
+                                          bslmt::Condition *cond)
             // Create this 'my_MutexUnlockAndBroadcastDeleter' object.  Use the
             // specified 'cond' to broadcast a signal and the specified 'mutex'
             // to serialize access to 'cond'.  The behavior is undefined unless
@@ -929,8 +936,8 @@ namespace NAMESPACE_USAGE_EXAMPLE_3 {
     class my_SafeQueue {
 
         // DATA
-        bcemt_Mutex      d_mutex;
-        bcemt_Condition  d_cond;
+        bslmt::Mutex             d_mutex;
+        bslmt::Condition         d_cond;
         bsl::deque<ELEMENT_TYPE> d_queue;
 
         // . . .
@@ -947,7 +954,7 @@ namespace NAMESPACE_USAGE_EXAMPLE_3 {
     template <class ELEMENT_TYPE>
     void my_SafeQueue<ELEMENT_TYPE>::push(const ELEMENT_TYPE& obj)
     {
-        bcemt_LockGuard<bcemt_Mutex> lock(&d_mutex);
+        bslmt::LockGuard<bslmt::Mutex> lock(&d_mutex);
         d_queue.push_back(obj);
         d_cond.signal();
     }
@@ -955,7 +962,7 @@ namespace NAMESPACE_USAGE_EXAMPLE_3 {
     template <class ELEMENT_TYPE>
     ELEMENT_TYPE my_SafeQueue<ELEMENT_TYPE>::pop()
     {
-        bcemt_LockGuard<bcemt_Mutex> lock(&d_mutex);
+        bslmt::LockGuard<bslmt::Mutex> lock(&d_mutex);
         while (!d_queue.size()) {
            d_cond.wait(&d_mutex);
         }
@@ -1010,7 +1017,7 @@ namespace NAMESPACE_USAGE_EXAMPLE_4 {
         typedef bsl::map<int, bsl::shared_ptr<my_Session> > HandleMap;
 
         // DATA
-        bcemt_Mutex       d_mutex;
+        bslmt::Mutex      d_mutex;
         HandleMap         d_handles;
         int               d_nextSessionId;
         bslma::Allocator *d_allocator_p;
@@ -1098,7 +1105,7 @@ namespace NAMESPACE_USAGE_EXAMPLE_4 {
     my_SessionManager::my_Handle
     my_SessionManager::openSession(const bsl::string& sessionName)
     {
-        bcemt_LockGuard<bcemt_Mutex> lock(&d_mutex);
+        bslmt::LockGuard<bslmt::Mutex> lock(&d_mutex);
         my_Handle session(new(*d_allocator_p) my_Session(sessionName,
                                                          d_nextSessionId++,
                                                          d_allocator_p));
@@ -1109,7 +1116,7 @@ namespace NAMESPACE_USAGE_EXAMPLE_4 {
     inline
     void my_SessionManager::closeSession(my_Handle handle)
     {
-        bcemt_LockGuard<bcemt_Mutex> lock(&d_mutex);
+        bslmt::LockGuard<bslmt::Mutex> lock(&d_mutex);
         HandleMap::iterator it = d_handles.find(handle->handleId());
         if (it != d_handles.end()) {
             d_handles.erase(it);
@@ -1146,7 +1153,7 @@ namespace NAMESPACE_USAGE_EXAMPLE_5 {
         typedef bsl::map<int, bsl::shared_ptr<void> > HandleMap;
 
         // DATA
-        bcemt_Mutex       d_mutex;
+        bslmt::Mutex      d_mutex;
         HandleMap         d_handles;
         int               d_nextSessionId;
         bslma::Allocator *d_allocator_p;
@@ -1183,7 +1190,7 @@ namespace NAMESPACE_USAGE_EXAMPLE_5 {
     my_SessionManager::my_Handle
     my_SessionManager::openSession(const bsl::string& sessionName)
     {
-        bcemt_LockGuard<bcemt_Mutex> lock(&d_mutex);
+        bslmt::LockGuard<bslmt::Mutex> lock(&d_mutex);
 //..
 // Notice that 'my_Handle', which is a shared pointer to 'void', can be
 // transparently assigned to a shared pointer to a 'my_Session' object.  This
@@ -1202,7 +1209,7 @@ namespace NAMESPACE_USAGE_EXAMPLE_5 {
     inline
     void my_SessionManager::closeSession(my_Handle handle)
     {
-        bcemt_LockGuard<bcemt_Mutex> lock(&d_mutex);
+        bslmt::LockGuard<bslmt::Mutex> lock(&d_mutex);
 //..
 // Perform a static cast from 'bsl::shared_ptr<void>' to
 // 'bsl::shared_ptr<my_Session>'.
@@ -1923,6 +1930,36 @@ MostEvilTestType *g_addr = reinterpret_cast<MostEvilTestType*>(&g_buffer[0]);
 void *g_fail = new(g_addr) MostEvilTestType(5);
 }
 #endif
+
+                             // =================
+                             // class DeleteChecker
+                             // =================
+
+struct DeleteChecker {
+    static size_t s_singleDeleteCount;
+    static size_t s_arrayDeleteCount;
+
+    static void operator delete (void* ptr) BSLS_KEYWORD_NOEXCEPT
+        // Record the fact that the single form of operator delete' has been
+        // called, and then pass the specified 'ptr' to the global
+        // 'operator delete' to do the actual deletion.
+    {
+        ++s_singleDeleteCount;
+        ::operator delete(ptr);
+    }
+
+    static void operator delete[] (void* ptr) BSLS_KEYWORD_NOEXCEPT
+        // Record the fact that the array form of operator delete' has been
+        // called, and then pass the specified 'ptr' to the global
+        // 'operator delete' to do the actual deletion.
+    {
+        ++s_arrayDeleteCount;
+        ::operator delete[](ptr);
+    }
+};
+
+size_t DeleteChecker::s_singleDeleteCount = 0;
+size_t DeleteChecker::s_arrayDeleteCount = 0;
 
                           // =======================
                           // class ConstructorFailed
@@ -3122,8 +3159,9 @@ void PerformanceTester<POINTER>::test(bool verbose, bool allocVerbose)
 
     bsl::vector<TObj *>        mZ(&ta);
     const bsl::vector<TObj *>& Z = mZ;
-
-    bsls::Stopwatch timer;
+    const double               k_BIG_VECTOR_SIZE =
+                                          static_cast<double>(BIG_VECTOR_SIZE);
+    bsls::Stopwatch            timer;
 
     mZ.resize(BIG_VECTOR_SIZE);
     deleteCounter = copyCounter = 0;
@@ -3137,7 +3175,7 @@ void PerformanceTester<POINTER>::test(bool verbose, bool allocVerbose)
     printf("Creating %d owned objects in %gs (%gs each)\n",
            static_cast<int>(BIG_VECTOR_SIZE),
            timer.elapsedTime(),
-           timer.elapsedTime() / BIG_VECTOR_SIZE);
+           timer.elapsedTime() / k_BIG_VECTOR_SIZE);
     if (verbose) {
         printPerformanceStats(ta.numAllocations() - numAlloc,
                               ta.numBytesInUse() - numBytes,
@@ -3160,7 +3198,7 @@ void PerformanceTester<POINTER>::test(bool verbose, bool allocVerbose)
     printf("Copy-constructing %d owned objects in %gs (%gs each)\n",
            static_cast<int>(BIG_VECTOR_SIZE - 1),
            timer.elapsedTime(),
-           timer.elapsedTime() / (BIG_VECTOR_SIZE-1));
+           timer.elapsedTime() / (k_BIG_VECTOR_SIZE-1));
     if (verbose) {
         printPerformanceStats(ta.numAllocations() - numAlloc,
                               ta.numBytesInUse() - numBytes,
@@ -3179,7 +3217,7 @@ void PerformanceTester<POINTER>::test(bool verbose, bool allocVerbose)
     printf("Destroying %d owned objects in %gs (%gs each)\n",
            static_cast<int>(BIG_VECTOR_SIZE),
            timer.elapsedTime(),
-           timer.elapsedTime() / BIG_VECTOR_SIZE);
+           timer.elapsedTime() / k_BIG_VECTOR_SIZE);
     if (verbose) {
         printPerformanceStats(ta.numAllocations() - numAlloc,
                               ta.numBytesInUse() - numBytes,
@@ -3233,7 +3271,7 @@ void PerformanceTester<POINTER>::test(bool verbose, bool allocVerbose)
     printf("Creating %d distinct shared pointers in %gs (%gs each)\n",
            static_cast<int>(BIG_VECTOR_SIZE),
            timer.elapsedTime(),
-           timer.elapsedTime() / BIG_VECTOR_SIZE);
+           timer.elapsedTime() / k_BIG_VECTOR_SIZE);
     if (verbose) {
         printPerformanceStats(ta.numAllocations() - numAlloc,
                               ta.numBytesInUse() - numBytes,
@@ -3253,7 +3291,7 @@ void PerformanceTester<POINTER>::test(bool verbose, bool allocVerbose)
     printf("Destroying %d distinct shared pointers in %gs (%gs each)\n",
            static_cast<int>(BIG_VECTOR_SIZE),
            timer.elapsedTime(),
-           timer.elapsedTime() / BIG_VECTOR_SIZE);
+           timer.elapsedTime() / k_BIG_VECTOR_SIZE);
     if (verbose) {
         printPerformanceStats(ta.numAllocations() - numAlloc,
                               ta.numBytesInUse() - numBytes,
@@ -3291,7 +3329,7 @@ void PerformanceTester<POINTER>::test(bool verbose, bool allocVerbose)
            "Creating %d copies of the same shared pointer in %gs (%gs each)\n",
            static_cast<int>(BIG_VECTOR_SIZE),
            timer.elapsedTime(),
-           timer.elapsedTime() / BIG_VECTOR_SIZE);
+           timer.elapsedTime() / k_BIG_VECTOR_SIZE);
         if (verbose) {
             printPerformanceStats(ta.numAllocations() - numAlloc,
                                   ta.numBytesInUse() - numBytes,
@@ -3312,7 +3350,7 @@ void PerformanceTester<POINTER>::test(bool verbose, bool allocVerbose)
     printf("Destroying %d times the same shared pointer in %gs (%gs each)\n",
            static_cast<int>(BIG_VECTOR_SIZE),
            timer.elapsedTime(),
-           timer.elapsedTime() / BIG_VECTOR_SIZE);
+           timer.elapsedTime() / k_BIG_VECTOR_SIZE);
     if (verbose) {
         printPerformanceStats(ta.numAllocations() - numAlloc,
                               ta.numBytesInUse() - numBytes,
@@ -3353,7 +3391,7 @@ void PerformanceTester<POINTER>::test(bool verbose, bool allocVerbose)
     printf("Creating %d distinct in-place shared pointers in %gs (%gs each)\n",
            static_cast<int>(BIG_VECTOR_SIZE),
            timer.elapsedTime(),
-           timer.elapsedTime() / BIG_VECTOR_SIZE);
+           timer.elapsedTime() / k_BIG_VECTOR_SIZE);
     if (verbose) {
         printPerformanceStats(ta.numAllocations() - numAlloc,
                               ta.numBytesInUse() - numBytes,
@@ -3374,7 +3412,7 @@ void PerformanceTester<POINTER>::test(bool verbose, bool allocVerbose)
          "Destroying %d distinct in-place shared pointers in %gs (%gs each)\n",
          static_cast<int>(BIG_VECTOR_SIZE),
          timer.elapsedTime(),
-         timer.elapsedTime() / BIG_VECTOR_SIZE);
+         timer.elapsedTime() / k_BIG_VECTOR_SIZE);
     if (verbose) {
         printPerformanceStats(ta.numAllocations() - numAlloc,
                               ta.numBytesInUse() - numBytes,
@@ -3400,7 +3438,7 @@ void PerformanceTester<POINTER>::test(bool verbose, bool allocVerbose)
                " (%gs each)\n",
                static_cast<int>(BIG_VECTOR_SIZE),
                timer.elapsedTime(),
-               timer.elapsedTime() / BIG_VECTOR_SIZE);
+               timer.elapsedTime() / k_BIG_VECTOR_SIZE);
         if (verbose) {
             printPerformanceStats(ta.numAllocations() - numAlloc,
                                   ta.numBytesInUse() - numBytes,
@@ -3422,7 +3460,7 @@ void PerformanceTester<POINTER>::test(bool verbose, bool allocVerbose)
            " (%gs each)\n",
            static_cast<int>(BIG_VECTOR_SIZE),
            timer.elapsedTime(),
-           timer.elapsedTime() / BIG_VECTOR_SIZE);
+           timer.elapsedTime() / k_BIG_VECTOR_SIZE);
     if (verbose) {
         printPerformanceStats(ta.numAllocations() - numAlloc,
                               ta.numBytesInUse() - numBytes,
@@ -3468,7 +3506,7 @@ void PerformanceTester<POINTER>::test(bool verbose, bool allocVerbose)
     printf("Assigning %d distinct shared pointers in %gs (%gs each)\n",
            static_cast<int>(BIG_VECTOR_SIZE + 1),
            timer.elapsedTime(),
-           timer.elapsedTime() / (BIG_VECTOR_SIZE+1));
+           timer.elapsedTime() / (k_BIG_VECTOR_SIZE+1));
     if (verbose) {
         printPerformanceStats(ta.numAllocations() - numAlloc,
                               ta.numBytesInUse() - numBytes,
@@ -3491,7 +3529,7 @@ void PerformanceTester<POINTER>::test(bool verbose, bool allocVerbose)
     printf("Assigning %d times the same shared pointer in %gs (%gs each)\n",
            static_cast<int>(BIG_VECTOR_SIZE),
            timer.elapsedTime(),
-           timer.elapsedTime() / BIG_VECTOR_SIZE);
+           timer.elapsedTime() / k_BIG_VECTOR_SIZE);
     if (verbose) {
         printPerformanceStats(ta.numAllocations() - numAlloc,
                               ta.numBytesInUse() - numBytes,
@@ -20405,6 +20443,78 @@ int main(int argc, char *argv[])
         }
         ASSERT(0 == numDeletes);
         numDeletes = 0;
+
+        if (verbose) printf(
+                    "\nTesting COPY-CONSTRUCTION of shared_ptr to array"
+                    "\n------------------------------------------------\n");
+        {
+            // Test construction of 'shared_ptr<T[N]>' and 'shared_ptr<T[]>'
+            // from other types.  All the shared_ptrs in this test are null,
+            // so no memory allocations or deletions should occur.
+
+            bsl::shared_ptr<int> sp0;
+            ASSERT(0 == sp0.get());
+            ASSERT(0 == sp0.use_count());
+
+            // shared_ptr<int> -> shared_ptr<const int>
+            bsl::shared_ptr<const int> sp0c = sp0;
+            ASSERT(0 == sp0c.get());
+            ASSERT(0 == sp0c.use_count());
+
+            // shared_ptr<int> -> shared_ptr<volatile int>
+            bsl::shared_ptr<volatile int> sp0v = sp0;
+            ASSERT(0 == sp0v.get());
+            ASSERT(0 == sp0v.use_count());
+
+            // shared_ptr<int> -> shared_ptr<const volatile int>
+            bsl::shared_ptr<const volatile int> sp0cv = sp0;
+            ASSERT(0 == sp0cv.get());
+            ASSERT(0 == sp0cv.use_count());
+
+            bsl::shared_ptr<int[3]> sp1;
+            ASSERT(0 == sp1.get());
+            ASSERT(0 == sp1.use_count());
+
+            // shared_ptr<int[N]> -> shared_ptr<const int[N]>
+            bsl::shared_ptr<const int[3]> sp1c = sp1;
+            ASSERT(0 == sp1c.get());
+            ASSERT(0 == sp1c.use_count());
+
+            // shared_ptr<int[N]> -> shared_ptr<volatile int[N]>
+            bsl::shared_ptr<volatile int[3]> sp1v = sp1;
+            ASSERT(0 == sp1v.get());
+            ASSERT(0 == sp1v.use_count());
+
+            // shared_ptr<int[N]> -> shared_ptr<const volatile int[N]>
+            bsl::shared_ptr<const volatile int[3]> sp1cv = sp1;
+            ASSERT(0 == sp1cv.get());
+            ASSERT(0 == sp1cv.use_count());
+
+#ifndef BSLSTL_SHAREDPTR_DONT_TEST_UNBOUNDED_ARRAYS
+            // shared_ptr<int[N]> -> shared_ptr<int[]>
+            bsl::shared_ptr<int[]> sp2 = sp1;
+            ASSERT(0 == sp2.get());
+            ASSERT(0 == sp2.use_count());
+
+            // shared_ptr<int[N]> -> shared_ptr<const int[]>
+            bsl::shared_ptr<const int[]> sp2c = sp1;
+            ASSERT(0 == sp2c.get());
+            ASSERT(0 == sp2c.use_count());
+
+            // shared_ptr<int[N]> -> shared_ptr<volatile int[]>
+            bsl::shared_ptr<volatile int[]> sp2v = sp1;
+            ASSERT(0 == sp2v.get());
+            ASSERT(0 == sp2v.use_count());
+
+            // shared_ptr<int[N]> -> shared_ptr<const volatile int[]>
+            bsl::shared_ptr<const volatile int[]> sp2cv = sp1;
+            ASSERT(0 == sp2cv.get());
+            ASSERT(0 == sp2cv.use_count());
+#endif
+
+        }
+        ASSERT(0 == numDeletes);
+        numDeletes = 0;
       } break;
       case 6: {
         // --------------------------------------------------------------------
@@ -22389,6 +22499,33 @@ int main(int argc, char *argv[])
         if (verbose) printf("\nTesting shared_ptr"
                             "\n------------------\n");
 
+        // Ensure that the typedefs 'element_type' and 'weak_type' in
+        // shared_ptr are correct.
+        ASSERT((bsl::is_same<int,
+                             bsl::shared_ptr<int>::element_type>::value));
+        ASSERT((bsl::is_same<bsl::weak_ptr<int>,
+                             bsl::shared_ptr<int>::weak_type>::value));
+        ASSERT((bsl::is_same<float,
+                             bsl::shared_ptr<float[5]>::element_type>::value));
+        ASSERT((bsl::is_same<bsl::weak_ptr<float[5]>,
+                             bsl::shared_ptr<float[5]>::weak_type>::value));
+#ifndef BSLSTL_SHAREDPTR_DONT_TEST_UNBOUNDED_ARRAYS
+        ASSERT((bsl::is_same<long,
+                             bsl::shared_ptr<long[]>::element_type>::value));
+        ASSERT((bsl::is_same<bsl::weak_ptr<long[]>,
+                             bsl::shared_ptr<long[]>::weak_type>::value));
+#endif
+
+        // Ensure that the typedef 'element_type' in weak_ptr is correct.
+        ASSERT((bsl::is_same<int,
+                             bsl::weak_ptr<int>::element_type>::value));
+        ASSERT((bsl::is_same<float,
+                             bsl::weak_ptr<float[5]>::element_type>::value));
+#ifndef BSLSTL_SHAREDPTR_DONT_TEST_UNBOUNDED_ARRAYS
+        ASSERT((bsl::is_same<long,
+                             bsl::weak_ptr<long[]>::element_type>::value));
+#endif
+
         bsls::Types::Int64 numDeletes = 0;
         {
             MyTestObject *obj = new MyTestObject(&numDeletes);
@@ -22495,6 +22632,34 @@ int main(int argc, char *argv[])
 
         }
         ASSERT(1 == numDeletes);
+
+
+        {
+            typedef DeleteChecker D;
+            D *p1 = new D;
+            D *p2 = new D[5];
+
+            D::s_singleDeleteCount = 0;
+            D::s_arrayDeleteCount = 0;
+            {
+                bsl::shared_ptr<D> sp1(p1);
+                {
+                    bsl::shared_ptr<D[5]> sp2(p2);
+                }
+                ASSERT(1 == D::s_arrayDeleteCount);
+                ASSERT(0 == D::s_singleDeleteCount);
+            }
+            ASSERT(1 == D::s_arrayDeleteCount);
+            ASSERT(1 == D::s_singleDeleteCount);
+
+            //  (1) This should not call operator delete
+            //  (2) There is no make_shared<T[]>
+            {
+                bsl::shared_ptr<D> sp3 = bsl::make_shared<D>();
+            }
+            ASSERT(1 == DeleteChecker::s_arrayDeleteCount);
+            ASSERT(1 == DeleteChecker::s_singleDeleteCount);
+        }
 
 
         if (verbose) printf("\nTesting weak_ptr"
@@ -22631,7 +22796,7 @@ int main(int argc, char *argv[])
 }
 
 // ----------------------------------------------------------------------------
-// Copyright 2014 Bloomberg Finance L.P.
+// Copyright 2023 Bloomberg Finance L.P.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
